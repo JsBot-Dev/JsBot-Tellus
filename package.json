@@ -1,0 +1,32 @@
+{
+  "name": "jsbot-ng-alpha",
+  "version": "1.0.0",
+  "description": "a new version of JsBot",
+  "keywords": [
+    "Cordis",
+    "Bot",
+    "Typescript"
+  ],
+  "homepage": "https://github.com/JsBot-Dev/JsBot-Cordis-Alpha#readme",
+  "bugs": {
+    "url": "https://github.com/JsBot-Dev/JsBot-Cordis-Alpha/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/JsBot-Dev/JsBot-Cordis-Alpha.git"
+  },
+  "license": "AGPL-3.0-or-later",
+  "author": "J-SLY",
+  "type": "module",
+  "main": "src/app.ts",
+  "scripts": {
+    "test": "npx vitest",
+    "check": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@snowluma/sdk": "^1.14.21",
+    "@types/node": "^26.6.4",
+    "tsx": "^4.23.15",
+    "typescript": "^7.0.2"
+  }
+}
