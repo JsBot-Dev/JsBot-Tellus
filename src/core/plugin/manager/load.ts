@@ -8,7 +8,7 @@ import type { LoadPlugins, PluginConstructor } from "./types";
 
 class PluginLoad {
     constructor(readonly dir: string) { }
-    async load(bot: JsBot) {
+    async load(): Promise<LoadPlugins> {
         const files = await fg(path.join(this.dir, '/plugin-*/index.ts'))
         const collections: LoadPlugins = { internal: [], integrated: [], custom: [] }
 
@@ -32,12 +32,15 @@ class PluginLoad {
                     throw new Error(`Invalid Plugin Level`)
             }
         }
-        const result: Plugins = {
+        return collections
+    }
+
+    instantiate(bot: JsBot, collections: LoadPlugins): Plugins {
+        return {
             internal: collections.internal.map(con => new con(bot)),
             integrated: collections.integrated.map(con => new con(bot)),
             custom: collections.custom.map(con => new con(bot))
         }
-        return result
     }
 }
 

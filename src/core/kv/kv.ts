@@ -1,7 +1,7 @@
 import { KVSqlite } from '@isdk/kvsqlite';
 import path, { dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import type { Plugins } from '../types/type';
+import type { LoadPlugins } from '../plugin/manager/types';
 
 
 const __filename = fileURLToPath(import.meta.url);
@@ -10,10 +10,10 @@ const __dirname = dirname(__filename);
 
 export class KvData {
     db: KVSqlite
-    constructor(plugins: Plugins) {
+    constructor(plugins: LoadPlugins) {
         const namespaces = Object.values(plugins)
             .flat()
-            .map(plugin => plugin.constructor.name)
+            .map(Plugin => Plugin.name)
         this.db = new KVSqlite(path.join(__dirname, '../../data/db/plugin-kv.db'), {
             collections:namespaces
         })

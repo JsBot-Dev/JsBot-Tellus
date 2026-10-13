@@ -26,7 +26,7 @@ class JsBot {
     pluginManager!: PluginManager
     configManager!: ConfigManager
 
-    plugiDb!:KvData
+    plugiDb: KvData | undefined
 
     constructor() {
         const __dirname = path.dirname(fileURLToPath(import.meta.url))
@@ -61,17 +61,25 @@ class JsBot {
         try {
             if (!this.registered) {
                 this.registrations = { commands: new Map<string, CommandMeta>(), middlewares: [], handlers: [] }
-                this.plugins = await this.pluginManager.load.load(this)
-                this.plugiDb = new KvData(this.plugins)
-                const disposers: Array<() => void> = []
+                const constructors = await this.pluginManager.load.load()
                 try {
-                    disposers.push(this.client.use(createPermissionMiddleware(this)))
-                    disposers.push(this.client.use(createAuthMiddleware(this)))
-                    disposers.push(...this.pluginManager.register.register(this))
-                    this.disposers = disposers
-                    this.registered = true
+                    this.plugiDb = new KvData(constructors)
+                    this.plugins = this.pluginManager.load.instantiate(this, constructors)
+                    const disposers: Array<() => void> = []
+                    try {
+                        disposers.push(this.client.use(createPermissionMiddleware(this)))
+                        disposers.push(this.client.use(createAuthMiddleware(this)))
+                        disposers.push(...this.pluginManager.register.register(this))
+                        this.disposers = disposers
+                        this.registered = true
+                    } catch (error) {
+                        for (const dispose of disposers.reverse()) dispose()
+                        throw error
+                    }
                 } catch (error) {
-                    for (const dispose of disposers.reverse()) dispose()
+                    // A failed constructor or registration must not leave an open database for retry.
+                    if (this.plugiDb) (this.plugiDb.db as unknown as { close(): void }).close()
+                    this.plugiDb = undefined
                     throw error
                 }
             }
