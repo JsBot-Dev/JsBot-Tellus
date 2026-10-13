@@ -1,5 +1,9 @@
 {
-  "name": "jsbot-ng-alpha",
+  "name": "jsbot-tellus",
+  "private": true,
+  "workspaces": [
+    "src/plugins/plugin-*"
+  ],
   "version": "1.0.0",
   "description": "a new version of JsBot",
   "keywords": [
@@ -7,26 +11,34 @@
     "Bot",
     "Typescript"
   ],
-  "homepage": "https://github.com/JsBot-Dev/JsBot-Cordis-Alpha#readme",
+  "homepage": "https://github.com/JsBot-Dev/JsBot-Tellus#readme",
   "bugs": {
-    "url": "https://github.com/JsBot-Dev/JsBot-Cordis-Alpha/issues"
+    "url": "https://github.com/JsBot-Dev/JsBot-Tellus/issues"
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/JsBot-Dev/JsBot-Cordis-Alpha.git"
+    "url": "git+https://github.com/JsBot-Dev/JsBot-Tellus.git"
   },
   "license": "AGPL-3.0-or-later",
   "author": "J-SLY",
   "type": "module",
   "main": "src/app.ts",
   "scripts": {
-    "test": "npx vitest",
-    "check": "tsc --noEmit"
+    "test": "vitest run",
+    "check": "tsc --noEmit",
+    "start": "tsx src/app.ts",
+    "dev": "tsx watch src/app.ts"
   },
   "dependencies": {
+    "@isdk/kvsqlite": "^0.6.31",
     "@snowluma/sdk": "^1.14.21",
-    "@types/node": "^26.6.4",
+    "fast-glob": "^3.3.3",
     "tsx": "^4.23.15",
-    "typescript": "^7.0.2"
+    "zod": "^4.6.5"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.4",
+    "typescript": "^7.0.2",
+    "vitest": "^5.0.4"
   }
 }

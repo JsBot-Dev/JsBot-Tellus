@@ -4,7 +4,7 @@
     "target": "esnext",
     "moduleResolution": "bundler",
     "lib": ["esnext"],
-
+    "types": ["node"],
     "verbatimModuleSyntax": true,
     "isolatedModules": true,
     "moduleDetection": "force",
@@ -14,7 +14,8 @@
     "noUncheckedIndexedAccess": true,
     "exactOptionalPropertyTypes": true,
 
-    "skipLibCheck": true
+    "skipLibCheck": true,
+    "noEmit": true
   },
   "include": ["src"]
 }

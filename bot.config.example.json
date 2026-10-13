@@ -1,0 +1,8 @@
+{
+  "url": "ws://127.0.0.1:3001/",
+  "accessToken": "example_access_token_less_16",
+  "role": {
+    "superadmin": [],
+    "admin": []
+  }
+}
