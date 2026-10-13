@@ -119,6 +119,32 @@ switch (process.argv[2]) {
         await bot.stop()
         break
     }
+    case 'constructor-kv': {
+        await bot.start()
+        const plugin = bot.plugins.custom.find(plugin => plugin.constructor.name === 'ConstructorKvPlugin')
+        assert.equal(plugin.initial, 0)
+        assert.equal(plugin.get_kv('counter'), 1)
+        await bot.stop()
+        break
+    }
+    case 'constructor-retry': {
+        const instantiate = bot.pluginManager.load.instantiate.bind(bot.pluginManager.load)
+        let failedDatabase
+        bot.pluginManager.load.instantiate = (...args) => {
+            failedDatabase = bot.plugiDb.db
+            return instantiate(...args)
+        }
+        await assert.rejects(bot.start(), /constructor failed/)
+        assert.equal(failedDatabase.open, false)
+        assert.equal(bot.plugiDb, undefined)
+        assert.equal(bot.client.middlewares.length, 0)
+        await bot.start()
+        const plugin = bot.plugins.custom.find(plugin => plugin.constructor.name === 'ConstructorKvPlugin')
+        assert.equal(plugin.initial, 1)
+        assert.equal(plugin.get_kv('counter'), 2)
+        await bot.stop()
+        break
+    }
     case 'stop': {
         await bot.start()
         const database = bot.plugiDb.db
