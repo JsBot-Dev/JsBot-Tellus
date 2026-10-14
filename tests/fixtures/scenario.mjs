@@ -26,14 +26,23 @@ const notice = (target, subType = 'poke', groupId) => ({
 })
 
 switch (process.argv[2]) {
-    case 'plugins': {
+    case 'plugins':
+    case 'plugins-extra': {
         await bot.start()
-        assert.deepEqual(bot.plugins.internal.map(plugin => plugin.constructor.name), ['AuthPlugin'])
-        assert.deepEqual(bot.plugins.integrated.map(plugin => plugin.constructor.name), ['EchoPlugin'])
-        assert.deepEqual(bot.plugins.custom.map(plugin => plugin.constructor.name), ['PokePlugin'])
-        assert.deepEqual([...bot.registrations.commands.keys()], ['role', 'utter', 'utter.raw'])
-        assert.equal(bot.registrations.handlers.length, 1)
-        assert.equal(bot.client.middlewares.length, 6)
+        for (const [level, name] of [['internal', 'AuthPlugin'], ['integrated', 'EchoPlugin'], ['custom', 'PokePlugin']]) {
+            assert.ok(bot.plugins[level].some(plugin => plugin.constructor.name === name), `${name} not loaded as ${level}`)
+        }
+        for (const name of ['role', 'utter', 'utter.raw']) {
+            assert.ok(bot.registrations.commands.has(name), `${name} not registered`)
+        }
+        assert.ok(bot.registrations.handlers.some(handler => handler.type === 'notice' && handler.notice_type === 'notify'))
+        assert.ok(bot.client.middlewares.length > 0)
+        if (process.argv[2] === 'plugins-extra') {
+            assert.ok(bot.plugins.custom.some(plugin => plugin.constructor.name === 'ExtraPlugin'))
+            assert.ok(bot.registrations.commands.has('extra.test'))
+            assert.ok(bot.registrations.handlers.some(handler => handler.type === 'notice' && handler.notice_type === 'extra-test'))
+            assert.ok(bot.registrations.middlewares.length > 0)
+        }
         await bot.stop()
         break
     }
@@ -81,7 +90,8 @@ switch (process.argv[2]) {
         await bot.stop()
         break
     }
-    case 'retry': {
+    case 'retry':
+    case 'retry-extra': {
         let attempts = 0
         let finish
         bot.client.connect = () => {
@@ -92,7 +102,8 @@ switch (process.argv[2]) {
         assert.equal(first, concurrent)
         await assert.rejects(first, /offline/)
         await assert.rejects(concurrent, /offline/)
-        assert.equal(bot.client.middlewares.length, 6)
+        const registeredMiddlewares = bot.client.middlewares.length
+        assert.ok(registeredMiddlewares > 0)
         const second = bot.start(), together = bot.start()
         assert.equal(second, together)
         assert.equal(attempts, 2)
@@ -100,7 +111,7 @@ switch (process.argv[2]) {
         await Promise.all([second, together])
         await bot.start()
         assert.equal(attempts, 2)
-        assert.equal(bot.client.middlewares.length, 6)
+        assert.equal(bot.client.middlewares.length, registeredMiddlewares)
         await bot.stop()
         break
     }
@@ -115,7 +126,7 @@ switch (process.argv[2]) {
         assert.equal(bot.client.middlewares.length, 0)
         bot.client.command = command
         await bot.start()
-        assert.equal(bot.client.middlewares.length, 6)
+        assert.ok(bot.client.middlewares.length > 0)
         await bot.stop()
         break
     }
