@@ -19,6 +19,25 @@ function runScenario(name: string) {
     const dir = mkdtempSync(path.join(tempRoot, 'jsbot-vitest-'))
     temporaryDirectories.push(dir)
     cpSync(path.join(root, 'src'), path.join(dir, 'src'), { recursive: true })
+    if (name === 'plugins-extra' || name === 'retry-extra') {
+        const pluginDir = path.join(dir, 'src/plugins/plugin-extra')
+        mkdirSync(pluginDir)
+        writeFileSync(path.join(pluginDir, 'index.ts'), `
+import { JsBotBasePlugin, Command } from '../../core/index.ts'
+import { Middleware, OnNotice } from '../../core/decorator/decorator.ts'
+
+export default class ExtraPlugin extends JsBotBasePlugin {
+    @Command('extra.test')
+    test = async () => {}
+
+    @OnNotice('extra-test')
+    notice = async () => {}
+
+    @Middleware()
+    middleware = (_event, _ctx, next) => next()
+}
+`)
+    }
     if (name === 'constructor-kv' || name === 'constructor-retry') {
         const pluginDir = path.join(dir, 'src/plugins/plugin-kv-constructor')
         mkdirSync(pluginDir)
@@ -55,9 +74,11 @@ export default class ConstructorKvPlugin extends JsBotBasePlugin {
 
 describe('offline bot integration', () => {
     it('discovers all plugins and registers commands', () => runScenario('plugins'))
+    it('accepts additional plugins, commands and handlers', () => runScenario('plugins-extra'))
     it('replies to commands with the required permissions', () => runScenario('commands'))
     it('only reacts to pokes directed at the bot', () => runScenario('poke'))
     it('retries connections without duplicate handlers and shares concurrent starts', () => runScenario('retry'))
+    it('retries without duplicate middlewares when an extra plugin registers one', () => runScenario('retry-extra'))
     it('rolls back partially registered handlers', () => runScenario('rollback'))
     it('allows plugin constructors to read and write KV', () => runScenario('constructor-kv'))
     it('releases KV after a plugin constructor fails and retries', () => runScenario('constructor-retry'))
