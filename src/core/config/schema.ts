@@ -5,6 +5,10 @@ const ConfigSchema = z.object({
     role: z.object({
         superadmin: z.array(z.number()).optional(),
         admin: z.array(z.number()).optional()
+    }),
+    llm: z.object({
+        base:z.string().optional(),
+        apikey:z.string()
     })
 })
 type Config = z.infer<typeof ConfigSchema>
