@@ -135,6 +135,8 @@ describe('offline bot integration', () => {
         runScenario('group-plugin-gating'))
     it('does not run plugin handlers for recognized commands', () =>
         runScenario('command-order'))
+    it('preserves reply segments when forwarding long messages', () =>
+        runScenario('send-message-forwarding'))
     it('retries connections without duplicate handlers and shares concurrent starts', () =>
         runScenario('retry'))
     it('retries without duplicate middlewares when an extra plugin registers one', () =>

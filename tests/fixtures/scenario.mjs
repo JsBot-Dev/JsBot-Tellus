@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict'
+import { chain, toCQString } from '@snowluma/sdk'
 import { JsBot } from './src/core/bot.ts'
 
 const bot = new JsBot()
@@ -191,6 +192,58 @@ switch (process.argv[2]) {
         assert.deepEqual(
             sent.map((entry) => entry.content),
             ['middleware', 'message']
+        )
+        await bot.stop()
+        break
+    }
+    case 'send-message-forwarding': {
+        bot.config.message = { charThreshold: 100, lineThreshold: 3 }
+        const calls = []
+        bot.client.getLoginInfo = async () => ({ nickname: 'Bot' })
+        bot.client.sendGroupForwardMessage = async (groupId, content) =>
+            calls.push({ kind: 'forward', groupId, content })
+        const ctx = {
+            event: message(3, '/test', 'group'),
+            client: bot.client,
+            reply: async (content) => calls.push({ kind: 'reply', content }),
+        }
+        const shortReply = chain().reply(11).text('ok')
+        await bot.send_msg(ctx, shortReply)
+        assert.equal(calls[0].kind, 'reply')
+        assert.equal(calls[0].content, shortReply)
+
+        bot.config.message.charThreshold = 10_000
+        const exactLines = chain().text('a\nb\nc')
+        await bot.send_msg(ctx, exactLines)
+        assert.equal(calls[1].kind, 'reply')
+        const extraLine = chain().text('a\nb\nc\nd')
+        await bot.send_msg(ctx, extraLine)
+        assert.equal(calls[2].kind, 'forward')
+
+        bot.config.message.lineThreshold = 100
+        const exactCharacters = chain().text('1234567890')
+        bot.config.message.charThreshold = toCQString(exactCharacters).length
+        await bot.send_msg(ctx, exactCharacters)
+        assert.equal(calls[3].kind, 'reply')
+        const extraCharacter = chain().text('12345678901')
+        bot.config.message.charThreshold = toCQString(extraCharacter).length - 1
+        await bot.send_msg(ctx, extraCharacter)
+        assert.equal(calls[4].kind, 'forward')
+
+        bot.config.message.charThreshold = 100
+        const longReply = chain().reply(11).text('long response '.repeat(20))
+        await bot.send_msg(ctx, longReply)
+        assert.equal(calls[5].kind, 'forward')
+        assert.equal(calls[5].groupId, 42)
+        const forwardNodes = calls[5].content.toArray()
+        assert.equal(forwardNodes[0].type, 'node')
+        assert.ok(
+            forwardNodes[0].data.content
+                .toArray()
+                .some(
+                    (segment) =>
+                        segment.type === 'reply' && segment.data.id === '11'
+                )
         )
         await bot.stop()
         break
