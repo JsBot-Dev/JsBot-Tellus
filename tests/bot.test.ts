@@ -147,7 +147,7 @@ describe('offline bot integration', () => {
         runScenario('constructor-kv'))
     it('releases KV after a plugin constructor fails and retries', () =>
         runScenario('constructor-retry'))
-    it('stops idempotently, releases SQLite and rejects a restart', () =>
+    it('stops idempotently, releases SQLite and rebuilds on restart', () =>
         runScenario('stop'))
     it('closes cleanly during an in-flight connection', () =>
         runScenario('stop-during-connect'))
