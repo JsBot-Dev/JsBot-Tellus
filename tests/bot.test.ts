@@ -159,5 +159,33 @@ describe('offline bot integration', () => {
         expect(
             ConfigSchema.safeParse({ ...example, accessToken: '' }).success
         ).toBe(false)
+        expect(
+            ConfigSchema.safeParse({ ...example, url: 'not-a-websocket-url' })
+                .success
+        ).toBe(false)
+        expect(
+            ConfigSchema.safeParse({
+                ...example,
+                llm: {
+                    providers: {
+                        example: { base: 'not-a-url', apikey: 'key' },
+                    },
+                },
+            }).success
+        ).toBe(false)
+        expect(
+            ConfigSchema.safeParse({
+                ...example,
+                llm: { providers: { example: { apikey: '' } } },
+            }).success
+        ).toBe(false)
+        expect(
+            ConfigSchema.safeParse({ ...example, extraField: true }).success
+        ).toBe(false)
+        const defaults = ConfigSchema.parse({
+            accessToken: '0123456789abcdef',
+        })
+        expect(defaults.role).toEqual({})
+        expect(defaults.plugin).toEqual({})
     })
 })
