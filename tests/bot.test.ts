@@ -63,7 +63,8 @@ export default class ConstructorKvPlugin extends JsBotBasePlugin {
     symlinkSync(path.join(root, 'node_modules'), path.join(dir, 'node_modules'), 'dir')
     writeFileSync(path.join(dir, 'bot.config.json'), JSON.stringify({
         url: 'ws://127.0.0.1:1/', accessToken: '0123456789abcdef',
-        role: { superadmin: [1], admin: [2] }
+        role: { superadmin: [1], admin: [2] },
+        llm: { providers: {} }
     }))
     const result = spawnSync(process.execPath, ['--import', 'tsx', 'scenario.mjs', name], {
         cwd: dir, encoding: 'utf8', timeout: 30_000
@@ -88,6 +89,11 @@ describe('offline bot integration', () => {
     it('accepts the shipped example configuration', () => {
         const example = JSON.parse(readFileSync(path.join(root, 'bot.config.example.json'), 'utf8'))
         expect(ConfigSchema.safeParse(example).success).toBe(true)
+        expect(ConfigSchema.safeParse({ ...example, llm: undefined }).success).toBe(true)
+        expect(ConfigSchema.safeParse({
+            ...example,
+            llm: { base: 'https://api.example.com/v1', apikey: 'legacy-key' }
+        }).success).toBe(true)
         expect(ConfigSchema.safeParse({ ...example, accessToken: '' }).success).toBe(false)
     })
 })
