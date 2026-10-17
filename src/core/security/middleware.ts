@@ -38,7 +38,7 @@ function createAuthMiddleware(bot: JsBot): EventMiddleware {
                 return next();
         }
 
-        await refuse(ctx, event);
+        await refuse(bot, ctx, event);
     };
 }
 

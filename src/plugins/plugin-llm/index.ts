@@ -89,7 +89,7 @@ export default class LLMPlugin extends JsBotBasePlugin {
             res = await this.llmclient[provider].responses.create({ model, input })
         } catch (error) {
             console.error(`[LLM] Request failed for provider "${provider}" and model "${model}":`, error)
-            await ctx.reply(`请求失败：${error}`)
+            await this.bot.send_msg(ctx, `请求失败：${error}`)
             return
         }
         const text = res.output_text
@@ -98,7 +98,7 @@ export default class LLMPlugin extends JsBotBasePlugin {
         for (const msg of messages) {
             if (msg.trim()) {
                 if (!firstMessage) await new Promise((resolve) => { setTimeout(resolve, Math.random() * 5000) })
-                await ctx.reply(msg.trim()
+                await this.bot.send_msg(ctx, msg.trim()
                     .replace(/&amp;/g, '&')
                     .replace(/&#91;/g, '[')
                     .replace(/&#93;/g, ']')
@@ -112,7 +112,7 @@ export default class LLMPlugin extends JsBotBasePlugin {
     provider: CommandHandler = async (event, ctx, match) => {
         const providers = Object.keys(this.llmclient)
         if (!providers.length) {
-            await ctx.reply('当前没有可用的提供商')
+            await this.bot.send_msg(ctx, '当前没有可用的提供商')
             return
         }
 
@@ -122,19 +122,19 @@ export default class LLMPlugin extends JsBotBasePlugin {
             const list = providers.map((provider, index) =>
                 `${index + 1}. ${provider}${provider === selected ? '（当前）' : ''}`
             )
-            await ctx.reply(`可用提供商：\n${list.join('\n')}`)
+            await this.bot.send_msg(ctx, `可用提供商：\n${list.join('\n')}`)
             return
         }
 
         if (match.args.length !== 1) {
-            await ctx.reply('提供商参数不合法，请输入提供商序号或名称')
+            await this.bot.send_msg(ctx, '提供商参数不合法，请输入提供商序号或名称')
             return
         }
 
         const index = /^\d+$/.test(requested) ? Number(requested) - 1 : -1
         const provider = index >= 0 ? providers[index] : requested
         if (!provider || !providers.includes(provider)) {
-            await ctx.reply('提供商参数不合法，请输入有效的提供商序号或名称')
+            await this.bot.send_msg(ctx, '提供商参数不合法，请输入有效的提供商序号或名称')
             return
         }
 
@@ -142,19 +142,19 @@ export default class LLMPlugin extends JsBotBasePlugin {
             this.set_kv('Provider', provider)
             this.set_kv('Model', '')
         }
-        await ctx.reply(`已切换提供商：${provider}`)
+        await this.bot.send_msg(ctx, `已切换提供商：${provider}`)
     }
 
     @Command('model', { permission: 'SuperAdmin' })
     model: CommandHandler = async (event, ctx, match) => {
         const provider = this.get_kv('Provider')
         if (!provider) {
-            await ctx.reply('请先设置提供商')
+            await this.bot.send_msg(ctx, '请先设置提供商')
             return
         }
         const client = this.llmclient[provider]
         if (!client) {
-            await ctx.reply(`未找到提供商：${provider}`)
+            await this.bot.send_msg(ctx, `未找到提供商：${provider}`)
             return
         }
 
@@ -164,12 +164,12 @@ export default class LLMPlugin extends JsBotBasePlugin {
                 .map(model => model.id)
                 .filter((model): model is string => Boolean(model))
         } catch {
-            await ctx.reply('获取模型列表失败，请检查提供商配置或网络连接')
+            await this.bot.send_msg(ctx, '获取模型列表失败，请检查提供商配置或网络连接')
             return
         }
 
         if (!list.length) {
-            await ctx.reply('当前提供商没有可用模型')
+            await this.bot.send_msg(ctx, '当前提供商没有可用模型')
             return
         }
 
@@ -179,24 +179,24 @@ export default class LLMPlugin extends JsBotBasePlugin {
             const models = list.map((model, index) =>
                 `${index + 1}. ${model}${model === selected ? '（当前）' : ''}`
             )
-            await ctx.reply(`可用模型：\n${models.join('\n')}`)
+            await this.bot.send_msg(ctx, `可用模型：\n${models.join('\n')}`)
             return
         }
 
         if (match.args.length !== 1) {
-            await ctx.reply('模型参数不合法，请输入模型序号或模型 ID')
+            await this.bot.send_msg(ctx, '模型参数不合法，请输入模型序号或模型 ID')
             return
         }
 
         const index = /^\d+$/.test(requested) ? Number(requested) - 1 : -1
         const model = index >= 0 ? list[index] : requested
         if (!model || !list.includes(model)) {
-            await ctx.reply('模型参数不合法，请输入模型序号或模型 ID')
+            await this.bot.send_msg(ctx, '模型参数不合法，请输入模型序号或模型 ID')
             return
         }
 
         this.set_kv('Model', model)
-        await ctx.reply(`已切换模型：${model}`)
+        await this.bot.send_msg(ctx, `已切换模型：${model}`)
     }
     @Command('persona', { permission: 'SuperAdmin' })
     persona: CommandHandler = async (event, ctx, match) => {
@@ -207,10 +207,10 @@ export default class LLMPlugin extends JsBotBasePlugin {
         if (!requested) {
             const names = Object.keys(personas)
             if (!names.length) {
-                await ctx.reply('当前没有 persona。使用 /persona add <名称> <提示词> 创建。')
+                await this.bot.send_msg(ctx, '当前没有 persona。使用 /persona add <名称> <提示词> 创建。')
                 return
             }
-            await ctx.reply(`Persona 列表：\n${names.map(name => `${name}${name === current ? '（当前）' : ''}`).join('\n')}`)
+            await this.bot.send_msg(ctx, `Persona 列表：\n${names.map(name => `${name}${name === current ? '（当前）' : ''}`).join('\n')}`)
             return
         }
 
@@ -218,29 +218,29 @@ export default class LLMPlugin extends JsBotBasePlugin {
         if (action === 'add') {
             const content = requested.match(/^add\s+\S+\s+([\s\S]+)$/)?.[1]?.trim()
             if (!name || !content) {
-                await ctx.reply('用法：/persona add <名称> <提示词>')
+                await this.bot.send_msg(ctx, '用法：/persona add <名称> <提示词>')
                 return
             }
             personas[name] = content
             this.set_kv('Personas', personas)
             if (!current) this.set_kv('CurrentPersona', name)
-            await ctx.reply(`已保存 persona：${name}${!current ? '（当前）' : ''}`)
+            await this.bot.send_msg(ctx, `已保存 persona：${name}${!current ? '（当前）' : ''}`)
             return
         }
 
         if (action === 'use') {
             if (contentParts.length || !name || !personas[name]) {
-                await ctx.reply('未找到 persona。用法：/persona use <名称>')
+                await this.bot.send_msg(ctx, '未找到 persona。用法：/persona use <名称>')
                 return
             }
             this.set_kv('CurrentPersona', name)
-            await ctx.reply(`已切换 persona：${name}`)
+            await this.bot.send_msg(ctx, `已切换 persona：${name}`)
             return
         }
 
         if (action === 'delete') {
             if (contentParts.length || !name || !personas[name]) {
-                await ctx.reply('未找到 persona。用法：/persona delete <名称>')
+                await this.bot.send_msg(ctx, '未找到 persona。用法：/persona delete <名称>')
                 return
             }
             delete personas[name]
@@ -249,13 +249,13 @@ export default class LLMPlugin extends JsBotBasePlugin {
                 const fallback = Object.keys(personas)[0] || ''
                 this.set_kv('CurrentPersona', fallback)
             }
-            await ctx.reply(`已删除 persona：${name}${current === name && Object.keys(personas).length ? `，当前切换为 ${this.get_kv('CurrentPersona')}` : ''}`)
+            await this.bot.send_msg(ctx, `已删除 persona：${name}${current === name && Object.keys(personas).length ? `，当前切换为 ${this.get_kv('CurrentPersona')}` : ''}`)
             return
         }
 
         this.set_kv('Personas', personas)
         this.set_kv('CurrentPersona', 'default')
         this.set_kv('Persona', requested)
-        await ctx.reply(`已保存并切换到 persona：default\n${requested}`)
+        await this.bot.send_msg(ctx, `已保存并切换到 persona：default\n${requested}`)
     }
 }

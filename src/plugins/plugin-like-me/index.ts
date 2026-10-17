@@ -7,11 +7,11 @@ export default class LikeMePlugin extends JsBotBasePlugin {
         try {
             const res = await this.bot.client.rawResponse('send_like', { user_id: event.user_id, times: 10 })
             if (res.status === 'ok')
-                await ctx.reply('给你点了10个赞')
+                await this.bot.send_msg(ctx, '给你点了10个赞')
             else
-                await ctx.reply(`点赞失败：${res.wording}`)
+                await this.bot.send_msg(ctx, `点赞失败：${res.wording}`)
         } catch (e) {
-            await ctx.reply(`点赞失败：${e}`)
+            await this.bot.send_msg(ctx, `点赞失败：${e}`)
         }
     }
 }
