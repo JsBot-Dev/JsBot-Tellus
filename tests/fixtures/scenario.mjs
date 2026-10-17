@@ -179,6 +179,22 @@ switch (process.argv[2]) {
         await bot.stop()
         break
     }
+    case 'command-order': {
+        await bot.start()
+        await dispatch(message(3, '/extra.test'))
+        assert.deepEqual(
+            sent.map((entry) => entry.content),
+            ['middleware']
+        )
+        sent.length = 0
+        await dispatch(message(3, 'ordinary text'))
+        assert.deepEqual(
+            sent.map((entry) => entry.content),
+            ['middleware', 'message']
+        )
+        await bot.stop()
+        break
+    }
     case 'retry':
     case 'retry-extra': {
         let attempts = 0
