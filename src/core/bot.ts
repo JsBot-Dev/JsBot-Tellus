@@ -154,7 +154,11 @@ class JsBot {
             // KVSqlite inherits close() from better-sqlite3, but its published types omit it.
             if (this.plugiDb)
                 (this.plugiDb.db as unknown as { close(): void }).close()
+            this.plugiDb = undefined
             this.started = false
+            this.starting = false
+            this.stopping = false
+            this.stopPromise = null
         }
     }
 }

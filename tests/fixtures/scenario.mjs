@@ -326,14 +326,23 @@ switch (process.argv[2]) {
     }
     case 'stop': {
         await bot.start()
-        const database = bot.plugiDb.db
+        const firstDatabase = bot.plugiDb.db
         const first = bot.stop()
         assert.equal(first, bot.stop())
         await first
-        assert.equal(database.open, false)
+        assert.equal(firstDatabase.open, false)
+        assert.equal(bot.plugiDb, undefined)
         assert.equal(bot.client.middlewares.length, 0)
         assert.equal(bot.started, false)
-        await assert.rejects(bot.start(), /shutting down/)
+
+        await bot.start()
+        const secondDatabase = bot.plugiDb.db
+        assert.notEqual(secondDatabase, firstDatabase)
+        assert.ok(secondDatabase.open)
+        assert.ok(bot.client.middlewares.length > 0)
+        await bot.stop()
+        assert.equal(secondDatabase.open, false)
+        assert.equal(bot.client.middlewares.length, 0)
         break
     }
     case 'stop-during-connect': {
@@ -347,11 +356,13 @@ switch (process.argv[2]) {
         const starting = bot.start()
         while (!rejectConnection)
             await new Promise((resolve) => setImmediate(resolve))
+        const database = bot.plugiDb.db
         const stopping = bot.stop()
         await assert.rejects(starting, /connection closed/)
         await stopping
         assert.equal(bot.client.middlewares.length, 0)
-        assert.equal(bot.plugiDb.db.open, false)
+        assert.equal(database.open, false)
+        assert.equal(bot.plugiDb, undefined)
         break
     }
     default:
