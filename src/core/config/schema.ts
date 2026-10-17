@@ -18,6 +18,13 @@ const ConfigSchema = z.object({
                 providers: { default: { base, apikey } }
             }))
         ])
+    ),
+    plugin:z.record(
+        z.string(),
+        z.object({
+            status:z.enum(['Enable','Disable']),
+            list:z.array(z.number()).optional()
+        })
     )
 })
 type Config = z.infer<typeof ConfigSchema>

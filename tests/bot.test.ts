@@ -64,7 +64,8 @@ export default class ConstructorKvPlugin extends JsBotBasePlugin {
     writeFileSync(path.join(dir, 'bot.config.json'), JSON.stringify({
         url: 'ws://127.0.0.1:1/', accessToken: '0123456789abcdef',
         role: { superadmin: [1], admin: [2] },
-        llm: { providers: {} }
+        llm: { providers: {} },
+        plugin: {}
     }))
     const result = spawnSync(process.execPath, ['--import', 'tsx', 'scenario.mjs', name], {
         cwd: dir, encoding: 'utf8', timeout: 30_000
