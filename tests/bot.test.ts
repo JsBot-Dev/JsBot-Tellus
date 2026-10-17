@@ -29,14 +29,18 @@ function runScenario(name: string) {
     const dir = mkdtempSync(path.join(tempRoot, 'jsbot-vitest-'))
     temporaryDirectories.push(dir)
     cpSync(path.join(root, 'src'), path.join(dir, 'src'), { recursive: true })
-    if (name === 'plugins-extra' || name === 'retry-extra') {
+    if (
+        name === 'plugins-extra' ||
+        name === 'retry-extra' ||
+        name === 'group-plugin-gating'
+    ) {
         const pluginDir = path.join(dir, 'src/plugins/plugin-extra')
         mkdirSync(pluginDir)
         writeFileSync(
             path.join(pluginDir, 'index.ts'),
             `
 import { JsBotBasePlugin, Command } from '../../core/index.ts'
-import { Middleware, OnNotice } from '../../core/decorator/decorator.ts'
+import { Middleware, OnNotice, OnRequest } from '../../core/decorator/decorator.ts'
 
 export default class ExtraPlugin extends JsBotBasePlugin {
     @Command('extra.test')
@@ -44,6 +48,12 @@ export default class ExtraPlugin extends JsBotBasePlugin {
 
     @OnNotice('extra-test')
     notice = async () => {}
+
+    @OnNotice('group-test')
+    groupNotice = async (_event, ctx) => ctx.client.sendPrivateMessage(1, 'notice')
+
+    @OnRequest('group')
+    request = async (_event, ctx) => ctx.client.sendPrivateMessage(1, 'request')
 
     @Middleware()
     middleware = (_event, _ctx, next) => next()
@@ -112,6 +122,8 @@ describe('offline bot integration', () => {
     it('replies to commands with the required permissions', () =>
         runScenario('commands'))
     it('only reacts to pokes directed at the bot', () => runScenario('poke'))
+    it('respects group plugin settings for notice handlers', () =>
+        runScenario('group-plugin-gating'))
     it('retries connections without duplicate handlers and shares concurrent starts', () =>
         runScenario('retry'))
     it('retries without duplicate middlewares when an extra plugin registers one', () =>

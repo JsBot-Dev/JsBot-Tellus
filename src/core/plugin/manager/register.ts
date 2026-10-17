@@ -1,4 +1,4 @@
-import { isGroupMessageEvent } from '@snowluma/sdk'
+import { isGroupMessageEvent, type SnowLumaEvent } from '@snowluma/sdk'
 import { isPluginEnableInGroup } from '../../../utils/enable'
 import type { JsBot } from '../../bot'
 
@@ -6,6 +6,13 @@ class PluginRegister {
     register(bot: JsBot) {
         const registration = bot.registrations
         const disposers: Array<() => void> = []
+        const isEnabledForEvent = (plugin: string, event: SnowLumaEvent) => {
+            const groupId = (event as { group_id?: number }).group_id
+            return (
+                groupId === undefined ||
+                isPluginEnableInGroup(bot.config, plugin, groupId)
+            )
+        }
         try {
             for (const meta of registration.middlewares) {
                 disposers.push(
@@ -52,9 +59,16 @@ class PluginRegister {
                             meta.notice_type
                                 ? bot.client.onNotice(
                                       meta.notice_type,
-                                      meta.handler
+                                      (event, ctx) =>
+                                          isEnabledForEvent(meta.plugin, event)
+                                              ? meta.handler(event, ctx)
+                                              : undefined
                                   )
-                                : bot.client.onNotice(meta.handler)
+                                : bot.client.onNotice((event, ctx) =>
+                                      isEnabledForEvent(meta.plugin, event)
+                                          ? meta.handler(event, ctx)
+                                          : undefined
+                                  )
                         )
                         break
                     case 'request':
@@ -62,9 +76,16 @@ class PluginRegister {
                             meta.request_type
                                 ? bot.client.onRequest(
                                       meta.request_type,
-                                      meta.handler
+                                      (event, ctx) =>
+                                          isEnabledForEvent(meta.plugin, event)
+                                              ? meta.handler(event, ctx)
+                                              : undefined
                                   )
-                                : bot.client.onRequest(meta.handler)
+                                : bot.client.onRequest((event, ctx) =>
+                                      isEnabledForEvent(meta.plugin, event)
+                                          ? meta.handler(event, ctx)
+                                          : undefined
+                                  )
                         )
                         break
                     case 'message':
