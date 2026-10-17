@@ -1,6 +1,6 @@
-import type { JsBot } from "../../bot";
-import type { PluginLevel } from "../../types/type";
-import type { JsBotBasePlugin } from "../base";
+import type { JsBot } from '../../bot'
+import type { PluginLevel } from '../../types/type'
+import type { JsBotBasePlugin } from '../base'
 
 interface JsBotPluginManagerOptions {
     url: string
@@ -11,7 +11,7 @@ interface LoadPlugins {
     internal: Array<PluginConstructor>
 }
 type PluginConstructor = {
-    new(bot: JsBot): JsBotBasePlugin
+    new (bot: JsBot): JsBotBasePlugin
     ignore: boolean
     name: string
     level: PluginLevel

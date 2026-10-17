@@ -1,44 +1,47 @@
 {
-  "name": "jsbot-tellus",
-  "private": true,
-  "workspaces": [
-    "src/plugins/plugin-*"
-  ],
-  "version": "1.0.0",
-  "description": "a new version of JsBot",
-  "keywords": [
-    "Cordis",
-    "Bot",
-    "Typescript"
-  ],
-  "homepage": "https://github.com/JsBot-Dev/JsBot-Tellus#readme",
-  "bugs": {
-    "url": "https://github.com/JsBot-Dev/JsBot-Tellus/issues"
-  },
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/JsBot-Dev/JsBot-Tellus.git"
-  },
-  "license": "AGPL-3.0-or-later",
-  "author": "J-SLY",
-  "type": "module",
-  "main": "src/app.ts",
-  "scripts": {
-    "test": "vitest run",
-    "check": "tsc --noEmit",
-    "start": "tsx src/app.ts",
-    "dev": "tsx watch src/app.ts"
-  },
-  "dependencies": {
-    "@isdk/kvsqlite": "^0.6.31",
-    "@snowluma/sdk": "^1.14.21",
-    "fast-glob": "^3.3.3",
-    "tsx": "^4.23.15",
-    "zod": "^4.6.5"
-  },
-  "devDependencies": {
-    "@types/node": "^26.6.4",
-    "typescript": "^7.0.2",
-    "vitest": "^5.0.4"
-  }
+    "name": "jsbot-tellus",
+    "private": true,
+    "workspaces": [
+        "src/plugins/plugin-*"
+    ],
+    "version": "1.0.0",
+    "description": "a new version of JsBot",
+    "keywords": [
+        "Cordis",
+        "Bot",
+        "Typescript"
+    ],
+    "homepage": "https://github.com/JsBot-Dev/JsBot-Tellus#readme",
+    "bugs": {
+        "url": "https://github.com/JsBot-Dev/JsBot-Tellus/issues"
+    },
+    "repository": {
+        "type": "git",
+        "url": "git+https://github.com/JsBot-Dev/JsBot-Tellus.git"
+    },
+    "license": "AGPL-3.0-or-later",
+    "author": "J-SLY",
+    "type": "module",
+    "main": "src/app.ts",
+    "scripts": {
+        "test": "vitest run",
+        "check": "tsc --noEmit",
+        "start": "tsx src/app.ts",
+        "dev": "tsx watch src/app.ts",
+        "format": "prettier --write .",
+        "format:check": "prettier --check ."
+    },
+    "dependencies": {
+        "@isdk/kvsqlite": "^0.6.31",
+        "@snowluma/sdk": "^1.14.21",
+        "fast-glob": "^3.3.3",
+        "tsx": "^4.23.15",
+        "zod": "^4.6.5"
+    },
+    "devDependencies": {
+        "@types/node": "^26.6.4",
+        "prettier": "^3.9.10",
+        "typescript": "^7.0.2",
+        "vitest": "^5.0.4"
+    }
 }

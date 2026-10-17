@@ -13,34 +13,73 @@ bot.client.sendGroupMessage = async (id, content) => {
 }
 bot.client.connect = async () => {}
 
-const dispatch = event => bot.client.dispatchEvent(event)
+const dispatch = (event) => bot.client.dispatchEvent(event)
 const message = (user, raw, type = 'private') => ({
-    post_type: 'message', message_type: type, user_id: user,
-    raw_message: raw, message: [], message_id: 11, self_id: 99, time: 0,
-    ...(type === 'group' ? { group_id: 42 } : {})
+    post_type: 'message',
+    message_type: type,
+    user_id: user,
+    raw_message: raw,
+    message: [],
+    message_id: 11,
+    self_id: 99,
+    time: 0,
+    ...(type === 'group' ? { group_id: 42 } : {}),
 })
 const notice = (target, subType = 'poke', groupId) => ({
-    post_type: 'notice', notice_type: 'notify', sub_type: subType,
-    self_id: 99, target_id: target, user_id: 3, time: 0,
-    ...(groupId === undefined ? {} : { group_id: groupId })
+    post_type: 'notice',
+    notice_type: 'notify',
+    sub_type: subType,
+    self_id: 99,
+    target_id: target,
+    user_id: 3,
+    time: 0,
+    ...(groupId === undefined ? {} : { group_id: groupId }),
 })
 
 switch (process.argv[2]) {
     case 'plugins':
     case 'plugins-extra': {
         await bot.start()
-        for (const [level, name] of [['internal', 'AuthPlugin'], ['integrated', 'EchoPlugin'], ['custom', 'PokePlugin']]) {
-            assert.ok(bot.plugins[level].some(plugin => plugin.constructor.name === name), `${name} not loaded as ${level}`)
+        for (const [level, name] of [
+            ['internal', 'AuthPlugin'],
+            ['integrated', 'EchoPlugin'],
+            ['custom', 'PokePlugin'],
+        ]) {
+            assert.ok(
+                bot.plugins[level].some(
+                    (plugin) => plugin.constructor.name === name
+                ),
+                `${name} not loaded as ${level}`
+            )
         }
         for (const name of ['role', 'utter', 'utter.raw']) {
-            assert.ok(bot.registrations.commands.has(name), `${name} not registered`)
+            assert.ok(
+                bot.registrations.commands.has(name),
+                `${name} not registered`
+            )
         }
-        assert.ok(bot.registrations.handlers.some(handler => handler.type === 'notice' && handler.notice_type === 'notify'))
+        assert.ok(
+            bot.registrations.handlers.some(
+                (handler) =>
+                    handler.type === 'notice' &&
+                    handler.notice_type === 'notify'
+            )
+        )
         assert.ok(bot.client.middlewares.length > 0)
         if (process.argv[2] === 'plugins-extra') {
-            assert.ok(bot.plugins.custom.some(plugin => plugin.constructor.name === 'ExtraPlugin'))
+            assert.ok(
+                bot.plugins.custom.some(
+                    (plugin) => plugin.constructor.name === 'ExtraPlugin'
+                )
+            )
             assert.ok(bot.registrations.commands.has('extra.test'))
-            assert.ok(bot.registrations.handlers.some(handler => handler.type === 'notice' && handler.notice_type === 'extra-test'))
+            assert.ok(
+                bot.registrations.handlers.some(
+                    (handler) =>
+                        handler.type === 'notice' &&
+                        handler.notice_type === 'extra-test'
+                )
+            )
             assert.ok(bot.registrations.middlewares.length > 0)
         }
         await bot.stop()
@@ -48,7 +87,11 @@ switch (process.argv[2]) {
     }
     case 'commands': {
         await bot.start()
-        for (const [user, role] of [[1, 'SuperAdmin'], [2, 'Admin'], [3, 'User']]) {
+        for (const [user, role] of [
+            [1, 'SuperAdmin'],
+            [2, 'Admin'],
+            [3, 'User'],
+        ]) {
             sent.length = 0
             await dispatch(message(user, '/role'))
             assert.equal(sent.length, 1)
@@ -96,15 +139,19 @@ switch (process.argv[2]) {
         let finish
         bot.client.connect = () => {
             if (++attempts === 1) return Promise.reject(new Error('offline'))
-            return new Promise(resolve => { finish = resolve })
+            return new Promise((resolve) => {
+                finish = resolve
+            })
         }
-        const first = bot.start(), concurrent = bot.start()
+        const first = bot.start(),
+            concurrent = bot.start()
         assert.equal(first, concurrent)
         await assert.rejects(first, /offline/)
         await assert.rejects(concurrent, /offline/)
         const registeredMiddlewares = bot.client.middlewares.length
         assert.ok(registeredMiddlewares > 0)
-        const second = bot.start(), together = bot.start()
+        const second = bot.start(),
+            together = bot.start()
         assert.equal(second, together)
         assert.equal(attempts, 2)
         finish()
@@ -132,14 +179,18 @@ switch (process.argv[2]) {
     }
     case 'constructor-kv': {
         await bot.start()
-        const plugin = bot.plugins.custom.find(plugin => plugin.constructor.name === 'ConstructorKvPlugin')
+        const plugin = bot.plugins.custom.find(
+            (plugin) => plugin.constructor.name === 'ConstructorKvPlugin'
+        )
         assert.equal(plugin.initial, 0)
         assert.equal(plugin.get_kv('counter'), 1)
         await bot.stop()
         break
     }
     case 'constructor-retry': {
-        const instantiate = bot.pluginManager.load.instantiate.bind(bot.pluginManager.load)
+        const instantiate = bot.pluginManager.load.instantiate.bind(
+            bot.pluginManager.load
+        )
         let failedDatabase
         bot.pluginManager.load.instantiate = (...args) => {
             failedDatabase = bot.plugiDb.db
@@ -150,7 +201,9 @@ switch (process.argv[2]) {
         assert.equal(bot.plugiDb, undefined)
         assert.equal(bot.client.middlewares.length, 0)
         await bot.start()
-        const plugin = bot.plugins.custom.find(plugin => plugin.constructor.name === 'ConstructorKvPlugin')
+        const plugin = bot.plugins.custom.find(
+            (plugin) => plugin.constructor.name === 'ConstructorKvPlugin'
+        )
         assert.equal(plugin.initial, 1)
         assert.equal(plugin.get_kv('counter'), 2)
         await bot.stop()
@@ -170,10 +223,15 @@ switch (process.argv[2]) {
     }
     case 'stop-during-connect': {
         let rejectConnection
-        bot.client.connect = () => new Promise((_, reject) => { rejectConnection = reject })
-        bot.client.close = () => rejectConnection?.(new Error('connection closed'))
+        bot.client.connect = () =>
+            new Promise((_, reject) => {
+                rejectConnection = reject
+            })
+        bot.client.close = () =>
+            rejectConnection?.(new Error('connection closed'))
         const starting = bot.start()
-        while (!rejectConnection) await new Promise(resolve => setImmediate(resolve))
+        while (!rejectConnection)
+            await new Promise((resolve) => setImmediate(resolve))
         const stopping = bot.stop()
         await assert.rejects(starting, /connection closed/)
         await stopping
@@ -181,5 +239,6 @@ switch (process.argv[2]) {
         assert.equal(bot.plugiDb.db.open, false)
         break
     }
-    default: throw new Error(`Unknown scenario: ${process.argv[2]}`)
+    default:
+        throw new Error(`Unknown scenario: ${process.argv[2]}`)
 }

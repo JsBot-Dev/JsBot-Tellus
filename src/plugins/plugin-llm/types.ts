@@ -1,10 +1,13 @@
-import type { OneBotGroupMessageEvent, OneBotPrivateMessageEvent } from "@snowluma/sdk";
+import type {
+    OneBotGroupMessageEvent,
+    OneBotPrivateMessageEvent,
+} from '@snowluma/sdk'
 
 interface PrivateContexts {
-    sessions: Record<number,OneBotPrivateMessageEvent[]>
+    sessions: Record<number, OneBotPrivateMessageEvent[]>
 }
 interface GroupContext {
-    sessions: Record<number,OneBotGroupMessageEvent[]>
+    sessions: Record<number, OneBotGroupMessageEvent[]>
 }
 interface LLMContext {
     private: PrivateContexts

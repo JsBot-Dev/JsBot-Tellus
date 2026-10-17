@@ -1,12 +1,14 @@
-import { JsBot } from "./core/bot";
+import { JsBot } from './core/bot'
 
-const bot = new JsBot();
+const bot = new JsBot()
 
 for (const signal of ['SIGINT', 'SIGTERM'] as const) {
     process.once(signal, () => {
         void bot.stop().then(
-            () => { process.exitCode = signal === 'SIGINT' ? 130 : 143 },
-            error => {
+            () => {
+                process.exitCode = signal === 'SIGINT' ? 130 : 143
+            },
+            (error) => {
                 console.error('Failed to stop bot:', error)
                 process.exitCode = 1
             }

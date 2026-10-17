@@ -1,4 +1,4 @@
-import { ReadConfig } from "./read";
+import { ReadConfig } from './read'
 
 class ConfigManager {
     read: ReadConfig
