@@ -1,3 +1,5 @@
+import { isGroupMessageEvent } from "@snowluma/sdk";
+import { isPluginEnableInGroup } from "../../../utils/enable";
 import type { JsBot } from "../../bot";
 
 class PluginRegister {
@@ -5,11 +7,21 @@ class PluginRegister {
         const registration = bot.registrations
         const disposers: Array<() => void> = []
         try {
-            for (const middleware of registration.middlewares) {
-                disposers.push(bot.client.use(middleware))
+            for (const meta of registration.middlewares) {
+                disposers.push(bot.client.use((event, ctx, next) => {
+                    if (isGroupMessageEvent(event))
+                        if (!isPluginEnableInGroup(bot.config, meta.plugin, event.group_id))
+                            return next()
+                    meta.handler(event, ctx, next)
+                }))
             }
             for (const [, meta] of registration.commands) {
-                disposers.push(bot.client.command(meta.name, meta.handler, {
+                disposers.push(bot.client.command(meta.name, (event, ctx, match) => {
+                    if (isGroupMessageEvent(event))
+                        if (!isPluginEnableInGroup(bot.config, meta.plugin, event.group_id))
+                            return
+                    meta.handler(event, ctx, match)
+                }, {
                     prefixes: meta.prefixes
                 }))
             }
@@ -28,13 +40,23 @@ class PluginRegister {
                     case 'message':
                         switch (meta.message_type) {
                             case 'group':
-                                disposers.push(bot.client.onGroupMessage(meta.handler))
+                                disposers.push(bot.client.onGroupMessage((event, ctx) => {
+                                    if (isGroupMessageEvent(event))
+                                        if (!isPluginEnableInGroup(bot.config, meta.plugin, event.group_id))
+                                            return
+                                    meta.handler(event, ctx)
+                                }))
                                 break
                             case 'private':
                                 disposers.push(bot.client.onPrivateMessage(meta.handler))
                                 break
                             default:
-                                disposers.push(bot.client.onMessage(meta.handler))
+                                disposers.push(bot.client.onMessage((event, ctx) => {
+                                    if (isGroupMessageEvent(event))
+                                        if (!isPluginEnableInGroup(bot.config, meta.plugin, event.group_id))
+                                            return
+                                    meta.handler(event, ctx)
+                                }))
                         }
                 }
             }

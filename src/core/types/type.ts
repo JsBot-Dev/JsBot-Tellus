@@ -10,6 +10,7 @@ interface CommandMeta {
     permission: PermissionType
     docs?: string
     prefixes: string[]
+    plugin: string
 }
 interface HandlerMeta {
     type: EventType,
@@ -17,6 +18,11 @@ interface HandlerMeta {
     message_type?: MessageType
     notice_type?: string | undefined
     request_type?: string | undefined
+    plugin: string
+}
+interface MiddlewareMeta {
+    handler: EventMiddleware
+    plugin: string
 }
 interface Plugins {
     custom: Array<JsBotBasePlugin>
@@ -25,7 +31,7 @@ interface Plugins {
 }
 interface Registrations {
     commands: Map<string, CommandMeta>
-    middlewares: Array<EventMiddleware>
+    middlewares: Array<MiddlewareMeta>
     handlers: Array<HandlerMeta>
 }
 interface JsBotOptions {
@@ -34,4 +40,4 @@ interface JsBotOptions {
 type CommandContext = SnowLumaEventContext<SnowLumaEvent> & {
     command?: CommandMatch;
 }
-export type { PluginLevel, CommandMeta, HandlerMeta, Plugins, Registrations, JsBotOptions, CommandContext }
+export type { PluginLevel, CommandMeta, HandlerMeta, MiddlewareMeta, Plugins, Registrations, JsBotOptions, CommandContext }
