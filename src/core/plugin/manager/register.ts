@@ -34,7 +34,7 @@ class PluginRegister {
                 disposers.push(
                     bot.client.command(
                         meta.name,
-                        (event, ctx, match) => {
+                        async (event, ctx, match) => {
                             if (isGroupMessageEvent(event))
                                 if (
                                     !isPluginEnableInGroup(
@@ -44,7 +44,11 @@ class PluginRegister {
                                     )
                                 )
                                     return
-                            return meta.handler(event, ctx, match)
+                            try {
+                                await meta.handler(event, ctx, match)
+                            } finally {
+                                ctx.stopPropagation()
+                            }
                         },
                         {
                             prefixes: meta.prefixes,

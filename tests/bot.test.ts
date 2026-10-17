@@ -32,7 +32,8 @@ function runScenario(name: string) {
     if (
         name === 'plugins-extra' ||
         name === 'retry-extra' ||
-        name === 'group-plugin-gating'
+        name === 'group-plugin-gating' ||
+        name === 'command-order'
     ) {
         const pluginDir = path.join(dir, 'src/plugins/plugin-extra')
         mkdirSync(pluginDir)
@@ -40,7 +41,8 @@ function runScenario(name: string) {
             path.join(pluginDir, 'index.ts'),
             `
 import { JsBotBasePlugin, Command } from '../../core/index.ts'
-import { Middleware, OnNotice, OnRequest } from '../../core/decorator/decorator.ts'
+import { Middleware, OnMessage, OnNotice, OnRequest } from '../../core/decorator/decorator.ts'
+import { isMessageEvent } from '@snowluma/sdk'
 
 export default class ExtraPlugin extends JsBotBasePlugin {
     @Command('extra.test')
@@ -56,7 +58,14 @@ export default class ExtraPlugin extends JsBotBasePlugin {
     request = async (_event, ctx) => ctx.client.sendPrivateMessage(1, 'request')
 
     @Middleware()
-    middleware = (_event, _ctx, next) => next()
+    middleware = async (_event, ctx, next) => {
+        if (isMessageEvent(_event))
+            await ctx.client.sendPrivateMessage(3, 'middleware')
+        return next()
+    }
+
+    @OnMessage()
+    message = async (_event, ctx) => ctx.client.sendPrivateMessage(3, 'message')
 }
 `
         )
@@ -124,6 +133,8 @@ describe('offline bot integration', () => {
     it('only reacts to pokes directed at the bot', () => runScenario('poke'))
     it('respects group plugin settings for notice handlers', () =>
         runScenario('group-plugin-gating'))
+    it('does not run plugin handlers for recognized commands', () =>
+        runScenario('command-order'))
     it('retries connections without duplicate handlers and shares concurrent starts', () =>
         runScenario('retry'))
     it('retries without duplicate middlewares when an extra plugin registers one', () =>
