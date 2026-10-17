@@ -1,5 +1,4 @@
 import fg from 'fast-glob'
-import path from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { JsBotBasePlugin } from '../base'
 import type { JsBot } from '../../bot'
@@ -9,7 +8,11 @@ import type { LoadPlugins, PluginConstructor } from './types'
 class PluginLoad {
     constructor(readonly dir: string) {}
     async load(): Promise<LoadPlugins> {
-        const files = await fg(path.join(this.dir, '/plugin-*/index.ts'))
+        const files = await fg('plugin-*/index.ts', {
+            cwd: this.dir,
+            absolute: true,
+        })
+        if (!files.length) throw new Error(`未找到插件：${this.dir}`)
         const collections: LoadPlugins = {
             internal: [],
             integrated: [],
