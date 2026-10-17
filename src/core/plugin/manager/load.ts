@@ -12,8 +12,7 @@ class PluginLoad {
             cwd: this.dir,
             absolute: true,
         })
-        if (!files.length)
-            throw new Error(`未找到插件：${this.dir}`)
+        if (!files.length) throw new Error(`未找到插件：${this.dir}`)
         const collections: LoadPlugins = {
             internal: [],
             integrated: [],
