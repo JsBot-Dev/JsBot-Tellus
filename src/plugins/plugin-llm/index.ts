@@ -79,6 +79,7 @@ export default class LLMPlugin extends JsBotBasePlugin {
 
     @OnMessage()
     use_llm: EventHandler<OneBotMessageEvent> = async (event, ctx) => {
+        if (event.user_id === event.self_id) return
         let rawContext: OneBotMessageEvent[]
         if (isGroupMessageEvent(event)) {
             const mentions =
