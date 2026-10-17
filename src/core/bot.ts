@@ -45,9 +45,15 @@ class JsBot {
         this.client = new SnowLumaWebSocketClient({
             url: this.config.url,
             accessToken: this.config.accessToken,
+            reconnect: true,
         })
         this.client.on('error', (error) => {
             console.error('[SnowLuma SDK]', error)
+        })
+        this.client.on('close', ({ code, reason }) => {
+            console.warn(
+                `[SnowLuma SDK] WebSocket closed${code === undefined ? '' : ` (code ${code})`}${reason ? `: ${reason}` : ''}`
+            )
         })
         this.pluginManager = new PluginManager()
     }
