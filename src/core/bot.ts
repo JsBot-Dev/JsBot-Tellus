@@ -1,13 +1,22 @@
-import { SnowLumaWebSocketClient, type OutgoingMessage } from "@snowluma/sdk";
-import type { CommandMeta, JsBotOptions, Plugins, Registrations, CommandContext } from "./types/type";
-import { PluginManager } from "./plugin/manager";
-import path from "node:path";
-import { fileURLToPath } from "node:url";
-import type { Config } from "./config/schema";
-import { ConfigManager } from "./config/config";
-import { KvData } from "./kv/kv";
-import { createAuthMiddleware, createPermissionMiddleware } from "./security/middleware";
-import send_msg_impl from "../utils/sendmsg";
+import { SnowLumaWebSocketClient, type OutgoingMessage } from '@snowluma/sdk'
+import type {
+    CommandMeta,
+    JsBotOptions,
+    Plugins,
+    Registrations,
+    CommandContext,
+} from './types/type'
+import { PluginManager } from './plugin/manager'
+import path from 'node:path'
+import { fileURLToPath } from 'node:url'
+import type { Config } from './config/schema'
+import { ConfigManager } from './config/config'
+import { KvData } from './kv/kv'
+import {
+    createAuthMiddleware,
+    createPermissionMiddleware,
+} from './security/middleware'
+import send_msg_impl from '../utils/sendmsg'
 
 class JsBot {
     // start status
@@ -35,9 +44,9 @@ class JsBot {
         this.config = this.configManager.read.read()
         this.client = new SnowLumaWebSocketClient({
             url: this.config.url,
-            accessToken: this.config.accessToken
+            accessToken: this.config.accessToken,
         })
-        this.client.on('error', error => {
+        this.client.on('error', (error) => {
             console.error('[SnowLuma SDK]', error)
         })
         this.pluginManager = new PluginManager()
@@ -48,15 +57,20 @@ class JsBot {
     }
 
     start(): Promise<void> {
-        if (this.stopping) return Promise.reject(new Error('Bot is shutting down'))
+        if (this.stopping)
+            return Promise.reject(new Error('Bot is shutting down'))
         if (this.started) return Promise.resolve()
         if (this.startPromise) return this.startPromise
 
         const attempt = this.startOnce()
         this.startPromise = attempt
         void attempt.then(
-            () => { this.startPromise = null },
-            () => { this.startPromise = null }
+            () => {
+                this.startPromise = null
+            },
+            () => {
+                this.startPromise = null
+            }
         )
         return attempt
     }
@@ -65,16 +79,29 @@ class JsBot {
         this.starting = true
         try {
             if (!this.registered) {
-                this.registrations = { commands: new Map<string, CommandMeta>(), middlewares: [], handlers: [] }
+                this.registrations = {
+                    commands: new Map<string, CommandMeta>(),
+                    middlewares: [],
+                    handlers: [],
+                }
                 const constructors = await this.pluginManager.load.load()
                 try {
                     this.plugiDb = new KvData(constructors)
-                    this.plugins = this.pluginManager.load.instantiate(this, constructors)
+                    this.plugins = this.pluginManager.load.instantiate(
+                        this,
+                        constructors
+                    )
                     const disposers: Array<() => void> = []
                     try {
-                        disposers.push(this.client.use(createPermissionMiddleware(this)))
-                        disposers.push(this.client.use(createAuthMiddleware(this)))
-                        disposers.push(...this.pluginManager.register.register(this))
+                        disposers.push(
+                            this.client.use(createPermissionMiddleware(this))
+                        )
+                        disposers.push(
+                            this.client.use(createAuthMiddleware(this))
+                        )
+                        disposers.push(
+                            ...this.pluginManager.register.register(this)
+                        )
                         this.disposers = disposers
                         this.registered = true
                     } catch (error) {
@@ -83,7 +110,10 @@ class JsBot {
                     }
                 } catch (error) {
                     // A failed constructor or registration must not leave an open database for retry.
-                    if (this.plugiDb) (this.plugiDb.db as unknown as { close(): void }).close()
+                    if (this.plugiDb)
+                        (
+                            this.plugiDb.db as unknown as { close(): void }
+                        ).close()
                     this.plugiDb = undefined
                     throw error
                 }
@@ -116,7 +146,8 @@ class JsBot {
             this.disposers = []
             this.registered = false
             // KVSqlite inherits close() from better-sqlite3, but its published types omit it.
-            if (this.plugiDb) (this.plugiDb.db as unknown as { close(): void }).close()
+            if (this.plugiDb)
+                (this.plugiDb.db as unknown as { close(): void }).close()
             this.started = false
         }
     }

@@ -1,21 +1,21 @@
 {
-  "compilerOptions": {
-    "module": "esnext",
-    "target": "esnext",
-    "moduleResolution": "bundler",
-    "lib": ["esnext"],
-    "types": ["node"],
-    "verbatimModuleSyntax": true,
-    "isolatedModules": true,
-    "moduleDetection": "force",
-    "noUncheckedSideEffectImports": true,
+    "compilerOptions": {
+        "module": "esnext",
+        "target": "esnext",
+        "moduleResolution": "bundler",
+        "lib": ["esnext"],
+        "types": ["node"],
+        "verbatimModuleSyntax": true,
+        "isolatedModules": true,
+        "moduleDetection": "force",
+        "noUncheckedSideEffectImports": true,
 
-    "strict": true,
-    "noUncheckedIndexedAccess": true,
-    "exactOptionalPropertyTypes": true,
+        "strict": true,
+        "noUncheckedIndexedAccess": true,
+        "exactOptionalPropertyTypes": true,
 
-    "skipLibCheck": true,
-    "noEmit": true
-  },
-  "include": ["src"]
+        "skipLibCheck": true,
+        "noEmit": true
+    },
+    "include": ["src"]
 }

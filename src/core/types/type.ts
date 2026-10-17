@@ -1,6 +1,15 @@
-import type { CommandHandler, CommandMatch, EventHandler, EventMiddleware, OneBotMessageEvent, OneBotNoticeEvent, SnowLumaEvent, SnowLumaEventContext } from "@snowluma/sdk";
-import type { JsBotBasePlugin } from "../plugin/base";
-import type { MessageType, PermissionType } from "../decorator/types";
+import type {
+    CommandHandler,
+    CommandMatch,
+    EventHandler,
+    EventMiddleware,
+    OneBotMessageEvent,
+    OneBotNoticeEvent,
+    SnowLumaEvent,
+    SnowLumaEventContext,
+} from '@snowluma/sdk'
+import type { JsBotBasePlugin } from '../plugin/base'
+import type { MessageType, PermissionType } from '../decorator/types'
 
 type PluginLevel = 'Internal' | 'Integrated' | 'Custom'
 type EventType = 'notice' | 'message' | 'request'
@@ -13,7 +22,7 @@ interface CommandMeta {
     plugin: string
 }
 interface HandlerMeta {
-    type: EventType,
+    type: EventType
     handler: EventHandler<SnowLumaEvent>
     message_type?: MessageType
     notice_type?: string | undefined
@@ -38,6 +47,15 @@ interface JsBotOptions {
     pluginUrl?: string
 }
 type CommandContext = SnowLumaEventContext<SnowLumaEvent> & {
-    command?: CommandMatch;
+    command?: CommandMatch
 }
-export type { PluginLevel, CommandMeta, HandlerMeta, MiddlewareMeta, Plugins, Registrations, JsBotOptions, CommandContext }
+export type {
+    PluginLevel,
+    CommandMeta,
+    HandlerMeta,
+    MiddlewareMeta,
+    Plugins,
+    Registrations,
+    JsBotOptions,
+    CommandContext,
+}

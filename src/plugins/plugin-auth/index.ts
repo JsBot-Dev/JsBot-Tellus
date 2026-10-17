@@ -1,5 +1,5 @@
-import type { CommandHandler } from "@snowluma/sdk";
-import { Command, JsBotBasePlugin, type PluginLevel } from "../../core";
+import type { CommandHandler } from '@snowluma/sdk'
+import { Command, JsBotBasePlugin, type PluginLevel } from '../../core'
 
 export default class AuthPlugin extends JsBotBasePlugin {
     static override level: PluginLevel = 'Internal'

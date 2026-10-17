@@ -1,8 +1,15 @@
-import { at, image, text, type CommandHandler, type EventHandler, type OneBotNoticeEvent } from "@snowluma/sdk";
-import { Command } from "../../core";
-import { JsBotBasePlugin } from "../../core/plugin/base";
-import type { PluginLevel } from "../../core/types/type";
-import { OnNotice } from "../../core/decorator/decorator";
+import {
+    at,
+    image,
+    text,
+    type CommandHandler,
+    type EventHandler,
+    type OneBotNoticeEvent,
+} from '@snowluma/sdk'
+import { Command } from '../../core'
+import { JsBotBasePlugin } from '../../core/plugin/base'
+import type { PluginLevel } from '../../core/types/type'
+import { OnNotice } from '../../core/decorator/decorator'
 
 export default class EchoPlugin extends JsBotBasePlugin {
     static override level: PluginLevel = 'Integrated'

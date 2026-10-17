@@ -1,6 +1,10 @@
-import type { Config } from "../core/config/schema";
+import type { Config } from '../core/config/schema'
 
-export function isPluginEnableInGroup(botConfig: Config, name: string, group: number) {
+export function isPluginEnableInGroup(
+    botConfig: Config,
+    name: string,
+    group: number
+) {
     const config = botConfig.plugin
     const plugin = config[name]
     if (!plugin) return true
@@ -8,13 +12,11 @@ export function isPluginEnableInGroup(botConfig: Config, name: string, group: nu
         case 'Enable':
             if (plugin.list && plugin.list.length)
                 return plugin.list.includes(group)
-            else
-                return true
+            else return true
         case 'Disable':
             if (plugin.list && plugin.list.length)
                 return !plugin.list.includes(group)
-            else
-                return false
+            else return false
         default:
             return false
     }

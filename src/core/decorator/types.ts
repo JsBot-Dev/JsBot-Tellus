@@ -7,4 +7,9 @@ interface JsBotCommandOptions {
 }
 type DecoratorContext = ClassMethodDecoratorContext | ClassFieldDecoratorContext
 
-export type { PermissionType, MessageType, JsBotCommandOptions, DecoratorContext}
+export type {
+    PermissionType,
+    MessageType,
+    JsBotCommandOptions,
+    DecoratorContext,
+}
