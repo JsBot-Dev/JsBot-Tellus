@@ -133,6 +133,52 @@ switch (process.argv[2]) {
         await bot.stop()
         break
     }
+    case 'group-plugin-gating': {
+        await bot.start()
+        bot.config.plugin.PokePlugin = { status: 'Disable', list: [42] }
+        bot.config.plugin.ExtraPlugin = { status: 'Disable', list: [42] }
+        await dispatch(notice(99, 'poke', 42))
+        assert.equal(sent.length, 0)
+        await dispatch(notice(99, 'poke'))
+        assert.equal(sent.length, 1)
+        assert.equal(sent[0].kind, 'private')
+        await dispatch({
+            post_type: 'notice',
+            notice_type: 'group-test',
+            group_id: 42,
+            self_id: 99,
+            time: 0,
+        })
+        await dispatch({
+            post_type: 'notice',
+            notice_type: 'group-test',
+            group_id: 43,
+            self_id: 99,
+            time: 0,
+        })
+        await dispatch({
+            post_type: 'request',
+            request_type: 'group',
+            group_id: 42,
+            self_id: 99,
+            user_id: 3,
+            flag: 'x',
+            time: 0,
+        })
+        assert.equal(sent.length, 2)
+        await dispatch({
+            post_type: 'request',
+            request_type: 'group',
+            group_id: 43,
+            self_id: 99,
+            user_id: 3,
+            flag: 'y',
+            time: 0,
+        })
+        assert.equal(sent.length, 3)
+        await bot.stop()
+        break
+    }
     case 'retry':
     case 'retry-extra': {
         let attempts = 0
