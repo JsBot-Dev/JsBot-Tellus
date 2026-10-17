@@ -4,5 +4,13 @@
   "role": {
     "superadmin": [],
     "admin": []
+  },
+  "llm": {
+    "providers": {
+      "example": {
+        "base": "https://example.com/v1",
+        "apikey": "sk-example_apikey"
+      }
+    }
   }
 }
