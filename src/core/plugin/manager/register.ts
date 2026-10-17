@@ -19,7 +19,7 @@ class PluginRegister {
                                 )
                             )
                                 return next()
-                        meta.handler(event, ctx, next)
+                        return meta.handler(event, ctx, next)
                     })
                 )
             }
@@ -37,7 +37,7 @@ class PluginRegister {
                                     )
                                 )
                                     return
-                            meta.handler(event, ctx, match)
+                            return meta.handler(event, ctx, match)
                         },
                         {
                             prefixes: meta.prefixes,
@@ -81,7 +81,7 @@ class PluginRegister {
                                                 )
                                             )
                                                 return
-                                        meta.handler(event, ctx)
+                                        return meta.handler(event, ctx)
                                     })
                                 )
                                 break
@@ -102,7 +102,7 @@ class PluginRegister {
                                                 )
                                             )
                                                 return
-                                        meta.handler(event, ctx)
+                                        return meta.handler(event, ctx)
                                     })
                                 )
                         }
