@@ -44,7 +44,7 @@ function isTooLong(
     lineThreshold: number
 ) {
     return (
-        message.length >= charThreshold ||
-        message.split('\n').length >= lineThreshold
+        message.length > charThreshold ||
+        message.split('\n').length > lineThreshold
     )
 }
