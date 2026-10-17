@@ -1,5 +1,5 @@
-import { SnowLumaWebSocketClient } from "@snowluma/sdk";
-import type { CommandMeta, JsBotOptions, Plugins, Registrations } from "./types/type";
+import { SnowLumaWebSocketClient, type OutgoingMessage } from "@snowluma/sdk";
+import type { CommandMeta, JsBotOptions, Plugins, Registrations, CommandContext } from "./types/type";
 import { PluginManager } from "./plugin/manager";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -7,6 +7,7 @@ import type { Config } from "./config/schema";
 import { ConfigManager } from "./config/config";
 import { KvData } from "./kv/kv";
 import { createAuthMiddleware, createPermissionMiddleware } from "./security/middleware";
+import send_msg_impl from "../utils/sendmsg";
 
 class JsBot {
     // start status
@@ -40,6 +41,10 @@ class JsBot {
             console.error('[SnowLuma SDK]', error)
         })
         this.pluginManager = new PluginManager()
+    }
+
+    send_msg(ctx: CommandContext, message: OutgoingMessage) {
+        return send_msg_impl(ctx, message, this.config)
     }
 
     start(): Promise<void> {

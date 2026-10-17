@@ -7,11 +7,11 @@ export default class AuthPlugin extends JsBotBasePlugin {
     role: CommandHandler = async (event, ctx, match) => {
         const { admin, superadmin } = this.bot.config.role
         if (superadmin?.includes(event.user_id)) {
-            await ctx.reply('SuperAdmin')
+            await this.bot.send_msg(ctx, 'SuperAdmin')
         } else if (admin?.includes(event.user_id)) {
-            await ctx.reply('Admin')
+            await this.bot.send_msg(ctx, 'Admin')
         } else {
-            await ctx.reply('User')
+            await this.bot.send_msg(ctx, 'User')
         }
     }
 }

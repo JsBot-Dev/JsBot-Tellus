@@ -6,6 +6,10 @@ const ProviderSchema = z.object({
 const ConfigSchema = z.object({
     url: z.string().default('ws://127.0.0.1:3001/'),
     accessToken: z.string().min(16),
+    message: z.object({
+        charThreshold: z.number().int().positive().default(50),
+        lineThreshold: z.number().int().positive().default(3),
+    }).default({ charThreshold: 50, lineThreshold: 3 }),
     role: z.object({
         superadmin: z.array(z.number()).optional(),
         admin: z.array(z.number()).optional()
