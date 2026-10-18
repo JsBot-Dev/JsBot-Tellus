@@ -49,10 +49,17 @@ class PluginLoad {
     }
 
     instantiate(bot: JsBot, collections: LoadPlugins): Plugins {
+        const instantiatePlugins = (constructors: PluginConstructor[]) =>
+            constructors.map((Plugin) => {
+                const plugin = new Plugin(bot)
+                plugin.logger.info('插件初始化完成')
+                return plugin
+            })
+
         return {
-            internal: collections.internal.map((con) => new con(bot)),
-            integrated: collections.integrated.map((con) => new con(bot)),
-            custom: collections.custom.map((con) => new con(bot)),
+            internal: instantiatePlugins(collections.internal),
+            integrated: instantiatePlugins(collections.integrated),
+            custom: instantiatePlugins(collections.custom),
         }
     }
 }
