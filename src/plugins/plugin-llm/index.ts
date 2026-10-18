@@ -1,6 +1,4 @@
 import {
-    chain,
-    fromCQString,
     isGroupMessageEvent,
     isMessageEvent,
     isPrivateMessageEvent,
@@ -16,10 +14,11 @@ import { OpenAI } from 'openai'
 
 export default class LLMPlugin extends JsBotBasePlugin {
     static override level: PluginLevel = 'Internal'
-    readonly context_size = 30
+    context_size: number
     llmclient: Record<string, OpenAI>
     constructor(bot: JsBot) {
         super(bot)
+        this.context_size = this.bot.config.llm.contextSize
         let context = this.get_kv('Context') as LLMContext | undefined
         if (!context || typeof context !== 'object') context = {} as LLMContext
         if (!context.private) context.private = { sessions: {} }

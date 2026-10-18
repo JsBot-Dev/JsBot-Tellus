@@ -1,12 +1,5 @@
 import z from 'zod'
 
-const HttpUrlSchema = z.url({ protocol: /^https?$/ })
-const ProviderSchema = z
-    .object({
-        base: HttpUrlSchema.optional(),
-        apikey: z.string().min(1),
-    })
-    .strict()
 const ConfigSchema = z
     .object({
         url: z.url({ protocol: /^wss?$/ }).default('ws://127.0.0.1:3001/'),
@@ -25,23 +18,18 @@ const ConfigSchema = z
             })
             .strict()
             .default({}),
-        llm: z.preprocess(
-            (value) => value ?? { providers: {} },
-            z.union([
-                z
-                    .object({ providers: z.record(z.string(), ProviderSchema) })
-                    .strict(),
-                z
-                    .object({
-                        base: HttpUrlSchema.optional(),
-                        apikey: z.string().min(1),
+        llm: z.object({
+            contextSize: z.number().int().positive().default(50),
+            providers: z
+                .record(
+                    z.string(),
+                    z.object({
+                        base: z.httpUrl().optional(),
+                        apikey: z.string(),
                     })
-                    .strict()
-                    .transform(({ base, apikey }) => ({
-                        providers: { default: { base, apikey } },
-                    })),
-            ])
-        ),
+                )
+                .default({}),
+        }),
         plugin: z
             .record(
                 z.string(),
