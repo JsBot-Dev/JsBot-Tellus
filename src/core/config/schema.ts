@@ -25,7 +25,7 @@ const ConfigSchema = z
                     z.string(),
                     z.object({
                         base: z.httpUrl().optional(),
-                        apikey: z.string(),
+                        apikey: z.string().min(1),
                     })
                 )
                 .default({}),
