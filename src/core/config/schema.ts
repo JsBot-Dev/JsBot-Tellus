@@ -29,7 +29,7 @@ const ConfigSchema = z
                     })
                 )
                 .default({}),
-        }),
+        }).default({ contextSize: 30, providers: {} }),
         plugin: z
             .record(
                 z.string(),
