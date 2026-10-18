@@ -19,7 +19,7 @@ const ConfigSchema = z
             .strict()
             .default({}),
         llm: z.object({
-            contextSize: z.number().int().positive().default(50),
+            contextSize: z.number().int().positive().optional().default(50),
             providers: z
                 .record(
                     z.string(),
