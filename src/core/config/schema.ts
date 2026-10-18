@@ -18,18 +18,20 @@ const ConfigSchema = z
             })
             .strict()
             .default({}),
-        llm: z.object({
-            contextSize: z.number().int().positive().default(50),
-            providers: z
-                .record(
-                    z.string(),
-                    z.object({
-                        base: z.httpUrl().optional(),
-                        apikey: z.string(),
-                    })
-                )
-                .default({}),
-        }),
+        llm: z
+            .object({
+                contextSize: z.number().int().positive().optional().default(50),
+                providers: z
+                    .record(
+                        z.string(),
+                        z.object({
+                            base: z.httpUrl().optional(),
+                            apikey: z.string().min(1),
+                        })
+                    )
+                    .default({}),
+            })
+            .default({ contextSize: 30, providers: {} }),
         plugin: z
             .record(
                 z.string(),
