@@ -1,21 +1,37 @@
 {
     "url": "ws://127.0.0.1:3001/",
-    "accessToken": "example_access_token_less_16",
+    "accessToken": "0123456789abcdef",
+    "roles": {
+        "superadmin": [],
+        "admin": []
+    },
     "message": {
         "charThreshold": 50,
         "lineThreshold": 3
     },
-    "role": {
-        "superadmin": [],
-        "admin": []
-    },
-    "llm": {
-        "providers": {
-            "example": {
-                "base": "https://example.com/v1",
-                "apikey": "sk-example-apikey"
-            }
+    "plugins": {
+        "core": {
+            "enabled": true
+        },
+        "admin": {
+            "enabled": true
+        },
+        "poke": {
+            "enabled": true,
+            "cooldownMs": 3000,
+            "reply": "你戳我干嘛"
+        },
+        "llm": {
+            "enabled": false,
+            "private": true,
+            "groups": {
+                "allow": []
+            },
+            "contextSize": 50,
+            "rateLimitMs": 3000,
+            "api": "chat-completions",
+            "personas": {},
+            "providers": {}
         }
-    },
-    "plugin": {}
+    }
 }

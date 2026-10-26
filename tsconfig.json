@@ -1,8 +1,8 @@
 {
     "compilerOptions": {
-        "module": "esnext",
+        "module": "nodenext",
         "target": "esnext",
-        "moduleResolution": "bundler",
+        "moduleResolution": "nodenext",
         "lib": ["esnext"],
         "types": ["node"],
         "verbatimModuleSyntax": true,
@@ -17,5 +17,5 @@
         "skipLibCheck": true,
         "noEmit": true
     },
-    "include": ["src"]
+    "include": ["src", "tests"]
 }

@@ -1,10 +1,10 @@
 {
-    "name": "jsbot-tellus",
+    "name": "@jsbot/core",
     "private": true,
-    "workspaces": [
-        "src/plugins/plugin-*"
-    ],
     "version": "1.0.0",
+    "engines": {
+        "node": ">=24.22.1"
+    },
     "description": "a new version of JsBot",
     "keywords": [
         "Cordis",
@@ -22,25 +22,40 @@
     "license": "AGPL-3.0-or-later",
     "author": "J-SLY",
     "type": "module",
-    "main": "src/app.ts",
+    "main": "./dist/core/index.js",
+    "types": "./dist/core/index.d.ts",
+    "exports": {
+        ".": {
+            "types": "./dist/core/index.d.ts",
+            "import": "./dist/core/index.js"
+        },
+        "./package.json": "./package.json"
+    },
+    "bin": {
+        "jsbot": "./dist/app.js"
+    },
     "scripts": {
         "test": "vitest run",
         "check": "tsc --noEmit",
-        "start": "tsx src/app.ts",
+        "clean": "node -e \"require('node:fs').rmSync('dist', { recursive: true, force: true })\"",
+        "build": "npm run clean && tsc -p tsconfig.build.json && node -e \"require('node:fs').chmodSync('dist/app.js', 0o755)\"",
+        "start": "node dist/app.js",
+        "start:source": "tsx src/app.ts",
         "dev": "tsx watch src/app.ts",
+        "smoke": "node dist/app.js --help",
         "format": "prettier --write .",
         "format:check": "prettier --check ."
     },
     "dependencies": {
-        "@isdk/kvsqlite": "^0.6.31",
-        "@snowluma/sdk": "^1.14.21",
+        "@snowluma/sdk": "^2.2.0",
         "fast-glob": "^3.3.3",
-        "tsx": "^4.23.15",
-        "zod": "^4.6.5"
+        "openai": "^7.43.0",
+        "zod": "^4.6.7"
     },
     "devDependencies": {
-        "@types/node": "^26.6.4",
+        "@types/node": "^24.6.4",
         "prettier": "^3.9.10",
+        "tsx": "^4.23.15",
         "typescript": "^7.0.2",
         "vitest": "^5.0.4"
     }

@@ -16,7 +16,7 @@ jobs:
             - name: Setup node.js
               uses: actions/setup-node@v4
               with:
-                  node-version: '22'
+                  node-version: '24'
                   cache: 'npm'
 
             - name: Install dependencies
@@ -28,5 +28,17 @@ jobs:
             - name: Format Check
               run: npm run format:check
 
+            - name: Dependencies Check
+              run: npm audit --omit=dev --audit-level=high
+
             - name: Test
               run: npm test
+
+            - name: Build
+              run: npm run build
+
+            - name: Smoke
+              run: node dist/app.js --help
+
+            - name: External plugin smoke
+              run: node --input-type=module -e "import { loadPluginsFromDirectory } from './dist/core/plugin/loader.js'; const plugins = await loadPluginsFromDirectory('./examples/plugins'); if (!plugins.some((plugin) => plugin.manifest.id === 'hello')) process.exit(1)"
