@@ -1,7 +1,14 @@
 node_modules
+dist/
 
 src/data/db/*
 
 .env
 
 *.config.json
+bot.config.v2.json
+
+data/
+data-v2/
+
+*.bak

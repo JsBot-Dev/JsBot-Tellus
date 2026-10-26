@@ -1,50 +1,73 @@
-import z from 'zod'
+import { z } from 'zod'
 
-const ConfigSchema = z
+export const pluginGroupsSchema = z
     .object({
-        url: z.url({ protocol: /^wss?$/ }).default('ws://127.0.0.1:3001/'),
-        accessToken: z.string().min(16),
-        message: z
-            .object({
-                charThreshold: z.number().int().positive().default(50),
-                lineThreshold: z.number().int().positive().default(3),
-            })
-            .strict()
-            .default({ charThreshold: 50, lineThreshold: 3 }),
-        role: z
-            .object({
-                superadmin: z.array(z.number().int().positive()).optional(),
-                admin: z.array(z.number().int().positive()).optional(),
-            })
-            .strict()
-            .default({}),
-        llm: z
-            .object({
-                contextSize: z.number().int().positive().optional().default(50),
-                providers: z
-                    .record(
-                        z.string(),
-                        z.object({
-                            base: z.httpUrl().optional(),
-                            apikey: z.string().min(1),
-                        })
-                    )
-                    .default({}),
-            })
-            .default({ contextSize: 30, providers: {} }),
-        plugin: z
-            .record(
-                z.string(),
-                z
-                    .object({
-                        status: z.enum(['Enable', 'Disable']),
-                        list: z.array(z.number().int().positive()).optional(),
-                    })
-                    .strict()
-            )
-            .default({}),
+        allow: z.array(z.number().int().positive()).default([]),
+        deny: z.array(z.number().int().positive()).default([]),
     })
     .strict()
-type Config = z.infer<typeof ConfigSchema>
-export { ConfigSchema }
-export type { Config }
+
+export const pluginEnvelopeSchema = z
+    .object({
+        enabled: z.boolean().optional(),
+        private: z.boolean().optional(),
+        groups: pluginGroupsSchema.optional(),
+    })
+    .loose()
+    .superRefine((value, context) => {
+        if (
+            value.groups &&
+            value.groups.allow.length > 0 &&
+            value.groups.deny.length > 0
+        ) {
+            context.addIssue({
+                code: 'custom',
+                message:
+                    'groups.allow and groups.deny cannot both be non-empty',
+                path: ['groups'],
+            })
+        }
+    })
+
+export const messageConfigSchema = z
+    .object({
+        charThreshold: z.number().int().positive().default(50),
+        lineThreshold: z.number().int().positive().default(3),
+    })
+    .strict()
+    .default({ charThreshold: 50, lineThreshold: 3 })
+
+export const rolesConfigSchema = z
+    .object({
+        superadmin: z.array(z.number().int().positive()).default([]),
+        admin: z.array(z.number().int().positive()).default([]),
+    })
+    .strict()
+    .default({ superadmin: [], admin: [] })
+
+export const appConfigSchema = z
+    .object({
+        url: z.url({ protocol: /^wss?$/ }).default('ws://127.0.0.1:3001/'),
+        accessToken: z.string().min(1).optional(),
+        roles: rolesConfigSchema,
+        message: messageConfigSchema,
+        plugins: z.record(z.string(), pluginEnvelopeSchema).default({}),
+    })
+    .strict()
+
+export type PluginGroups = z.infer<typeof pluginGroupsSchema>
+export type PluginEnvelope = z.infer<typeof pluginEnvelopeSchema>
+export type MessageConfig = z.infer<typeof messageConfigSchema>
+export type RolesConfig = z.infer<typeof rolesConfigSchema>
+export type AppConfig = z.infer<typeof appConfigSchema>
+
+export function formatConfigIssues(error: z.ZodError, prefix?: string): string {
+    return error.issues
+        .map((issue) => {
+            const path = issue.path.length > 0 ? issue.path.join('.') : '<root>'
+            const fullPath = prefix ? `${prefix}.${path}` : path
+
+            return `${fullPath}: ${issue.message}`
+        })
+        .join('\n')
+}
