@@ -26,6 +26,7 @@ export interface TestAppOptions {
     database?: Database | undefined
     logger?: Logger | undefined
     installer?: PluginInstaller | undefined
+    onRestart?: (() => void) | undefined
 }
 
 export interface TestApp {
@@ -61,6 +62,9 @@ export async function createTestApp(
         plugins: options.plugins ?? [],
         ...(options.installer !== undefined
             ? { installer: options.installer }
+            : {}),
+        ...(options.onRestart !== undefined
+            ? { onRestart: options.onRestart }
             : {}),
         ...(options.drainTimeoutMs !== undefined
             ? { drainTimeoutMs: options.drainTimeoutMs }

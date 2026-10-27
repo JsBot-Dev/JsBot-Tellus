@@ -102,6 +102,49 @@ describe('kernel', () => {
         expect(next).toHaveBeenCalledTimes(1)
     })
 
+    it('pauses and resumes event dispatch', async () => {
+        const { kernel, client } = createKernel()
+        const next = vi.fn(async () => {})
+
+        await kernel.start()
+
+        kernel.pause()
+        await dispatch(client, next)
+
+        expect(next).not.toHaveBeenCalled()
+
+        kernel.resume()
+        await dispatch(client, next)
+
+        expect(next).toHaveBeenCalledTimes(1)
+
+        await kernel.stop()
+    })
+
+    it('waits for in-flight dispatch before draining', async () => {
+        const { kernel, client } = createKernel()
+        let release!: () => void
+        const gate = new Promise<void>((resolve) => {
+            release = resolve
+        })
+        const next = vi.fn(async () => {
+            await gate
+        })
+
+        await kernel.start()
+
+        const dispatching = dispatch(client, next)
+
+        expect(await kernel.drain(20)).toBe(false)
+
+        release()
+        await dispatching
+
+        expect(await kernel.drain()).toBe(true)
+
+        await kernel.stop()
+    })
+
     it('shares concurrent start calls', async () => {
         const { kernel, client } = createKernel()
 

@@ -101,6 +101,7 @@ function harness(
             list: () => [],
         },
         installer: createDisabledInstaller(),
+        restart: () => {},
         uptime: () => 0,
     }
 
@@ -292,20 +293,21 @@ describe('plugin host', () => {
 
         await expect(host.setup()).rejects.toThrow('setup failed')
 
-        expect(stop).toHaveBeenCalledTimes(1)
+        expect(stop).not.toHaveBeenCalled()
         expect(router.listCommands()).toEqual([])
     })
 
-    it('rolls back start failures', async () => {
-        const stop = vi.fn()
+    it('does not stop plugins that never started', async () => {
+        const badStop = vi.fn()
+        const goodStop = vi.fn()
         const bad = makePlugin('bad', {
             priority: 100,
             start: async () => {
                 throw new Error('start failed')
             },
-            stop,
+            stop: badStop,
         })
-        const good = makePlugin('good', { priority: 10 })
+        const good = makePlugin('good', { priority: 10, stop: goodStop })
         const { host, database } = harness([bad, good])
 
         databases.push(database)
@@ -314,7 +316,29 @@ describe('plugin host', () => {
 
         await expect(host.start()).rejects.toThrow('start failed')
 
-        expect(stop).toHaveBeenCalledTimes(1)
+        expect(badStop).not.toHaveBeenCalled()
+        expect(goodStop).not.toHaveBeenCalled()
+    })
+
+    it('stops plugins that started before a later start failure', async () => {
+        const goodStop = vi.fn()
+        const good = makePlugin('good', { priority: 100, stop: goodStop })
+        const bad = makePlugin('bad', {
+            priority: 10,
+            start: async () => {
+                throw new Error('start failed')
+            },
+            stop: vi.fn(),
+        })
+        const { host, database } = harness([good, bad])
+
+        databases.push(database)
+
+        await host.setup()
+
+        await expect(host.start()).rejects.toThrow('start failed')
+
+        expect(goodStop).toHaveBeenCalledTimes(1)
     })
 
     it('isolates stop failures', async () => {

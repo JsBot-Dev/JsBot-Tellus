@@ -6,13 +6,15 @@ src/data/db/*
 .env
 
 *.config.json
-bot.config.v2.json
+bot.config.legacy.json
+bot.config.rollback.json
 
 data/
-data-v2/
+data.legacy/
+data.rollback/
 
 # Local plugins are not tracked.
-local-plugins/
+/plugins/
 
 # Tests for local-only plugins are not tracked.
 tests/plugins/*

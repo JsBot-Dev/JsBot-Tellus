@@ -52,8 +52,8 @@ describe('validateInstalledPackage', () => {
     manifest: {
         id: 'demo',
         version: '1.2.3',
-        dependencies: ['helper', 42],
-        configSchema: {},
+        dependencies: ['helper'],
+        configSchema: { safeParse: () => ({ success: true, data: {} }) },
     },
     setup() {},
 }
@@ -80,11 +80,11 @@ describe('validateInstalledPackage', () => {
             directory,
             'demo-plugin',
             `const first = {
-    manifest: { id: 'first', version: '1.0.0', configSchema: {} },
+    manifest: { id: 'first', version: '1.0.0', configSchema: { safeParse: () => ({ success: true, data: {} }) } },
     setup() {},
 }
 const second = {
-    manifest: { id: 'second', version: '1.0.0', configSchema: {} },
+    manifest: { id: 'second', version: '1.0.0', configSchema: { safeParse: () => ({ success: true, data: {} }) } },
     setup() {},
 }
 export const plugin = first
@@ -99,6 +99,61 @@ export const plugins = [second]
         )
 
         expect(result.map((item) => item.id)).toEqual(['first', 'second'])
+    })
+
+    it('skips malformed entries in plugin arrays', async () => {
+        await writePackage(
+            directory,
+            'mixed-plugin',
+            `const valid = {
+    manifest: {
+        id: 'valid',
+        version: '1.0.0',
+        configSchema: { safeParse: () => ({ success: true, data: {} }) },
+    },
+    setup() {},
+}
+export const plugins = [
+    valid,
+    { nope: true },
+    {
+        manifest: { id: 'bad', version: '1.0.0', configSchema: {} },
+        setup() {},
+    },
+]
+`
+        )
+
+        const result = await validateInstalledPackage(
+            directory,
+            'mixed-plugin',
+            { timeoutMs: 15_000 }
+        )
+
+        expect(result.map((item) => item.id)).toEqual(['valid'])
+    })
+
+    it('rejects plugins with invalid dependencies or config schemas', async () => {
+        await writePackage(
+            directory,
+            'bad-shape',
+            `export default {
+    manifest: {
+        id: 'bad-shape',
+        version: '1.0.0',
+        dependencies: ['ok', 42],
+        configSchema: {},
+    },
+    setup() {},
+}
+`
+        )
+
+        await expect(
+            validateInstalledPackage(directory, 'bad-shape', {
+                timeoutMs: 15_000,
+            })
+        ).rejects.toThrow('does not export a JsBot plugin')
     })
 
     it('rejects packages without a plugin export', async () => {
@@ -123,6 +178,47 @@ export const plugins = [second]
                 timeoutMs: 15_000,
             })
         ).rejects.toThrow('boom')
+    })
+
+    it('validates packages with require-only exports', async () => {
+        const location = join(directory, 'node_modules', 'cjs-plugin')
+        await mkdir(location, { recursive: true })
+        await writeFile(
+            join(location, 'package.json'),
+            `${JSON.stringify(
+                {
+                    name: 'cjs-plugin',
+                    version: '1.0.0',
+                    exports: {
+                        '.': {
+                            require: './index.cjs',
+                        },
+                    },
+                },
+                null,
+                4
+            )}\n`,
+            'utf8'
+        )
+        await writeFile(
+            join(location, 'index.cjs'),
+            `module.exports = {
+    manifest: {
+        id: 'cjs',
+        version: '1.0.0',
+        configSchema: { safeParse: () => ({ success: true, data: {} }) },
+    },
+    setup() {},
+}
+`,
+            'utf8'
+        )
+
+        const result = await validateInstalledPackage(directory, 'cjs-plugin', {
+            timeoutMs: 15_000,
+        })
+
+        expect(result.map((item) => item.id)).toEqual(['cjs'])
     })
 
     it('rejects missing packages', async () => {

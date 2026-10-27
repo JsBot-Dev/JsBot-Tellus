@@ -4,7 +4,7 @@
 
 | 旧能力        | 新位置                     | 说明                                           |
 | ------------- | -------------------------- | ---------------------------------------------- |
-| 配置加载      | `core/config`              | v2 schema，错误带路径                          |
+| 配置加载      | `core/config`              | Zod schema，错误带路径                         |
 | WebSocket     | `core/client.ts`           | 只暴露 `BotClient`                             |
 | 命令注册      | `core/plugin/types.ts`     | `definePlugin` + Router 注册表                 |
 | 权限          | `core/security`            | `User/Admin/SuperAdmin`                        |
@@ -20,24 +20,24 @@
 
 以下插件保留在本地，但不进入仓库，通过 `--plugin-dir` 加载：
 
-| 能力 | 位置                 | 说明                                         |
-| ---- | -------------------- | -------------------------------------------- |
-| poke | `local-plugins/poke` | 回复与冷却                                   |
-| LLM  | `local-plugins/llm`  | Session 上下文、限流、provider/model/persona |
+| 能力 | 位置           | 说明                                         |
+| ---- | -------------- | -------------------------------------------- |
+| poke | `plugins/poke` | 回复与冷却                                   |
+| LLM  | `plugins/llm`  | Session 上下文、限流、provider/model/persona |
 
 ## 有意不重建
 
-| 旧能力                            | 处理方式                                 |
-| --------------------------------- | ---------------------------------------- |
-| 装饰器                            | 删除；使用 `definePlugin` 和显式注册器   |
-| `JsBotBasePlugin` / PluginManager | 删除；由 Kernel + PluginHost 接管        |
-| 旧安全中间件                      | 删除；Router 命中命令后统一检查权限      |
-| 旧 KV 全局结构                    | 删除；使用按插件命名空间的 KV 和 Session |
-| `auth` 插件                       | 不重建；角色判断进入 `core` 和配置       |
-| `echo` 插件                       | 不重建；由 `admin` 的 `/utter` 覆盖      |
-| `like-me`                         | 不重建                                   |
-| 旧配置/旧 DB                      | 不读取、不迁移                           |
-| 热加载 / 插件市场界面             | 不在范围内；支持 npm 安装，重启后生效    |
+| 旧能力                            | 处理方式                                        |
+| --------------------------------- | ----------------------------------------------- |
+| 装饰器                            | 删除；使用 `definePlugin` 和显式注册器          |
+| `JsBotBasePlugin` / PluginManager | 删除；由 Kernel + PluginHost 接管               |
+| 旧安全中间件                      | 删除；Router 命中命令后统一检查权限             |
+| 旧 KV 全局结构                    | 删除；使用按插件命名空间的 KV 和 Session        |
+| `auth` 插件                       | 不重建；角色判断进入 `core` 和配置              |
+| `echo` 插件                       | 不重建；由 `admin` 的 `/utter` 覆盖             |
+| `like-me`                         | 不重建                                          |
+| 旧配置/旧 DB                      | 不读取、不迁移                                  |
+| 热加载 / 插件市场界面             | 不在范围内；支持 npm 安装，成功后自动重启运行时 |
 
 ## 验收场景
 
@@ -51,6 +51,6 @@
 - 配置错误包含路径，未知插件 ID 启动失败。
 - 外部插件目录可以加载并执行。
 - 本地插件可以通过 `--plugin-dir` 加载。
-- 已安装的 npm 插件包可以在重启后加载，安装失败会回滚。
-- 非 SuperAdmin 不能安装、卸载或更新插件包。
+- 已安装的 npm 插件包可以在自动重启后加载，安装失败会回滚。
+- 非 SuperAdmin 不能使用 `/plugin` 的任何子命令，包括 `help` 和 `list`。
 - `npm run build` 后 `node dist/app.js` 可用。

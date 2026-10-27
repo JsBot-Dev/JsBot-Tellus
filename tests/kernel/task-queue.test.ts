@@ -68,6 +68,26 @@ describe('task queue', () => {
         expect(await queue.drain()).toBe(true)
     })
 
+    it('waits for tasks enqueued during a drain', async () => {
+        const { logger } = createCapturingLogger()
+        const queue = new PerKeyTaskQueue(logger)
+        const gate = deferred()
+        let finished = false
+
+        queue.enqueue('a', async () => {
+            await gate.promise
+            queue.enqueue('b', async () => {
+                finished = true
+            })
+        })
+
+        const drained = queue.drain()
+        gate.resolve()
+
+        expect(await drained).toBe(true)
+        expect(finished).toBe(true)
+    })
+
     it('reports a drain timeout', async () => {
         const { logger } = createCapturingLogger()
         const queue = new PerKeyTaskQueue(logger)

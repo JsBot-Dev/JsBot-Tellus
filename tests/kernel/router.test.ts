@@ -227,6 +227,20 @@ describe('router', () => {
         expect(order).toEqual(['high', 'low'])
     })
 
+    it('runs message middlewares for message_sent events', async () => {
+        const { router, dispatch } = harness()
+        const handler = vi.fn(async () => {})
+
+        router.registerMiddleware({
+            pluginId: 'test',
+            handler,
+        })
+
+        await dispatch(groupMessage({ post_type: 'message_sent' }))
+
+        expect(handler).toHaveBeenCalledTimes(1)
+    })
+
     it('continues after a middleware error', async () => {
         const { router, dispatch, records } = harness()
         const order: string[] = []

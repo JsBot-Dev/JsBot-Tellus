@@ -1,4 +1,9 @@
-import type { SnowLumaEvent } from '@snowluma/sdk'
+import {
+    createEventContext,
+    type OutgoingMessage,
+    type SnowLumaApiClient,
+    type SnowLumaEvent,
+} from '@snowluma/sdk'
 import { describe, expect, it } from 'vitest'
 import {
     createMessageSender,
@@ -32,15 +37,35 @@ function createSender(thresholds = shortMessageConfig): CreatedSender {
 }
 
 describe('message sender', () => {
-    it('replies to a short group message', async () => {
+    it('quotes a short group message by default', async () => {
         const { sender, client } = createSender()
         const event = groupMessage()
         const context = new FakeEventContext(event)
 
         await sender.send(event, context, 'hi')
 
-        expect(context.replies).toEqual([{ message: 'hi', options: undefined }])
+        expect(context.quotes).toEqual([{ message: 'hi', options: undefined }])
+        expect(context.replies).toHaveLength(1)
         expect(client.sent).toHaveLength(0)
+    })
+
+    it('adds a CQ reply segment when quoting', async () => {
+        const { sender } = createSender()
+        const event = groupMessage({ message_id: 42 })
+        const sent: OutgoingMessage[] = []
+        const sdkContext = createEventContext(event, {
+            sendGroupMessage: async (
+                _groupId: number,
+                message: OutgoingMessage
+            ) => {
+                sent.push(message)
+                return { message_id: 1 }
+            },
+        } as unknown as SnowLumaApiClient)
+
+        await sender.send(event, sdkContext, 'hi')
+
+        expect(sent).toEqual(['[CQ:reply,id=42]hi'])
     })
 
     it('sends directly when quote is false', async () => {
@@ -52,7 +77,7 @@ describe('message sender', () => {
             quote: false,
         })
 
-        expect(context.replies).toHaveLength(0)
+        expect(context.quotes).toHaveLength(0)
         expect(client.sent).toEqual([
             {
                 kind: 'group',
@@ -63,14 +88,14 @@ describe('message sender', () => {
         ])
     })
 
-    it('replies in private chats', async () => {
+    it('quotes in private chats', async () => {
         const { sender } = createSender()
         const event = privateMessage()
         const context = new FakeEventContext(event)
 
         await sender.send(event, context, 'hi')
 
-        expect(context.replies).toHaveLength(1)
+        expect(context.quotes).toHaveLength(1)
     })
 
     it('forwards long group messages', async () => {
@@ -138,6 +163,20 @@ describe('message sender', () => {
         })
 
         expect(client.sent[0]?.options).toEqual({
+            autoEscape: true,
+        })
+    })
+
+    it('passes autoEscape through when quoting', async () => {
+        const { sender } = createSender()
+        const event = groupMessage()
+        const context = new FakeEventContext(event)
+
+        await sender.send(event, context, 'hi', {
+            autoEscape: true,
+        })
+
+        expect(context.quotes[0]?.options).toEqual({
             autoEscape: true,
         })
     })

@@ -51,7 +51,7 @@ function pluginEntry(id: string): string {
     manifest: {
         id: '${id}',
         version: '1.0.0',
-        configSchema: {},
+        configSchema: { safeParse: () => ({ success: true, data: {} }) },
     },
     setup() {},
 }
@@ -77,7 +77,7 @@ describe('loadInstalledPlugins', () => {
         dependencies: Record<string, string>
     ): Promise<void> {
         await writeJson(join(directory, 'package.json'), {
-            name: '@jsbot/installed-plugins',
+            name: '@jsbot-tellus/installed-plugins',
             private: true,
             version: '0.0.0',
             type: 'module',
@@ -108,12 +108,36 @@ describe('loadInstalledPlugins', () => {
         expect(result.byPackage.get('demo-plugin')).toEqual(['demo'])
     })
 
-    it('creates the @jsbot/core link in the install directory', async () => {
+    it('reloads a package after its entry changes', async () => {
+        await setDependencies({ 'reload-plugin': '1.0.0' })
+        await writePackage(directory, 'reload-plugin', {
+            entry: pluginEntry('first'),
+        })
+        const { logger } = createCapturingLogger('installed')
+
+        const first = await loadInstalledPlugins(directory, logger)
+
+        expect(first.plugins.map((plugin) => plugin.manifest.id)).toEqual([
+            'first',
+        ])
+
+        await writePackage(directory, 'reload-plugin', {
+            entry: pluginEntry('second'),
+        })
+
+        const second = await loadInstalledPlugins(directory, logger)
+
+        expect(second.plugins.map((plugin) => plugin.manifest.id)).toEqual([
+            'second',
+        ])
+    })
+
+    it('creates the @jsbot-tellus/core link in the install directory', async () => {
         const { logger } = createCapturingLogger('installed')
 
         await loadInstalledPlugins(directory, logger)
 
-        const link = join(directory, 'node_modules', '@jsbot', 'core')
+        const link = join(directory, 'node_modules', '@jsbot-tellus', 'core')
         expect(await realpath(link)).toBe(await realpath(corePackageRoot()))
     })
 
@@ -124,18 +148,18 @@ describe('loadInstalledPlugins', () => {
         })
         await writePackage(directory, 'named-plugin', {
             entry: `export const plugin = {
-    manifest: { id: 'named', version: '1.0.0', configSchema: {} },
+    manifest: { id: 'named', version: '1.0.0', configSchema: { safeParse: () => ({ success: true, data: {} }) } },
     setup() {},
 }
 `,
         })
         await writePackage(directory, 'array-plugin', {
             entry: `const first = {
-    manifest: { id: 'first', version: '1.0.0', configSchema: {} },
+    manifest: { id: 'first', version: '1.0.0', configSchema: { safeParse: () => ({ success: true, data: {} }) } },
     setup() {},
 }
 const second = {
-    manifest: { id: 'second', version: '1.0.0', configSchema: {} },
+    manifest: { id: 'second', version: '1.0.0', configSchema: { safeParse: () => ({ success: true, data: {} }) } },
     setup() {},
 }
 export const plugins = [first, second]
@@ -206,10 +230,8 @@ export const plugins = [first, second]
         expect(
             records.some(
                 (record) =>
-                    record.level === 'error' &&
-                    record.message.includes(
-                        'failed to load installed plugin package: bad-plugin'
-                    )
+                    record.level === 'warn' &&
+                    record.message.includes('invalid plugin export')
             )
         ).toBe(true)
     })
@@ -244,6 +266,19 @@ describe('packageEntry', () => {
         })
 
         expect(entry).toBe(join('/tmp/demo', './index.js'))
+    })
+
+    it('does not select browser-only conditions', () => {
+        const entry = packageEntry('/tmp/demo', {
+            exports: {
+                '.': {
+                    browser: './browser.js',
+                    require: './index.cjs',
+                },
+            },
+        })
+
+        expect(entry).toBe(join('/tmp/demo', './index.cjs'))
     })
 
     it('rejects exports without a root entry', () => {

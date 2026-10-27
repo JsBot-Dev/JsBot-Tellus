@@ -4,7 +4,7 @@ import { definePlugin } from '../../core/index.js'
 const PLUGIN_USAGE = `用法：
 /plugin install <npm包[@版本|tag]>
 /plugin list
-/plugin remove <包名|插件id>
+/plugin remove <包名|插件id> [--force]
 /plugin update [包名]`
 
 function errorMessage(error: unknown): string {
@@ -40,6 +40,7 @@ export const adminPlugin = definePlugin({
 
                 await context.send(match.rest, {
                     quote: false,
+                    autoEscape: true,
                 })
             }
         )
@@ -58,6 +59,7 @@ export const adminPlugin = definePlugin({
 
                 await context.send(match.rest, {
                     quote: false,
+                    autoEscape: false,
                 })
             }
         )
@@ -65,10 +67,10 @@ export const adminPlugin = definePlugin({
         ctx.commands.register(
             {
                 name: 'plugin',
-                permission: 'Admin',
+                permission: 'SuperAdmin',
                 description: '管理已安装的插件包',
             },
-            async (event, context, match) => {
+            async (_event, context, match) => {
                 const sub = (match.args[0] ?? '').toLowerCase()
                 const argument = match.rest
                     .slice(match.args[0]?.length ?? 0)
@@ -82,41 +84,39 @@ export const adminPlugin = definePlugin({
                 }
 
                 if (sub === 'list') {
-                    const packages = await installer.list()
+                    try {
+                        const packages = await installer.list()
 
-                    if (packages.length === 0) {
-                        await context.send('没有已安装的插件包。', {
-                            quote: false,
+                        if (packages.length === 0) {
+                            await context.send('没有已安装的插件包。', {
+                                quote: false,
+                            })
+                            return
+                        }
+
+                        const lines = packages.map((item) => {
+                            const status = item.loaded ? '已加载' : '重启后生效'
+                            return `- ${item.packageName}@${item.version} → ${formatIds(item.pluginIds)}（${status}）`
                         })
-                        return
+
+                        await context.send(
+                            [
+                                `已安装 ${packages.length} 个插件包：`,
+                                ...lines,
+                            ].join('\n'),
+                            { quote: false }
+                        )
+                    } catch (error) {
+                        await context.send(
+                            `❌ 读取插件包失败：${errorMessage(error)}`,
+                            { quote: false }
+                        )
                     }
-
-                    const lines = packages.map((item) => {
-                        const status = item.loaded ? '已加载' : '重启后生效'
-                        return `- ${item.packageName}@${item.version} → ${formatIds(item.pluginIds)}（${status}）`
-                    })
-
-                    await context.send(
-                        [`已安装 ${packages.length} 个插件包：`, ...lines].join(
-                            '\n'
-                        ),
-                        { quote: false }
-                    )
                     return
                 }
 
                 if (sub !== 'install' && sub !== 'remove' && sub !== 'update') {
                     await context.send(PLUGIN_USAGE, { quote: false })
-                    return
-                }
-
-                const role = ctx.core.roles.roleOf(event.user_id)
-
-                if (!ctx.core.roles.can(role, 'SuperAdmin')) {
-                    await context.send(
-                        '只有 SuperAdmin 可以安装、卸载或更新插件包。',
-                        { quote: false }
-                    )
                     return
                 }
 
@@ -147,12 +147,27 @@ export const adminPlugin = definePlugin({
                                 argument,
                                 signal
                             )
+                            const lines = [
+                                `✅ 已安装 ${result.packageName}@${result.version}（插件 id: ${formatIds(result.pluginIds)}）。`,
+                            ]
 
-                            await ctx.api.send(
-                                sessionId,
-                                `✅ 已安装 ${result.packageName}@${result.version}（插件 id: ${formatIds(result.pluginIds)}）。重启后生效。`,
-                                { quote: false }
+                            for (const warning of result.warnings) {
+                                lines.push(`⚠️ ${warning}`)
+                            }
+
+                            lines.push(
+                                result.warnings.length === 0
+                                    ? '正在重启。'
+                                    : '请处理以上问题后手动重启。'
                             )
+
+                            await ctx.api.send(sessionId, lines.join('\n'), {
+                                quote: false,
+                            })
+
+                            if (result.warnings.length === 0) {
+                                ctx.core.restart()
+                            }
                         } catch (error) {
                             await ctx.api.send(
                                 sessionId,
@@ -167,25 +182,37 @@ export const adminPlugin = definePlugin({
                 if (sub === 'remove') {
                     if (argument.length === 0) {
                         await context.send(
-                            '用法：/plugin remove <包名|插件id>',
+                            '用法：/plugin remove <包名|插件id> [--force]',
                             { quote: false }
                         )
                         return
                     }
 
-                    await context.send(`正在卸载 ${argument} ...`, {
+                    const force = /(?:^|\s)--force(?:\s|$)/.test(argument)
+                    const target = argument
+                        .replace(/(?:^|\s)--force(?:\s|$)/, ' ')
+                        .trim()
+
+                    if (target.length === 0) {
+                        await context.send(
+                            '用法：/plugin remove <包名|插件id> [--force]',
+                            { quote: false }
+                        )
+                        return
+                    }
+
+                    await context.send(`正在卸载 ${target} ...`, {
                         quote: false,
                     })
 
                     ctx.tasks.enqueue('plugin-installer', async (signal) => {
                         try {
                             const result = await installer.remove(
-                                argument,
-                                signal
+                                target,
+                                signal,
+                                { force }
                             )
-                            const lines = [
-                                `✅ 已卸载 ${result.packageName}。重启后生效。`,
-                            ]
+                            const lines = [`✅ 已卸载 ${result.packageName}。`]
 
                             if (result.pluginIds.length > 0) {
                                 lines.push(
@@ -197,9 +224,19 @@ export const adminPlugin = definePlugin({
                                 lines.push(`⚠️ ${warning}`)
                             }
 
+                            if (result.warnings.length === 0) {
+                                lines.push('正在重启。')
+                            } else {
+                                lines.push('请处理以上问题后手动重启。')
+                            }
+
                             await ctx.api.send(sessionId, lines.join('\n'), {
                                 quote: false,
                             })
+
+                            if (result.warnings.length === 0) {
+                                ctx.core.restart()
+                            }
                         } catch (error) {
                             await ctx.api.send(
                                 sessionId,
@@ -225,6 +262,9 @@ export const adminPlugin = definePlugin({
                             signal
                         )
                         const lines: string[] = []
+                        const warnings = result.updated.flatMap(
+                            (item) => item.warnings
+                        )
 
                         for (const item of result.updated) {
                             lines.push(
@@ -238,17 +278,32 @@ export const adminPlugin = definePlugin({
                             )
                         }
 
+                        for (const warning of warnings) {
+                            lines.push(`⚠️ ${warning}`)
+                        }
+
                         if (lines.length === 0) {
                             lines.push('没有可更新的插件包。')
                         }
 
                         if (result.updated.length > 0) {
-                            lines.push('重启后生效。')
+                            lines.push(
+                                warnings.length === 0
+                                    ? '正在重启。'
+                                    : '请处理以上问题后手动重启。'
+                            )
                         }
 
                         await ctx.api.send(sessionId, lines.join('\n'), {
                             quote: false,
                         })
+
+                        if (
+                            result.updated.length > 0 &&
+                            warnings.length === 0
+                        ) {
+                            ctx.core.restart()
+                        }
                     } catch (error) {
                         await ctx.api.send(
                             sessionId,

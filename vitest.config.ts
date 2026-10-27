@@ -8,7 +8,7 @@ function resolve(path: string): string {
 export default defineConfig({
     resolve: {
         alias: {
-            '@jsbot/core': resolve('./src/core/index.ts'),
+            '@jsbot-tellus/core': resolve('./src/core/index.ts'),
         },
     },
     test: {

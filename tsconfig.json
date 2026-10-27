@@ -2,7 +2,7 @@
     "extends": "./tsconfig.base.json",
     "compilerOptions": {
         "paths": {
-            "@jsbot/core": ["./src/core/index.ts"]
+            "@jsbot-tellus/core": ["./src/core/index.ts"]
         }
     },
     "include": ["src", "tests"]

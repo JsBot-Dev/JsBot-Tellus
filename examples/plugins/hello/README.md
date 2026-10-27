@@ -10,7 +10,7 @@ npm run build
 node dist/app.js --plugin-dir examples/plugins
 ```
 
-Enable and configure it in `bot.config.v2.json`:
+Enable and configure it in `bot.config.json`:
 
 ```json
 {
@@ -28,7 +28,7 @@ production build without a separate compilation step. TypeScript plugins can
 use the public API:
 
 ```ts
-import { definePlugin } from '@jsbot/core'
+import { definePlugin } from '@jsbot-tellus/core'
 import { z } from 'zod'
 
 export default definePlugin({

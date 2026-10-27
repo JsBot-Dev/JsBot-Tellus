@@ -27,7 +27,6 @@ export const corePlugin = definePlugin({
         defaultEnabled: true,
         configSchema: z.object({}).strict(),
     },
-
     setup(ctx) {
         ctx.commands.register(
             {

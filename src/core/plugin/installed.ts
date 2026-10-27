@@ -17,6 +17,8 @@ export interface LoadedInstalledPlugins {
     byPackage: Map<string, string[]>
 }
 
+let importSequence = 0
+
 function pickCondition(value: unknown): string | undefined {
     if (typeof value === 'string') return value
 
@@ -33,7 +35,7 @@ function pickCondition(value: unknown): string | undefined {
 
     const record = value as Record<string, unknown>
 
-    for (const key of ['import', 'node', 'default']) {
+    for (const key of ['import', 'node', 'default', 'require']) {
         if (key in record) {
             const found = pickCondition(record[key])
             if (found !== undefined) return found
@@ -41,7 +43,14 @@ function pickCondition(value: unknown): string | undefined {
     }
 
     for (const [key, item] of Object.entries(record)) {
-        if (key === 'types' || key === 'require') continue
+        if (
+            key === 'types' ||
+            key === 'browser' ||
+            key === 'deno' ||
+            key === 'react-native'
+        ) {
+            continue
+        }
 
         const found = pickCondition(item)
         if (found !== undefined) return found
@@ -124,8 +133,14 @@ export async function loadInstalledPlugins(
                 location,
                 manifest as Record<string, unknown>
             )
-            const imported: unknown = await import(pathToFileURL(entry).href)
-            plugins = collectPluginExports(imported, entry)
+            const imported: unknown = await import(
+                `${pathToFileURL(entry).href}?jsbot=${importSequence++}`
+            )
+            plugins = collectPluginExports(imported, entry, {
+                onInvalid: (message) => {
+                    logger.warn(`${name}: ${message}`)
+                },
+            })
         } catch (error) {
             logger.error(
                 `failed to load installed plugin package: ${name}`,

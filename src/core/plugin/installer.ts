@@ -4,6 +4,7 @@ import type { InstallerConfig } from '../config/schema.js'
 import type { Logger } from '../logging/logger.js'
 import {
     CORE_PACKAGE_NAME,
+    INSTALL_STATE_FILE,
     ensureCoreLink,
     ensureInstallDir,
     readDependencies,
@@ -146,7 +147,8 @@ export class NpmPluginInstaller implements PluginInstaller {
 
     remove(
         target: string,
-        signal?: AbortSignal | undefined
+        signal?: AbortSignal | undefined,
+        options?: { force?: boolean | undefined } | undefined
     ): Promise<PluginRemoveResult> {
         try {
             this.assertEnabled()
@@ -159,8 +161,22 @@ export class NpmPluginInstaller implements PluginInstaller {
 
             const dependencies = await readDependencies(this.dir)
             const state = await readInstallState(this.dir)
+            this.assertStateCovers(dependencies, state)
             const name = this.resolveTarget(target, dependencies, state)
             const record = state.packages[name]
+            const warnings = this.removalWarnings(name, record, state)
+            const dependents = this.dependentWarnings(name, record, state)
+
+            if (dependents.length > 0 && options?.force !== true) {
+                throw new InstallerError(
+                    [
+                        `卸载 ${name} 会破坏其它插件包的依赖：`,
+                        ...dependents.map((warning) => `- ${warning}`),
+                        '确认要卸载时请使用强制卸载（/plugin remove <目标> --force）。',
+                    ].join('\n')
+                )
+            }
+
             const backup = await this.backup()
 
             try {
@@ -185,7 +201,7 @@ export class NpmPluginInstaller implements PluginInstaller {
                 return {
                     packageName: name,
                     pluginIds: record?.pluginIds ?? [],
-                    warnings: this.removalWarnings(name, record, state),
+                    warnings,
                 }
             } catch (error) {
                 await this.rollback(backup, error)
@@ -209,6 +225,7 @@ export class NpmPluginInstaller implements PluginInstaller {
 
             const dependencies = await readDependencies(this.dir)
             const state = await readInstallState(this.dir)
+            this.assertStateCovers(dependencies, state)
             const names =
                 target === undefined || target.trim().length === 0
                     ? Object.keys(dependencies)
@@ -261,6 +278,8 @@ export class NpmPluginInstaller implements PluginInstaller {
         await ensureInstallDir(this.dir)
 
         const previousState = await readInstallState(this.dir)
+        const dependencies = await readDependencies(this.dir)
+        this.assertStateCovers(dependencies, previousState)
         const backup = await this.backup()
 
         try {
@@ -294,7 +313,12 @@ export class NpmPluginInstaller implements PluginInstaller {
             }
 
             const pluginIds = validated.map((plugin) => plugin.id)
-            const state = await readInstallState(this.dir)
+            const state = previousState
+            const warnings = this.configuredWarnings(
+                (previousState.packages[spec.name]?.pluginIds ?? []).filter(
+                    (id) => !pluginIds.includes(id)
+                )
+            )
 
             state.packages[spec.name] = {
                 spec: spec.raw,
@@ -310,7 +334,12 @@ export class NpmPluginInstaller implements PluginInstaller {
 
             this.logger.info(`installed plugin package ${spec.name}@${version}`)
 
-            return { packageName: spec.name, version, pluginIds }
+            return {
+                packageName: spec.name,
+                version,
+                pluginIds,
+                warnings,
+            }
         } catch (error) {
             await this.rollback(backup, error)
             throw asInstallerError(error)
@@ -354,17 +383,58 @@ export class NpmPluginInstaller implements PluginInstaller {
             ids.add(plugin.id)
         }
 
-        const available = new Set([...taken, ...ids])
+        const graph = new Map<string, string[]>()
+
+        for (const [name, record] of Object.entries(state.packages)) {
+            if (name === packageName) continue
+
+            for (const id of record.pluginIds) {
+                graph.set(id, record.dependencies[id] ?? [])
+            }
+        }
 
         for (const plugin of plugins) {
-            for (const dependency of plugin.dependencies) {
+            graph.set(plugin.id, plugin.dependencies)
+        }
+
+        const reserved = this.reservedIds()
+        const available = new Set(graph.keys())
+
+        for (const id of reserved) {
+            if (!ownIds.has(id)) available.add(id)
+        }
+
+        for (const [id, dependencies] of graph) {
+            for (const dependency of dependencies) {
                 if (!available.has(dependency)) {
                     throw new InstallerError(
-                        `插件 ${plugin.id} 依赖未加载的插件: ${dependency}`
+                        `插件 ${id} 依赖未加载的插件: ${dependency}`
                     )
                 }
             }
         }
+
+        const visiting = new Set<string>()
+        const visited = new Set<string>()
+
+        const visit = (id: string): void => {
+            if (visited.has(id)) return
+
+            if (visiting.has(id)) {
+                throw new InstallerError(`插件依赖存在循环: ${id}`)
+            }
+
+            visiting.add(id)
+
+            for (const dependency of graph.get(id) ?? []) {
+                if (graph.has(dependency)) visit(dependency)
+            }
+
+            visiting.delete(id)
+            visited.add(id)
+        }
+
+        for (const id of graph.keys()) visit(id)
     }
 
     private resolveTarget(
@@ -392,14 +462,30 @@ export class NpmPluginInstaller implements PluginInstaller {
         record: InstalledPackageRecord | undefined,
         state: InstallState
     ): string[] {
+        return [
+            ...this.configuredWarnings(record?.pluginIds ?? []),
+            ...this.dependentWarnings(packageName, record, state),
+        ]
+    }
+
+    private configuredWarnings(pluginIds: readonly string[]): string[] {
         const configured = this.configuredPluginIds()
-        const removedIds = new Set(record?.pluginIds ?? [])
-        const warnings = (record?.pluginIds ?? [])
+
+        return pluginIds
             .filter((id) => configured.has(id))
             .map(
                 (id) =>
                     `配置里的 plugins.${id} 仍然存在，重启前请删除，否则会因未知插件 ID 启动失败`
             )
+    }
+
+    private dependentWarnings(
+        packageName: string,
+        record: InstalledPackageRecord | undefined,
+        state: InstallState
+    ): string[] {
+        const removedIds = new Set(record?.pluginIds ?? [])
+        const warnings: string[] = []
 
         for (const [name, other] of Object.entries(state.packages)) {
             if (name === packageName) continue
@@ -430,6 +516,26 @@ export class NpmPluginInstaller implements PluginInstaller {
         return parsed
     }
 
+    private assertStateCovers(
+        dependencies: Record<string, string>,
+        state: InstallState
+    ): void {
+        const missing = Object.keys(dependencies)
+            .filter((name) => name !== CORE_PACKAGE_NAME)
+            .filter((name) => state.packages[name] === undefined)
+            .sort()
+
+        if (missing.length === 0) return
+
+        throw new InstallerError(
+            [
+                '安装状态与 package.json 不一致，以下依赖缺少安装记录：',
+                ...missing.map((name) => `- ${name}`),
+                `请检查安装目录中的 ${INSTALL_STATE_FILE}，或手动清理后重新安装。`,
+            ].join('\n')
+        )
+    }
+
     private assertEnabled(): void {
         if (!this.enabled) {
             throw new InstallerError(
@@ -441,10 +547,22 @@ export class NpmPluginInstaller implements PluginInstaller {
     private async backup(): Promise<BackupFile[]> {
         const files: BackupFile[] = []
 
-        for (const name of ['package.json', 'package-lock.json']) {
+        for (const name of [
+            'package.json',
+            'package-lock.json',
+            INSTALL_STATE_FILE,
+        ]) {
             const path = join(this.dir, name)
-            const content = await readFile(path, 'utf8').catch(() => null)
-            files.push({ path, content })
+
+            try {
+                files.push({ path, content: await readFile(path, 'utf8') })
+            } catch (error) {
+                if ((error as NodeJS.ErrnoException).code !== 'ENOENT') {
+                    throw error
+                }
+
+                files.push({ path, content: null })
+            }
         }
 
         return files

@@ -132,44 +132,34 @@ export class SqliteSessionStore implements SessionStore {
     }
 
     async append(sessionId: string, message: SessionMessage): Promise<void> {
-        const state = await this.get(sessionId)
+        const value = JSON.stringify(message)
 
-        if (!state) {
-            await this.save({
-                sessionId,
-                messages: [message],
-                updatedAt: message.at,
-            })
-            return
-        }
-
-        await this.save({
-            ...state,
-            messages: [...state.messages, message],
-            updatedAt: message.at,
-        })
+        this.database.connection
+            .prepare(
+                `INSERT INTO sessions (session_id, provider, model, persona, messages, updated_at)
+                 VALUES (?, NULL, NULL, NULL, json_array(json(?)), ?)
+                 ON CONFLICT(session_id) DO UPDATE SET
+                     messages = json_insert(sessions.messages, '$[#]', json(?)),
+                     updated_at = excluded.updated_at`
+            )
+            .run(sessionId, value, message.at, value)
     }
 
     async replace(
         sessionId: string,
         messages: SessionMessage[]
     ): Promise<void> {
-        const state = await this.get(sessionId)
+        const updatedAt = Date.now()
 
-        if (!state) {
-            await this.save({
-                sessionId,
-                messages,
-                updatedAt: Date.now(),
-            })
-            return
-        }
-
-        await this.save({
-            ...state,
-            messages,
-            updatedAt: Date.now(),
-        })
+        this.database.connection
+            .prepare(
+                `INSERT INTO sessions (session_id, provider, model, persona, messages, updated_at)
+                 VALUES (?, NULL, NULL, NULL, ?, ?)
+                 ON CONFLICT(session_id) DO UPDATE SET
+                     messages = excluded.messages,
+                     updated_at = excluded.updated_at`
+            )
+            .run(sessionId, JSON.stringify(messages), updatedAt)
     }
 
     async clear(sessionId: string): Promise<void> {

@@ -2,6 +2,7 @@ import {
     SnowLumaWebSocketClient,
     type ActionParams,
     type ActionResult,
+    type ApiResponse,
     type EventMiddleware,
     type LoginInfo,
     type OutgoingMessage,
@@ -51,6 +52,20 @@ export interface BotClient {
     ): Promise<ActionResult<TAction>>
 }
 
+export function unwrapActionResult<TAction extends SnowLumaAction>(
+    action: TAction,
+    response: ApiResponse<ActionResult<TAction>>
+): ActionResult<TAction> {
+    if (response.status !== 'ok' || response.retcode !== 0) {
+        throw new Error(
+            response.wording ||
+                `action failed: ${action} (status=${response.status}, retcode=${response.retcode})`
+        )
+    }
+
+    return response.data
+}
+
 export function createBotClient(options: BotClientOptions): BotClient {
     const client = new SnowLumaWebSocketClient({
         url: options.url,
@@ -79,14 +94,7 @@ export function createBotClient(options: BotClientOptions): BotClient {
         async call(action, params) {
             const response = await client.request(action, params)
 
-            if (response.status !== 'ok') {
-                throw new Error(
-                    response.wording ??
-                        `action failed: ${action} (${response.retcode})`
-                )
-            }
-
-            return response.data
+            return unwrapActionResult(action, response)
         },
     }
 }

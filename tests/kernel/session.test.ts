@@ -68,6 +68,30 @@ describe('session store', () => {
         database.close()
     })
 
+    it('does not lose concurrent appends', async () => {
+        const database = openMemoryDatabase()
+        const sessions = new SqliteSessionStore(database)
+
+        await Promise.all(
+            Array.from({ length: 20 }, (_, index) =>
+                sessions.append('group:1', {
+                    role: 'user',
+                    content: String(index),
+                    at: index,
+                })
+            )
+        )
+
+        const state = await sessions.get('group:1')
+
+        expect(state?.messages).toHaveLength(20)
+        expect(new Set(state?.messages.map((item) => item.content)).size).toBe(
+            20
+        )
+
+        database.close()
+    })
+
     it('limits history to the most recent messages', async () => {
         const database = openMemoryDatabase()
         const sessions = new SqliteSessionStore(database)

@@ -64,8 +64,9 @@ export class Lifecycle {
                 return Promise.resolve()
 
             case 'idle':
-                this.stateValue = 'stopped'
-                return Promise.resolve()
+                this.stateValue = 'stopping'
+                this.stopPromise = this.runStop()
+                return this.stopPromise
 
             case 'running':
                 return this.stopRunning()

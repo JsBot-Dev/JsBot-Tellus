@@ -46,7 +46,7 @@ describe('config', () => {
             },
             plugins: {},
             installer: {
-                enabled: true,
+                enabled: false,
                 registry: 'https://registry.npmjs.org/',
                 allowedPackages: [],
                 allowScripts: false,
@@ -224,7 +224,7 @@ describe('config', () => {
                 cwd,
                 env: {},
             })
-        ).toBe(resolve(cwd, 'bot.config.v2.json'))
+        ).toBe(resolve(cwd, 'bot.config.json'))
     })
 
     it('resolves data dir by CLI, env, then default', () => {
@@ -254,7 +254,7 @@ describe('config', () => {
                 cwd,
                 env: {},
             })
-        ).toBe(resolve(cwd, 'data-v2'))
+        ).toBe(resolve(cwd, 'data'))
     })
 
     it('ignores empty path values', () => {
@@ -266,6 +266,6 @@ describe('config', () => {
                 config: '   ',
                 env: {},
             })
-        ).toBe(resolve(cwd, 'bot.config.v2.json'))
+        ).toBe(resolve(cwd, 'bot.config.json'))
     })
 })

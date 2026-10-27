@@ -1,8 +1,10 @@
+import { randomUUID } from 'node:crypto'
 import { readFileSync } from 'node:fs'
 import {
     mkdir,
     readFile,
     realpath,
+    rename,
     rm,
     stat,
     symlink,
@@ -11,8 +13,8 @@ import {
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-export const CORE_PACKAGE_NAME = '@jsbot/core'
-export const INSTALL_PACKAGE_NAME = '@jsbot/installed-plugins'
+export const CORE_PACKAGE_NAME = '@jsbot-tellus/core'
+export const INSTALL_PACKAGE_NAME = '@jsbot-tellus/installed-plugins'
 export const INSTALL_STATE_FILE = '.jsbot-installed.json'
 export const VALIDATE_SCRIPT_FILE = 'validate.mjs'
 
@@ -29,7 +31,12 @@ export interface InstallState {
     packages: Record<string, InstalledPackageRecord>
 }
 
-const EMPTY_STATE: InstallState = { version: 1, packages: {} }
+export class InstallStateError extends Error {
+    constructor(message: string, options?: ErrorOptions) {
+        super(message, options)
+        this.name = 'InstallStateError'
+    }
+}
 
 const INSTALL_MANIFEST = {
     name: INSTALL_PACKAGE_NAME,
@@ -92,9 +99,7 @@ export async function ensureInstallDir(dir: string): Promise<void> {
 export async function readDependencies(
     dir: string
 ): Promise<Record<string, string>> {
-    const manifest = await readJsonFile(join(dir, 'package.json')).catch(
-        () => undefined
-    )
+    const manifest = await readJsonFile(join(dir, 'package.json'))
 
     if (typeof manifest !== 'object' || manifest === null) return {}
 
@@ -135,16 +140,27 @@ export async function readInstalledVersion(
 }
 
 export async function readInstallState(dir: string): Promise<InstallState> {
-    const value = await readJsonFile(join(dir, INSTALL_STATE_FILE)).catch(
-        () => undefined
-    )
+    const path = join(dir, INSTALL_STATE_FILE)
+    let value: unknown
 
-    if (
-        typeof value !== 'object' ||
-        value === null ||
-        (value as Record<string, unknown>)['version'] !== 1
-    ) {
+    try {
+        value = await readJsonFile(path)
+    } catch (error) {
+        throw new InstallStateError(`安装状态文件无法解析: ${path}`, {
+            cause: error,
+        })
+    }
+
+    if (value === undefined) {
         return { version: 1, packages: {} }
+    }
+
+    if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+        throw new InstallStateError(`安装状态文件格式无效: ${path}`)
+    }
+
+    if ((value as Record<string, unknown>)['version'] !== 1) {
+        throw new InstallStateError(`不支持的安装状态版本，请检查 ${path}`)
     }
 
     const packages = (value as Record<string, unknown>)['packages']
@@ -154,47 +170,63 @@ export async function readInstallState(dir: string): Promise<InstallState> {
         packages === null ||
         Array.isArray(packages)
     ) {
-        return { version: 1, packages: {} }
+        throw new InstallStateError(`安装状态 packages 字段无效: ${path}`)
     }
 
     const result: Record<string, InstalledPackageRecord> = {}
 
-    for (const [name, record] of Object.entries(packages)) {
-        if (typeof record !== 'object' || record === null) continue
+    for (const [name, rawRecord] of Object.entries(packages)) {
+        if (
+            typeof rawRecord !== 'object' ||
+            rawRecord === null ||
+            Array.isArray(rawRecord)
+        ) {
+            throw new InstallStateError(`安装状态记录无效: ${name}`)
+        }
 
-        const value = record as Record<string, unknown>
-        const pluginIds = value['pluginIds']
-        const dependencies = value['dependencies']
-        const parsedDependencies: Record<string, string[]> = {}
+        const record = rawRecord as Record<string, unknown>
+        const pluginIds = record['pluginIds']
+        const dependencies = record['dependencies']
 
         if (
-            typeof dependencies === 'object' &&
-            dependencies !== null &&
-            !Array.isArray(dependencies)
+            typeof record['spec'] !== 'string' ||
+            typeof record['version'] !== 'string' ||
+            typeof record['installedAt'] !== 'string' ||
+            !Array.isArray(pluginIds) ||
+            pluginIds.some((item) => typeof item !== 'string')
         ) {
-            for (const [id, list] of Object.entries(dependencies)) {
-                if (!Array.isArray(list)) continue
+            throw new InstallStateError(`安装状态记录不完整: ${name}`)
+        }
 
-                parsedDependencies[id] = list.filter(
-                    (item): item is string => typeof item === 'string'
+        if (
+            typeof dependencies !== 'object' ||
+            dependencies === null ||
+            Array.isArray(dependencies)
+        ) {
+            throw new InstallStateError(`安装状态依赖字段无效: ${name}`)
+        }
+
+        const parsedDependencies: Record<string, string[]> = {}
+
+        for (const [id, list] of Object.entries(dependencies)) {
+            if (
+                !Array.isArray(list) ||
+                list.some((item) => typeof item !== 'string')
+            ) {
+                throw new InstallStateError(
+                    `安装状态依赖记录无效: ${name}.${id}`
                 )
             }
+
+            parsedDependencies[id] = [...list]
         }
 
         result[name] = {
-            spec: typeof value['spec'] === 'string' ? value['spec'] : name,
-            version:
-                typeof value['version'] === 'string' ? value['version'] : '',
-            pluginIds: Array.isArray(pluginIds)
-                ? pluginIds.filter(
-                      (item): item is string => typeof item === 'string'
-                  )
-                : [],
+            spec: record['spec'],
+            version: record['version'],
+            pluginIds: [...pluginIds],
             dependencies: parsedDependencies,
-            installedAt:
-                typeof value['installedAt'] === 'string'
-                    ? value['installedAt']
-                    : '',
+            installedAt: record['installedAt'],
         }
     }
 
@@ -213,11 +245,20 @@ export async function writeInstallState(
         sorted.packages[name] = record
     }
 
-    await writeFile(
-        join(dir, INSTALL_STATE_FILE),
-        `${JSON.stringify(sorted, null, 4)}\n`,
-        'utf8'
-    )
+    const path = join(dir, INSTALL_STATE_FILE)
+    const temporary = `${path}.${randomUUID()}.tmp`
+
+    try {
+        await writeFile(
+            temporary,
+            `${JSON.stringify(sorted, null, 4)}\n`,
+            'utf8'
+        )
+        await rename(temporary, path)
+    } catch (error) {
+        await rm(temporary, { force: true }).catch(() => undefined)
+        throw error
+    }
 }
 
 export function corePackageRoot(): string {
@@ -246,7 +287,7 @@ export function corePackageRoot(): string {
 
 export async function ensureCoreLink(dir: string): Promise<void> {
     const target = corePackageRoot()
-    const link = join(dir, 'node_modules', '@jsbot', 'core')
+    const link = join(dir, 'node_modules', '@jsbot-tellus', 'core')
 
     await mkdir(dirname(link), { recursive: true })
 
@@ -274,6 +315,7 @@ export async function pathExists(path: string): Promise<boolean> {
 const VALIDATE_SCRIPT = `import process from 'node:process'
 
 const name = process.argv[2]
+const entry = process.argv[3]
 
 function isPlugin(value) {
     if (typeof value !== 'object' || value === null) return false
@@ -281,14 +323,27 @@ function isPlugin(value) {
 
     const manifest = value.manifest
 
-    return (
-        typeof manifest === 'object' &&
-        manifest !== null &&
-        typeof manifest.id === 'string' &&
-        typeof manifest.configSchema === 'object' &&
-        manifest.configSchema !== null &&
-        typeof value.setup === 'function'
-    )
+    if (
+        typeof manifest !== 'object' ||
+        manifest === null ||
+        typeof manifest.id !== 'string' ||
+        typeof manifest.configSchema !== 'object' ||
+        manifest.configSchema === null ||
+        typeof manifest.configSchema.safeParse !== 'function' ||
+        typeof value.setup !== 'function'
+    ) {
+        return false
+    }
+
+    if (
+        manifest.dependencies !== undefined &&
+        (!Array.isArray(manifest.dependencies) ||
+            manifest.dependencies.some((item) => typeof item !== 'string'))
+    ) {
+        return false
+    }
+
+    return true
 }
 
 function collect(value, result) {
@@ -317,10 +372,15 @@ if (!name) {
     process.exit(2)
 }
 
+if (!entry) {
+    console.error('missing package entry')
+    process.exit(2)
+}
+
 let imported
 
 try {
-    imported = await import(name)
+    imported = await import(entry)
 } catch (error) {
     console.error(error instanceof Error ? error.stack ?? error.message : String(error))
     process.exit(3)

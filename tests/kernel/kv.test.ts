@@ -44,6 +44,17 @@ describe('plugin kv', () => {
         database.close()
     })
 
+    it('rejects values that cannot be serialized', async () => {
+        const database = openMemoryDatabase()
+        const kv = new SqlitePluginKV(database, 'test')
+
+        await expect(kv.set('missing', undefined)).rejects.toThrow(
+            /not serializable/
+        )
+
+        database.close()
+    })
+
     it('keeps plugin namespaces separate', async () => {
         const database = openMemoryDatabase()
         const first = new SqlitePluginKV(database, 'first')

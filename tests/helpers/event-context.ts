@@ -1,8 +1,9 @@
 import type {
     OutgoingMessage,
+    SendMessageResult,
     SnowLumaApiClient,
     SnowLumaEvent,
-    SnowLumaEventContext,
+    SnowLumaEventContextWithQuote,
 } from '@snowluma/sdk'
 
 export interface ReplyRecord {
@@ -10,10 +11,11 @@ export interface ReplyRecord {
     options: unknown
 }
 
-export class FakeEventContext implements SnowLumaEventContext {
+export class FakeEventContext implements SnowLumaEventContextWithQuote {
     readonly event: SnowLumaEvent
     readonly client: SnowLumaApiClient
     readonly replies: ReplyRecord[] = []
+    readonly quotes: ReplyRecord[] = []
 
     private stoppedValue = false
 
@@ -32,10 +34,21 @@ export class FakeEventContext implements SnowLumaEventContext {
 
     async reply(
         message: OutgoingMessage,
-        options?: Parameters<SnowLumaEventContext['reply']>[1]
+        options?: Parameters<SnowLumaEventContextWithQuote['reply']>[1]
     ): Promise<unknown> {
         this.replies.push({ message, options })
         return undefined
+    }
+
+    async quote(
+        message: OutgoingMessage,
+        options?: Parameters<SnowLumaEventContextWithQuote['quote']>[1]
+    ): Promise<SendMessageResult> {
+        const record = { message, options }
+
+        this.quotes.push(record)
+        this.replies.push(record)
+        return { message_id: this.quotes.length }
     }
 
     async approve(..._args: unknown[]): Promise<unknown> {

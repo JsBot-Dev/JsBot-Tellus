@@ -8,12 +8,21 @@
 - 插件只通过 `PluginContext` 使用内核能力，不直接接触 SDK client、Router 或数据库。
 - SDK 只注册一个 middleware：`client.use(router.dispatch)`。
 - 内置插件 `core`、`admin` 是普通源码，位于 `src/plugins/`，随内核一起编译。
-- `poke`、`llm` 等本地插件放在不跟踪的 `local-plugins/`，各自是独立包，通过 `--plugin-dir` 加载。
+- `poke`、`llm` 等本地插件放在不跟踪的 `plugins/`，各自是独立包，通过 `--plugin-dir` 加载。
 
 ## 环境要求
 
-- Node.js `>= 24.22.1`
+- Node.js `^24.22.1 || >=26.12.1`（与 `@snowluma/sdk` 保持一致）
 - npm
+
+## 安装
+
+```bash
+npm install -g @jsbot-tellus/core
+jsbot --config ./bot.config.json
+```
+
+也可以从源码运行，见下方快速开始。
 
 ## 快速开始
 
@@ -21,10 +30,10 @@
 git clone https://github.com/JsBot-Dev/JsBot-Tellus
 cd JsBot-Tellus
 npm ci
-cp bot.config.example.json bot.config.v2.json
+cp bot.config.example.json bot.config.json
 ```
 
-编辑 `bot.config.v2.json`，至少填写连接地址和账号角色。然后：
+编辑 `bot.config.json`，至少填写连接地址和账号角色。然后：
 
 ```bash
 # 构建并运行
@@ -38,7 +47,7 @@ npm run start:source
 npm run dev
 ```
 
-默认配置路径是 `./bot.config.v2.json`，默认数据目录是 `./data-v2`。旧版 `bot.config.json` 和 `data/` 不会被读取或修改。
+默认配置路径是 `./bot.config.json`，默认数据目录是 `./data`。从旧版升级前请先备份并移走旧配置和数据库，见[迁移与回滚](docs/migration.md)。
 
 ## 内置命令
 
@@ -49,10 +58,12 @@ npm run dev
 | `/role`           | User       | 显示当前用户角色   |
 | `/utter <文本>`   | Admin      | 向当前会话发送文本 |
 | `/utter.raw <CQ>` | SuperAdmin | 发送原始 CQ 消息   |
-| `/plugin list`    | Admin      | 列出已安装插件包   |
+| `/plugin list`    | SuperAdmin | 列出已安装插件包   |
 | `/plugin install` | SuperAdmin | 安装 npm 插件包    |
 | `/plugin remove`  | SuperAdmin | 卸载插件包         |
 | `/plugin update`  | SuperAdmin | 更新插件包         |
+
+`/plugin` 的所有子命令（包括 `help` 和 `list`）都要求 SuperAdmin。
 
 ## 内置与本地插件
 
@@ -67,21 +78,22 @@ src/plugins/
 
 它们只依赖根 `package.json` 里的 `zod`，所以随内核一次 `tsc` 构建，产物在 `dist/plugins/`。
 
-`poke`、`llm` 等本地插件放在 `local-plugins/`，该目录整体被 `.gitignore` 排除。它是一个独立的本地 workspace 根，每个插件有自己的 `package.json`、`tsconfig.json` 和构建脚本：
+`poke`、`llm` 等本地插件放在 `plugins/`，该目录整体被 `.gitignore` 排除。每个插件都是独立包，有自己的 `package.json`、`tsconfig.json`、lockfile、`node_modules` 和构建脚本：
 
 ```bash
-npm install --prefix local-plugins
+npm install --prefix plugins/poke
+npm install --prefix plugins/llm
 npm run build:local
 
 node dist/app.js \
-    --plugin-dir local-plugins/poke/dist \
-    --plugin-dir local-plugins/llm/dist
+    --plugin-dir plugins/poke/dist \
+    --plugin-dir plugins/llm/dist
 ```
 
 `--plugin-dir` 可以重复使用，`BOT_PLUGIN_DIR` 使用逗号分隔多个目录：
 
 ```bash
-BOT_PLUGIN_DIR=local-plugins/poke/dist,local-plugins/llm/dist npm start
+BOT_PLUGIN_DIR=plugins/poke/dist,plugins/llm/dist npm start
 ```
 
 外部目录中与内置插件同 ID 的插件会被跳过。外部插件是普通 ESM 模块，默认导出、`plugin` 命名导出或 `plugins` 数组导出均可被加载。开发和发布方式见 [docs/plugin-api.md](docs/plugin-api.md)，示例位于 [`examples/plugins/hello`](examples/plugins/hello)。
@@ -99,19 +111,19 @@ BOT_PLUGIN_DIR=local-plugins/poke/dist,local-plugins/llm/dist npm start
 
 - 只接受 npm registry 包，`name`、`name@版本`、`name@tag`、`@scope/name[@版本|tag]`；拒绝 git、file、URL、workspace、link 等来源。
 - 安装目录默认是 `<data-dir>/plugins`，可用 `installer.dir` 修改。每个包带自己的依赖，不影响内核依赖。
-- 安装完成后需要重启才能加载。`/plugin list` 会标记“已加载”或“重启后生效”。
+- 安装、更新、卸载成功后会自动重启运行时并加载新插件，无需手动重启；进程本身不会退出。`/plugin list` 会标记“已加载”或“重启后生效”。
 - 默认使用 `--ignore-scripts`；只有显式设置 `installer.allowScripts=true` 才会执行 npm 生命周期脚本。
-- 卸载不会修改 `plugins` 配置。如果配置里仍有对应插件 ID，重启前需要手动删除，命令会给出警告；其它已安装包依赖被卸载插件 ID 时也会提示。
+- 卸载不会修改 `plugins` 配置。如果配置里仍有对应插件 ID，命令会给出警告并跳过自动重启，需要在处理配置后手动重启；其它已安装包依赖被卸载插件 ID 时默认拒绝卸载，可使用 `/plugin remove <目标> --force` 强制卸载。
 
-安装器默认开启，但安装、卸载和更新始终要求 SuperAdmin。配置项见 [docs/configuration.md](docs/configuration.md#插件安装器)，发布要求见 [docs/plugin-api.md](docs/plugin-api.md#通过-npm-发布与安装)。
+安装器默认关闭，需要显式设置 `installer.enabled=true`。启用后 `/plugin` 的所有子命令（包括只读的 `/plugin list`）都要求 SuperAdmin；安装的插件是运行在宿主进程中的完全可信代码。配置项见 [docs/configuration.md](docs/configuration.md#插件安装器)，发布要求见 [docs/plugin-api.md](docs/plugin-api.md#通过-npm-发布与安装)。
 
 ## CLI
 
 ```text
 jsbot [options]
 
---config <path>      配置文件，优先级 CLI > BOT_CONFIG > ./bot.config.v2.json
---data-dir <path>    数据目录，优先级 CLI > BOT_DATA_DIR > ./data-v2
+--config <path>      配置文件，优先级 CLI > BOT_CONFIG > ./bot.config.json
+--data-dir <path>    数据目录，优先级 CLI > BOT_DATA_DIR > ./data
 --log-level <level>  debug、info、warn、error，优先级 CLI > BOT_LOG_LEVEL
 --plugin-dir <path>  外部插件目录，可重复；BOT_PLUGIN_DIR 使用逗号分隔
 --help               显示帮助
@@ -126,8 +138,8 @@ npm run format:check  # Prettier 检查
 npm run build         # 构建内核、内置插件和 CLI
 npm run smoke         # node dist/app.js --help
 
-npm run check:local   # 检查 local-plugins（需要先安装本地依赖）
-npm run build:local   # 构建 local-plugins
+npm run check:local   # 检查 plugins（需要先安装本地依赖）
+npm run build:local   # 构建 plugins
 ```
 
 ## 文档

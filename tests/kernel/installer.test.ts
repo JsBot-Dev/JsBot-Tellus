@@ -3,7 +3,10 @@ import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { installerConfigSchema } from '../../src/core/config/schema.js'
-import { ensureInstallDir } from '../../src/core/plugin/install-dir.js'
+import {
+    INSTALL_STATE_FILE,
+    ensureInstallDir,
+} from '../../src/core/plugin/install-dir.js'
 import { NpmPluginInstaller } from '../../src/core/plugin/installer.js'
 import {
     ProcessError,
@@ -193,9 +196,7 @@ describe('NpmPluginInstaller', () => {
         return new NpmPluginInstaller({
             dir: directory,
             config: installerConfigSchema.parse({
-                ...(overrides.enabled !== undefined
-                    ? { enabled: overrides.enabled }
-                    : {}),
+                enabled: overrides.enabled ?? true,
                 ...(overrides.allowedPackages !== undefined
                     ? { allowedPackages: overrides.allowedPackages }
                     : {}),
@@ -248,6 +249,7 @@ describe('NpmPluginInstaller', () => {
             packageName: 'demo-plugin',
             version: '1.0.0',
             pluginIds: ['demo-plugin'],
+            warnings: [],
         })
         expect(await dependencies()).toEqual({ 'demo-plugin': '1.0.0' })
 
@@ -268,6 +270,46 @@ describe('NpmPluginInstaller', () => {
                 loaded: false,
             },
         ])
+    })
+
+    it('reports a corrupted install state instead of resetting it', async () => {
+        await writeFile(
+            join(directory, INSTALL_STATE_FILE),
+            '{ not json',
+            'utf8'
+        )
+
+        await expect(createInstaller().list()).rejects.toThrow(
+            /安装状态文件无法解析/
+        )
+    })
+
+    it('rejects install, update and remove when dependencies lack state records', async () => {
+        registerPackage('installed-plugin')
+        registerPackage('new-plugin')
+        const installer = createInstaller()
+
+        await installer.install('installed-plugin')
+        await rm(join(directory, INSTALL_STATE_FILE), { force: true })
+
+        const callsBefore = runner.calls.length
+        const message = /安装状态与 package.json 不一致[\s\S]*installed-plugin/
+
+        await expect(installer.install('new-plugin')).rejects.toThrow(message)
+        await expect(installer.update()).rejects.toThrow(message)
+        await expect(installer.remove('installed-plugin')).rejects.toThrow(
+            message
+        )
+        expect(runner.calls).toHaveLength(callsBefore)
+    })
+
+    it('aborts before npm when the backup cannot be read', async () => {
+        registerPackage('demo-plugin')
+        await mkdir(join(directory, 'package-lock.json'), { recursive: true })
+        const installer = createInstaller()
+
+        await expect(installer.install('demo-plugin')).rejects.toThrow()
+        expect(runner.calls).toHaveLength(0)
     })
 
     it('honours exact versions and dist-tags', async () => {
@@ -449,7 +491,7 @@ describe('NpmPluginInstaller', () => {
         expect(await installer.list()).toEqual([])
     })
 
-    it('warns when another installed package depends on a removed plugin', async () => {
+    it('refuses to remove a plugin another package depends on', async () => {
         registerPackage('base-plugin', {
             plugins: [plugin('base')],
         })
@@ -461,7 +503,30 @@ describe('NpmPluginInstaller', () => {
         await installer.install('base-plugin')
         await installer.install('app-plugin')
 
-        const result = await installer.remove('base')
+        await expect(installer.remove('base')).rejects.toThrow(
+            /会破坏其它插件包的依赖/
+        )
+        expect(await dependencies()).toEqual({
+            'base-plugin': '1.0.0',
+            'app-plugin': '1.0.0',
+        })
+    })
+
+    it('allows a forced removal with dependency warnings', async () => {
+        registerPackage('base-plugin', {
+            plugins: [plugin('base')],
+        })
+        registerPackage('app-plugin', {
+            plugins: [plugin('app', ['base'])],
+        })
+        const installer = createInstaller()
+
+        await installer.install('base-plugin')
+        await installer.install('app-plugin')
+
+        const result = await installer.remove('base', undefined, {
+            force: true,
+        })
 
         expect(
             result.warnings.some(
@@ -470,6 +535,24 @@ describe('NpmPluginInstaller', () => {
                     warning.includes('已卸载的插件 base')
             )
         ).toBe(true)
+        expect(await dependencies()).toEqual({ 'app-plugin': '1.0.0' })
+    })
+
+    it('rejects self-dependencies and dependency cycles', async () => {
+        registerPackage('self-plugin', {
+            plugins: [plugin('self', ['self'])],
+        })
+        await expect(createInstaller().install('self-plugin')).rejects.toThrow(
+            /循环/
+        )
+
+        registerPackage('cycle-plugin', {
+            plugins: [plugin('first', ['second']), plugin('second', ['first'])],
+        })
+
+        await expect(createInstaller().install('cycle-plugin')).rejects.toThrow(
+            /循环/
+        )
     })
 
     it('returns an empty update result when nothing is installed', async () => {
@@ -495,9 +578,31 @@ describe('NpmPluginInstaller', () => {
                 packageName: 'demo-plugin',
                 version: '2.0.0',
                 pluginIds: ['demo-plugin'],
+                warnings: [],
             },
         ])
         expect(await dependencies()).toEqual({ 'demo-plugin': '2.0.0' })
+    })
+
+    it('warns when an update removes a configured plugin id', async () => {
+        registerPackage('demo-plugin', {
+            plugins: [plugin('old')],
+        })
+        const installer = createInstaller({ configuredPluginIds: ['old'] })
+
+        await installer.install('demo-plugin')
+
+        registerPackage('demo-plugin', {
+            version: '1.0.0',
+            latest: '2.0.0',
+            plugins: [plugin('new')],
+        })
+
+        const result = await installer.update('demo-plugin')
+
+        expect(result.updated[0]?.warnings).toEqual([
+            expect.stringContaining('plugins.old'),
+        ])
     })
 
     it('applies the allowlist to updates', async () => {

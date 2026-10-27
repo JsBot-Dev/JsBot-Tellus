@@ -9,26 +9,38 @@ export function isPluginDefinition(
 
     const manifest = value.manifest
 
+    if (typeof manifest !== 'object' || manifest === null) return false
+
+    const configSchema = (manifest as Record<string, unknown>)['configSchema']
+    const dependencies = (manifest as Record<string, unknown>)['dependencies']
+
     return (
-        typeof manifest === 'object' &&
-        manifest !== null &&
         'id' in manifest &&
         typeof manifest.id === 'string' &&
-        'configSchema' in manifest &&
-        typeof manifest.configSchema === 'object' &&
-        manifest.configSchema !== null &&
+        typeof configSchema === 'object' &&
+        configSchema !== null &&
+        typeof (configSchema as { safeParse?: unknown }).safeParse ===
+            'function' &&
+        (dependencies === undefined ||
+            (Array.isArray(dependencies) &&
+                dependencies.every((item) => typeof item === 'string'))) &&
         typeof value.setup === 'function'
     )
+}
+
+export interface CollectPluginExportOptions {
+    onInvalid?: ((message: string) => void) | undefined
 }
 
 function collect(
     value: unknown,
     source: string,
-    result: AnyPluginDefinition[]
+    result: AnyPluginDefinition[],
+    options: CollectPluginExportOptions
 ): void {
     if (Array.isArray(value)) {
         for (const item of value) {
-            collect(item, source, result)
+            collect(item, source, result, options)
         }
 
         return
@@ -45,18 +57,19 @@ function collect(
         'plugins' in value &&
         Array.isArray(value.plugins)
     ) {
-        collect(value.plugins, source, result)
+        collect(value.plugins, source, result, options)
         return
     }
 
     if (value !== undefined && value !== null) {
-        throw new Error(`invalid plugin export: ${source}`)
+        options.onInvalid?.(`invalid plugin export: ${source}`)
     }
 }
 
 export function collectPluginExports(
     imported: unknown,
-    source: string
+    source: string,
+    options: CollectPluginExportOptions = {}
 ): AnyPluginDefinition[] {
     if (typeof imported !== 'object' || imported === null) return []
 
@@ -68,7 +81,7 @@ export function collectPluginExports(
         record['plugin'],
         record['plugins'],
     ]) {
-        collect(candidate, source, plugins)
+        collect(candidate, source, plugins, options)
     }
 
     return plugins.filter((plugin, index) => plugins.indexOf(plugin) === index)

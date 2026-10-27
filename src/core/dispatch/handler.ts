@@ -1,9 +1,8 @@
 import type {
-    OneBotMessageEvent,
     OneBotNoticeEvent,
     OneBotRequestEvent,
     SnowLumaEvent,
-    SnowLumaEventContext,
+    SnowLumaEventContextWithQuote,
 } from '@snowluma/sdk'
 import type {
     CommandMatch,
@@ -36,6 +35,7 @@ export interface RequestRegistration {
 export function eventTypeOf(event: SnowLumaEvent): EventType | null {
     switch (event.post_type) {
         case 'message':
+        case 'message_sent':
             return 'message'
         case 'notice':
             return 'notice'
@@ -74,7 +74,7 @@ export function sessionIdOf(event: SnowLumaEvent): string {
 
 export function createEventContext<TEvent extends SnowLumaEvent>(
     event: TEvent,
-    sdkContext: SnowLumaEventContext,
+    sdkContext: SnowLumaEventContextWithQuote,
     sender: MessageSender,
     command: CommandMatch | null = null
 ): EventContext<TEvent> {
@@ -184,11 +184,4 @@ export function isRequestOf(
         !registration.requestType ||
         registration.requestType === event.request_type
     )
-}
-
-export function isMessageOf(
-    _event: OneBotMessageEvent,
-    _registration: MessageRegistration
-): boolean {
-    return true
 }

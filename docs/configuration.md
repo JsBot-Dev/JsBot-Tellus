@@ -2,12 +2,12 @@
 
 ## 路径和优先级
 
-| 项目     | CLI            | 环境变量         | 默认值                 |
-| -------- | -------------- | ---------------- | ---------------------- |
-| 配置文件 | `--config`     | `BOT_CONFIG`     | `./bot.config.v2.json` |
-| 数据目录 | `--data-dir`   | `BOT_DATA_DIR`   | `./data-v2`            |
-| 日志级别 | `--log-level`  | `BOT_LOG_LEVEL`  | `info`                 |
-| 插件目录 | `--plugin-dir` | `BOT_PLUGIN_DIR` | 无                     |
+| 项目     | CLI            | 环境变量         | 默认值              |
+| -------- | -------------- | ---------------- | ------------------- |
+| 配置文件 | `--config`     | `BOT_CONFIG`     | `./bot.config.json` |
+| 数据目录 | `--data-dir`   | `BOT_DATA_DIR`   | `./data`            |
+| 日志级别 | `--log-level`  | `BOT_LOG_LEVEL`  | `info`              |
+| 插件目录 | `--plugin-dir` | `BOT_PLUGIN_DIR` | 无                  |
 
 `--plugin-dir` 可以重复；`BOT_PLUGIN_DIR` 使用逗号分隔多个目录。空字符串会被视为未设置。路径最终按 `process.cwd()` 解析。
 
@@ -60,13 +60,15 @@
 
 ## 插件安装器
 
-`installer` 控制 `/plugin install`、`/plugin remove`、`/plugin update` 的行为。安装器默认开启，但所有写操作始终要求 SuperAdmin。
+`installer` 控制 `/plugin install`、`/plugin remove`、`/plugin update` 的行为。安装器默认关闭，需要显式设置 `enabled: true`；启用后 `/plugin` 的所有子命令（包括 `help` 和 `list`）都要求 SuperAdmin。
+
+npm 包会在宿主进程中执行，拥有与内核相同的文件系统、环境变量和网络权限。只安装完全信任的包；`allowedPackages` 为空表示不限制包名，建议在生产环境配置 allowlist。
 
 ```json
 {
     "installer": {
         "enabled": true,
-        "dir": "data-v2/plugins",
+        "dir": "data/plugins",
         "registry": "https://registry.npmjs.org/",
         "allowedPackages": ["@scope/*", "another-plugin"],
         "allowScripts": false,
@@ -75,22 +77,22 @@
 }
 ```
 
-| 字段              | 默认值                        | 说明                                                |
-| ----------------- | ----------------------------- | --------------------------------------------------- |
-| `enabled`         | `true`                        | 为 `false` 时禁用安装、卸载和更新；列表仍可用       |
-| `dir`             | `<data-dir>/plugins`          | 安装目录，相对路径按 `process.cwd()` 解析           |
-| `registry`        | `https://registry.npmjs.org/` | npm registry，可换成镜像（如 npmmirror）            |
-| `allowedPackages` | `[]`                          | 允许安装的包；空表示不限制，支持精确名和 `@scope/*` |
-| `allowScripts`    | `false`                       | 为 `false` 时 npm 操作带 `--ignore-scripts`         |
-| `timeoutMs`       | `120000`                      | 单次 npm/校验操作的超时，最大 600000                |
+| 字段              | 默认值                        | 说明                                                               |
+| ----------------- | ----------------------------- | ------------------------------------------------------------------ |
+| `enabled`         | `false`                       | 为 `false` 时禁用安装、卸载和更新；列表仍可用（仍要求 SuperAdmin） |
+| `dir`             | `<data-dir>/plugins`          | 安装目录，相对路径按 `process.cwd()` 解析                          |
+| `registry`        | `https://registry.npmjs.org/` | npm registry，可换成镜像（如 npmmirror）                           |
+| `allowedPackages` | `[]`                          | 允许安装的包；空表示不限制，支持精确名和 `@scope/*`                |
+| `allowScripts`    | `false`                       | 为 `false` 时 npm 操作带 `--ignore-scripts`                        |
+| `timeoutMs`       | `120000`                      | 单次 npm/校验操作的超时，最大 600000                               |
 
-安装目录由内核维护，包含 `package.json`、`package-lock.json` 和 `.jsbot-installed.json`。不要手动修改；安装失败时内核会恢复安装前的 manifest/lock 并重装依赖。
+安装目录由内核维护，包含 `package.json`、`package-lock.json` 和 `.jsbot-installed.json`。不要手动修改；安装失败时内核会恢复安装前的 manifest、lock 和安装状态并重装依赖。安装状态损坏会明确报错，不会静默清空。
 
-安装器会在安装目录创建 `node_modules/@jsbot/core` 链接，指向当前内核包。`@jsbot/core` 的入口是 `dist/core/index.js`，所以在线安装和加载已安装插件都需要先执行 `npm run build`；直接从 TypeScript 源码运行（`tsx`）时不要依赖安装器。
+安装器会在安装目录创建 `node_modules/@jsbot-tellus/core` 链接，指向当前内核包。`@jsbot-tellus/core` 的入口是 `dist/core/index.js`，所以在线安装和加载已安装插件都需要先执行 `npm run build`；直接从 TypeScript 源码运行（`tsx`）时不要依赖安装器。
 
 安装只接受 npm registry 包。以下来源会被拒绝：git/github 地址、`file:`、`http(s):`、`workspace:`、`link:`、本地路径和 semver 范围（`^`、`~`、`1.x`）。版本部分只接受精确版本或 dist-tag。
 
-安装、更新后需要重启进程才能加载新插件。启动时加载顺序是：内置插件 → `--plugin-dir` 外部插件 → 已安装插件；出现重复插件 ID 时保留先加载的插件并记录警告。
+安装、更新、卸载成功后会重建运行时并重新加载已安装插件，不需要手动重启，进程本身不会退出。卸载时如果配置里仍有对应插件 ID，会给出警告并跳过自动重启；如果其它已安装包依赖被卸载的插件 ID，默认拒绝卸载，需要确认后使用 `/plugin remove <目标> --force`。安装和更新会检查完整依赖图，拒绝自依赖、循环依赖和缺失依赖。启动时加载顺序是：内置插件 → `--plugin-dir` 外部插件 → 已安装插件；出现重复插件 ID 时保留先加载的插件并记录警告。
 
 ## 插件公共信封
 
@@ -138,7 +140,7 @@
 }
 ```
 
-- `/utter <文本>`：Admin 权限，发送纯文本。
+- `/utter <文本>`：Admin 权限，发送自动转义的纯文本（CQ 码不会被解析）。
 - `/utter.raw <CQ 消息>`：SuperAdmin 权限，发送原始 CQ 字符串。
 
 ## 外部与本地插件配置
@@ -147,8 +149,8 @@
 
 ```bash
 node dist/app.js \
-    --plugin-dir local-plugins/poke/dist \
-    --plugin-dir local-plugins/llm/dist
+    --plugin-dir plugins/poke/dist \
+    --plugin-dir plugins/llm/dist
 ```
 
 通过 `/plugin install` 安装的包会自动从 `<data-dir>/plugins` 加载，不需要 `--plugin-dir`。安装目录、registry 和允许列表见[插件安装器](#插件安装器)。
@@ -169,15 +171,16 @@ node dist/app.js \
 
 `enabled`、`private`、`groups` 由内核处理；`limit` 会传给 `demo` 的 `configSchema`。未知字段会报错，错误信息包含 `plugins.demo.limit` 这样的路径。
 
-内置插件 `core`、`admin` 是 `src/plugins/` 下的普通源码，随内核一起编译。其他插件放在 `local-plugins/`，整个目录被 `.gitignore` 排除。本地插件是独立的包，有自己的 `package.json`：
+内置插件 `core`、`admin` 是 `src/plugins/` 下的普通源码，随内核一起编译。其他插件放在 `plugins/`，整个目录被 `.gitignore` 排除。每个本地插件都是独立包，有自己的 `package.json` 和依赖：
 
 ```bash
-npm install --prefix local-plugins
+npm install --prefix plugins/poke
+npm install --prefix plugins/llm
 npm run build:local
 
 npm run dev -- \
-    --plugin-dir local-plugins/poke/dist \
-    --plugin-dir local-plugins/llm/dist
+    --plugin-dir plugins/poke/dist \
+    --plugin-dir plugins/llm/dist
 ```
 
 应用会跳过与内置插件同 ID 的外部插件。
