@@ -7,8 +7,8 @@
 - 内核负责配置、连接、事件分发、命令匹配、权限、gating、消息发送、SQLite 存储和生命周期。
 - 插件只通过 `PluginContext` 使用内核能力，不直接接触 SDK client、Router 或数据库。
 - SDK 只注册一个 middleware：`client.use(router.dispatch)`。
-- 内置插件：`core`、`admin`、`poke`、`llm`。
-- LLM 默认关闭，按群或私聊开启。
+- 内置插件 `core`、`admin` 是普通源码，位于 `src/plugins/`，随内核一起编译。
+- `poke`、`llm` 等本地插件放在不跟踪的 `local-plugins/`，各自是独立包，通过 `--plugin-dir` 加载。
 
 ## 环境要求
 
@@ -24,7 +24,7 @@ npm ci
 cp bot.config.example.json bot.config.v2.json
 ```
 
-编辑 `bot.config.v2.json`，至少填写连接地址、账号角色和需要的插件配置。然后：
+编辑 `bot.config.v2.json`，至少填写连接地址和账号角色。然后：
 
 ```bash
 # 构建并运行
@@ -40,58 +40,47 @@ npm run dev
 
 默认配置路径是 `./bot.config.v2.json`，默认数据目录是 `./data-v2`。旧版 `bot.config.json` 和 `data/` 不会被读取或修改。
 
-### LLM
-
-LLM 在配置中默认关闭。启用时需要提供 provider，并建议按群白名单开启：
-
-```json
-{
-    "plugins": {
-        "llm": {
-            "enabled": true,
-            "provider": "example",
-            "model": "your-model",
-            "groups": {
-                "allow": [123456789]
-            },
-            "providers": {
-                "example": {
-                    "base": "https://api.example.com/v1",
-                    "apikey": "sk-...",
-                    "model": "your-model"
-                }
-            }
-        }
-    }
-}
-```
-
-群聊中 @ 机器人触发，私聊由 `private` 开关控制。配置和命令详见 [docs/configuration.md](docs/configuration.md)。
-
 ## 内置命令
 
-| 命令                  | 权限       | 作用                        |
-| --------------------- | ---------- | --------------------------- |
-| `/help`、`/h`         | User       | 按权限列出可用命令          |
-| `/status`、`/s`       | User       | 运行时长和插件状态          |
-| `/role`               | User       | 显示当前用户角色            |
-| `/utter <文本>`       | Admin      | 向当前会话发送文本          |
-| `/utter.raw <CQ>`     | SuperAdmin | 发送原始 CQ 消息            |
-| `/provider [名称]`    | SuperAdmin | 查看或切换当前会话 provider |
-| `/model [模型 ID]`    | SuperAdmin | 查看或切换当前会话模型      |
-| `/persona [名称/off]` | SuperAdmin | 查看或切换当前会话 persona  |
+| 命令              | 权限       | 作用               |
+| ----------------- | ---------- | ------------------ |
+| `/help`、`/h`     | User       | 按权限列出可用命令 |
+| `/status`、`/s`   | User       | 运行时长和插件状态 |
+| `/role`           | User       | 显示当前用户角色   |
+| `/utter <文本>`   | Admin      | 向当前会话发送文本 |
+| `/utter.raw <CQ>` | SuperAdmin | 发送原始 CQ 消息   |
 
-LLM 的 provider、model、persona 按 `session > global > provider 配置` 的顺序解析。切换命令只影响当前群或私聊。
+## 内置与本地插件
 
-## 外部插件
+内置插件是普通源码，不需要独立的 `package.json`：
 
-使用 `--plugin-dir` 或 `BOT_PLUGIN_DIR` 加载外部插件，内置插件仍会自动加载：
-
-```bash
-node dist/app.js --plugin-dir examples/plugins
+```text
+src/plugins/
+  core/index.ts     /help、/status、/role
+  admin/index.ts    /utter、/utter.raw
+  index.ts          内置插件清单
 ```
 
-示例插件位于 `examples/plugins/hello`。外部插件是普通 ESM 模块，默认导出、`plugin` 命名导出或 `plugins` 数组导出均可被加载。开发和发布方式见 [docs/plugin-api.md](docs/plugin-api.md)。
+它们只依赖根 `package.json` 里的 `zod`，所以随内核一次 `tsc` 构建，产物在 `dist/plugins/`。
+
+`poke`、`llm` 等本地插件放在 `local-plugins/`，该目录整体被 `.gitignore` 排除。它是一个独立的本地 workspace 根，每个插件有自己的 `package.json`、`tsconfig.json` 和构建脚本：
+
+```bash
+npm install --prefix local-plugins
+npm run build:local
+
+node dist/app.js \
+    --plugin-dir local-plugins/poke/dist \
+    --plugin-dir local-plugins/llm/dist
+```
+
+`--plugin-dir` 可以重复使用，`BOT_PLUGIN_DIR` 使用逗号分隔多个目录：
+
+```bash
+BOT_PLUGIN_DIR=local-plugins/poke/dist,local-plugins/llm/dist npm start
+```
+
+外部目录中与内置插件同 ID 的插件会被跳过。外部插件是普通 ESM 模块，默认导出、`plugin` 命名导出或 `plugins` 数组导出均可被加载。开发和发布方式见 [docs/plugin-api.md](docs/plugin-api.md)，示例位于 [`examples/plugins/hello`](examples/plugins/hello)。
 
 ## CLI
 
@@ -101,7 +90,7 @@ jsbot [options]
 --config <path>      配置文件，优先级 CLI > BOT_CONFIG > ./bot.config.v2.json
 --data-dir <path>    数据目录，优先级 CLI > BOT_DATA_DIR > ./data-v2
 --log-level <level>  debug、info、warn、error，优先级 CLI > BOT_LOG_LEVEL
---plugin-dir <path>  外部插件目录，优先级 CLI > BOT_PLUGIN_DIR
+--plugin-dir <path>  外部插件目录，可重复；BOT_PLUGIN_DIR 使用逗号分隔
 --help               显示帮助
 ```
 
@@ -111,8 +100,11 @@ jsbot [options]
 npm run check         # TypeScript 类型检查（NodeNext + strict）
 npm test              # Vitest
 npm run format:check  # Prettier 检查
-npm run build         # 输出 dist/
+npm run build         # 构建内核、内置插件和 CLI
 npm run smoke         # node dist/app.js --help
+
+npm run check:local   # 检查 local-plugins（需要先安装本地依赖）
+npm run build:local   # 构建 local-plugins
 ```
 
 ## 文档

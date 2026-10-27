@@ -8,11 +8,17 @@ import {
     resolveDataDir,
 } from './core/config/loader.js'
 import { Kernel } from './core/kernel.js'
-import { createLogger, parseLogLevel } from './core/logging/logger.js'
+import {
+    createLogger,
+    parseLogLevel,
+    type Logger,
+} from './core/logging/logger.js'
 import { loadPluginsFromDirectory } from './core/plugin/loader.js'
 import type { AnyPluginDefinition } from './core/plugin/types.js'
 import { openDatabase } from './core/storage/database.js'
 import { builtinPlugins } from './plugins/index.js'
+
+const builtinIds = new Set(builtinPlugins.map((plugin) => plugin.manifest.id))
 
 const USAGE = `Usage: jsbot [options]
 
@@ -20,7 +26,7 @@ Options:
   --config <path>      Config file path (env: BOT_CONFIG)
   --data-dir <path>    Data directory (env: BOT_DATA_DIR)
   --log-level <level>  debug, info, warn or error (env: BOT_LOG_LEVEL)
-  --plugin-dir <path>  External plugin directory (env: BOT_PLUGIN_DIR)
+  --plugin-dir <path>  External plugin directory, repeatable (env: BOT_PLUGIN_DIR)
   --help               Show this help
 
 Config precedence: CLI > environment > ./bot.config.v2.json.
@@ -33,12 +39,46 @@ function pick(value: unknown): string | undefined {
         : undefined
 }
 
-async function loadPlugins(
-    directory: string | undefined
-): Promise<AnyPluginDefinition[]> {
-    if (!directory) return builtinPlugins
+function pickDirs(value: unknown): string[] {
+    if (Array.isArray(value)) {
+        return value
+            .filter((item): item is string => typeof item === 'string')
+            .map((item) => item.trim())
+            .filter((item) => item.length > 0)
+    }
 
-    const external = await loadPluginsFromDirectory(directory)
+    if (typeof value !== 'string') return []
+
+    return value
+        .split(',')
+        .map((item) => item.trim())
+        .filter((item) => item.length > 0)
+}
+
+async function loadPlugins(
+    directories: string[],
+    logger: Logger
+): Promise<AnyPluginDefinition[]> {
+    if (directories.length === 0) return builtinPlugins
+
+    const external: AnyPluginDefinition[] = []
+
+    for (const directory of directories) {
+        logger.info('loading external plugins', directory)
+
+        const loaded = await loadPluginsFromDirectory(directory)
+
+        for (const plugin of loaded) {
+            if (builtinIds.has(plugin.manifest.id)) {
+                logger.warn(
+                    `skipping external plugin ${plugin.manifest.id}: built-in plugin already loaded`
+                )
+                continue
+            }
+
+            external.push(plugin)
+        }
+    }
 
     return [...builtinPlugins, ...external]
 }
@@ -49,7 +89,7 @@ async function main(): Promise<void> {
             config: { type: 'string' },
             'data-dir': { type: 'string' },
             'log-level': { type: 'string' },
-            'plugin-dir': { type: 'string' },
+            'plugin-dir': { type: 'string', multiple: true },
             help: { type: 'boolean', short: 'h' },
         },
         allowPositionals: false,
@@ -81,9 +121,10 @@ async function main(): Promise<void> {
         env: process.env,
     })
 
-    const pluginDir =
-        pick(values['plugin-dir']) ?? pick(process.env.BOT_PLUGIN_DIR)
-    const plugins = await loadPlugins(pluginDir)
+    const cliPluginDirs = pickDirs(values['plugin-dir'])
+    const envPluginDirs = pickDirs(process.env.BOT_PLUGIN_DIR)
+    const pluginDirs = cliPluginDirs.length > 0 ? cliPluginDirs : envPluginDirs
+    const plugins = await loadPlugins(pluginDirs, logger)
     const database = openDatabase({ dataDir })
 
     const client = createBotClient({

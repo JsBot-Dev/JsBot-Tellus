@@ -118,7 +118,7 @@ await ctx.kv.delete('last')
 const entries = await ctx.kv.list<number>('prefix:')
 ```
 
-值使用 JSON 序列化，只适合小型状态。LLM 历史使用 Session 而不是 KV。
+值使用 JSON 序列化，只适合小型状态。较长的对话历史使用 Session 而不是 KV。
 
 ### sessions
 
@@ -326,7 +326,7 @@ npm run build
 node dist/app.js --plugin-dir examples/plugins
 ```
 
-加载器会扫描目录下所有 `.js`、`.mjs`、`.cjs`、`.ts`、`.mts`、`.cts` 文件，识别：
+`--plugin-dir` 可以重复，`BOT_PLUGIN_DIR` 使用逗号分隔多个目录。应用会跳过与内置插件同 ID 的外部插件。加载器会扫描目录下所有 `.js`、`.mjs`、`.cjs`、`.ts`、`.mts`、`.cts` 文件，识别：
 
 - `export default plugin`
 - `export const plugin = ...`
@@ -334,23 +334,30 @@ node dist/app.js --plugin-dir examples/plugins
 
 TypeScript 插件必须在生产运行前编译为 JavaScript。外部插件和内置插件共用同一个 `PluginContext` API。
 
-示例见 [`examples/plugins/hello`](../examples/plugins/hello)。
+推荐把插件做成独立包，至少包含 `package.json`、`tsconfig.json` 和 `src/index.ts`。`package.json` 的入口指向构建后的 `dist/index.js`，并把 `@jsbot/core` 声明为依赖：
 
-## LLM 运行时注入
-
-`createLlmPlugin(factory)` 接受 `LlmRuntimeFactory`，用于测试或自定义 OpenAI 兼容实现：
-
-```ts
-import { createLlmPlugin } from './plugins/llm/index.js'
-
-const plugin = createLlmPlugin((options) => ({
-    async chat(model, messages, { signal }) {
-        return await myChat(options, model, messages, signal)
-    },
-    async models() {
-        return ['model-a']
-    },
-}))
+```json
+{
+    "name": "@jsbot/plugin-demo",
+    "private": true,
+    "type": "module",
+    "main": "./dist/index.js",
+    "types": "./dist/index.d.ts",
+    "dependencies": {
+        "@jsbot/core": "file:../.."
+    }
+}
 ```
 
-此入口主要供内核测试和高级集成使用；普通部署直接使用内置 `llmPlugin`。
+内置插件 `core`、`admin` 是 `src/plugins/` 下的普通源码。其他插件放在 `local-plugins/`，该目录整体被 `.gitignore` 排除，并且有自己的本地 workspace 根：
+
+```bash
+npm install --prefix local-plugins
+npm run build:local
+
+node dist/app.js \
+    --plugin-dir local-plugins/poke/dist \
+    --plugin-dir local-plugins/llm/dist
+```
+
+示例见 [`examples/plugins/hello`](../examples/plugins/hello)。

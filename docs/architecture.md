@@ -3,7 +3,8 @@
 ## 分层
 
 ```text
-src/plugins/*  ->  src/core/index.ts 的公共 API
+src/plugins/*  ->  src/core/index.ts 的公共 API（内置插件）
+外部插件包     ->  @jsbot/core 的公共 API
 src/core/*     ->  SDK adapter、Node 内置模块、SQLite
 src/core/*     -X-> src/plugins/*
 ```
@@ -13,8 +14,10 @@ src/core/*     -X-> src/plugins/*
 - 插件不能直接 import `SnowLumaWebSocketClient`。
 - 插件不能直接操作 `Router`、数据库或 SDK client。
 - 插件只能通过 `PluginContext`、`EventContext` 和 `BotApi` 使用能力。
-- `core` 不 import 任何内置插件；内置插件在 `src/plugins/index.ts` 显式注册。
+- `core` 不 import 任何插件；`core`、`admin` 在 `src/plugins/index.ts` 显式注册。
+- 内置插件是普通源码，随内核一起编译；没有独立依赖，不单独建包。
 - 外部插件由 `src/app.ts` 在启动前扫描并追加到内置插件之后。
+- 本地插件放在不跟踪的 `local-plugins/`，每个插件是独立包，通过 `--plugin-dir` 加载。
 
 ## 运行时主链路
 
@@ -31,7 +34,7 @@ SDK WebSocket
      -> 错误隔离
 ```
 
-命令一旦命中，即使插件被 gating 关闭或权限不足，也不会继续进入普通 `onMessage` handler。这样可以避免命令消息被 LLM 等普通消息 handler 重复处理。
+命令一旦命中，即使插件被 gating 关闭或权限不足，也不会继续进入普通 `onMessage` handler。
 
 ## 目录
 
@@ -61,11 +64,12 @@ src/
     storage/              SQLite 和 Session
     lifecycle/            启动/停止状态机
   plugins/
-    core/                 /help、/status、/role
-    admin/                /utter、/utter.raw
-    poke/                 poke 回复
-    llm/                  OpenAI 兼容 LLM
-  plugins/index.ts        内置插件清单
+    core/index.ts         /help、/status、/role
+    admin/index.ts        /utter、/utter.raw
+    index.ts              内置插件清单
+local-plugins/            本地 workspace 根，整个目录不跟踪
+  poke/
+  llm/
 ```
 
 ## 启动顺序
@@ -105,9 +109,33 @@ kernel.stop()
 - `client.connect()` 失败：插件停止，client 和数据库关闭。
 - 插件 `start()` 失败：已经启动的插件逆序停止，client 和数据库关闭。
 
+## 构建
+
+仓库是单包结构，没有 `workspaces`。内置插件和内核共用一个 `tsconfig.build.json`：
+
+```bash
+npm run build   # 一次 tsc，输出 dist/core 和 dist/plugins
+npm run smoke   # node dist/app.js --help
+```
+
+`@jsbot/core` 的包入口指向 `dist/core/index.js`，供 `local-plugins/` 里的独立包在运行时解析。
+
+## 本地插件
+
+本地插件放在 `local-plugins/`，该目录整体不进入 git。它有自己的 workspace 根和 lockfile：
+
+```bash
+npm install --prefix local-plugins
+npm run build:local
+node dist/app.js \
+    --plugin-dir local-plugins/poke/dist \
+    --plugin-dir local-plugins/llm/dist
+```
+
+`--plugin-dir` 可以重复。应用会跳过与内置插件同 ID 的外部插件，避免重复注册。
+
 ## 测试边界
 
 - `FakeClient` 替代真实 WebSocket。
 - 内存 SQLite 替代 `data-v2`。
-- `FakeLlm` 注入 `LlmRuntimeFactory`，测试不访问网络。
-- Router、PluginHost、TaskQueue、Session 和每个内置插件都有独立测试。
+- Router、PluginHost、TaskQueue、Session、`core` 和 `admin` 都有独立测试。

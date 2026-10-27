@@ -11,4 +11,13 @@ bot.config.v2.json
 data/
 data-v2/
 
+# Local plugins are not tracked.
+local-plugins/
+
+# Tests for local-only plugins are not tracked.
+tests/plugins/*
+!tests/plugins/admin.test.ts
+!tests/plugins/core.test.ts
+tests/helpers/fake-llm.ts
+
 *.bak
