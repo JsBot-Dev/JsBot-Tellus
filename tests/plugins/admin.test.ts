@@ -90,7 +90,7 @@ describe('admin plugin', () => {
 
         await app.dispatch(
             groupMessage({
-                raw_message: '/utter.raw [CQ:face,id=1]',
+                raw_message: '/utter raw [CQ:face,id=1]',
                 user_id: 20000,
             })
         )
@@ -99,7 +99,7 @@ describe('admin plugin', () => {
 
         await app.dispatch(
             groupMessage({
-                raw_message: '/utter.raw [CQ:face,id=1]',
+                raw_message: '/utter raw [CQ:face,id=1]',
                 user_id: 10000,
             })
         )
@@ -240,6 +240,38 @@ describe('admin plugin', () => {
             expect(installer.remove).not.toHaveBeenCalled()
             expect(installer.update).not.toHaveBeenCalled()
             expect(onRestart).not.toHaveBeenCalled()
+
+            await app.stop()
+        })
+
+        it('shows usage for the group root and unknown subcommands', async () => {
+            const app = await createTestApp({
+                plugins: [adminPlugin],
+                roles: {
+                    superadmin: [10000],
+                    admin: [],
+                },
+            })
+
+            for (const command of [
+                '/plugin',
+                '/plugin help',
+                '/plugin unknown',
+            ]) {
+                await app.dispatch(
+                    groupMessage({
+                        raw_message: command,
+                        user_id: 10000,
+                    })
+                )
+            }
+
+            const messages = sentMessages(app.client.sent)
+
+            expect(messages).toHaveLength(3)
+            expect(messages.every((message) => message.includes('用法'))).toBe(
+                true
+            )
 
             await app.stop()
         })

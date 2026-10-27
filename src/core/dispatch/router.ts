@@ -8,6 +8,7 @@ import type { Logger } from '../logging/logger.js'
 import type { MessageSender } from '../messaging/sender.js'
 import type { PluginGate } from '../plugin/gating.js'
 import type {
+    CommandGroupRegistrar,
     CommandHandler,
     CommandInfo,
     EventType,
@@ -22,7 +23,11 @@ import type {
 import type { RoleService } from '../security/roles.js'
 import { PermissionRefuser } from '../security/refuse.js'
 import type { Permission } from '../security/permission.js'
-import { CommandRegistry, type CommandRegistration } from './command.js'
+import {
+    CommandRegistry,
+    type CommandGroupRegistration,
+    type CommandRegistration,
+} from './command.js'
 import {
     createEventContext,
     eventTypeOf,
@@ -56,6 +61,16 @@ export interface RegisterCommandOptions {
     permission?: Permission | undefined
     description?: string | undefined
     handler: CommandHandler
+}
+
+export interface RegisterCommandGroupOptions {
+    pluginId: string
+    name: string
+    aliases?: string[] | undefined
+    prefixes?: string[] | undefined
+    permission?: Permission | undefined
+    description?: string | undefined
+    handler?: CommandHandler | undefined
 }
 
 export interface RegisterNoticeOptions extends NoticeOptions {
@@ -197,6 +212,27 @@ export class Router {
         }
 
         return this.commands.register(registration)
+    }
+
+    registerCommandGroup(
+        options: RegisterCommandGroupOptions,
+        setup: (group: CommandGroupRegistrar) => void
+    ): () => void {
+        const registration: CommandGroupRegistration = {
+            pluginId: options.pluginId,
+            name: options.name,
+            aliases: options.aliases ?? [],
+            prefixes: options.prefixes ?? ['/'],
+            permission: options.permission ?? 'User',
+            ...(options.description !== undefined
+                ? { description: options.description }
+                : {}),
+            ...(options.handler !== undefined
+                ? { handler: options.handler }
+                : {}),
+        }
+
+        return this.commands.group(registration, setup)
     }
 
     registerMessage(pluginId: string, handler: MessageHandler): () => void {

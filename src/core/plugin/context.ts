@@ -53,6 +53,30 @@ export function createPluginContext<TConfig>(
                     handler,
                 })
             },
+            group(options, setup) {
+                return deps.router.registerCommandGroup(
+                    {
+                        pluginId: id,
+                        name: options.name,
+                        ...(options.aliases !== undefined
+                            ? { aliases: options.aliases }
+                            : {}),
+                        ...(options.prefixes !== undefined
+                            ? { prefixes: options.prefixes }
+                            : {}),
+                        ...(options.permission !== undefined
+                            ? { permission: options.permission }
+                            : {}),
+                        ...(options.description !== undefined
+                            ? { description: options.description }
+                            : {}),
+                        ...(options.handler !== undefined
+                            ? { handler: options.handler }
+                            : {}),
+                    },
+                    setup
+                )
+            },
             list() {
                 return deps.router.listCommands()
             },

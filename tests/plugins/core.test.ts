@@ -67,6 +67,7 @@ describe('core plugin', () => {
 
         expect(userText).toContain('/help')
         expect(userText).not.toContain('/utter')
+        expect(userText).not.toContain('/plugin')
 
         const superadmin = await app.dispatch(
             groupMessage({
@@ -77,7 +78,9 @@ describe('core plugin', () => {
         const superadminText = messageText(app, superadmin)
 
         expect(superadminText).toContain('/utter')
-        expect(superadminText).toContain('/utter.raw')
+        expect(superadminText).toContain('/utter raw')
+        expect(superadminText).toContain('/plugin install')
+        expect(superadminText).toContain('/plugin list')
 
         await app.stop()
     })
