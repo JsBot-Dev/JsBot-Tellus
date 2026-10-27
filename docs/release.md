@@ -1,15 +1,15 @@
 # 发布流程
 
-`@jsbot-tellus/core` 通过 GitHub Actions 的 CI 工作流自动发布：
+`@jsbot-tellus/core` 通过 GitHub Actions 自动发布：
 
-- 工作流：[`.github/workflows/ci.yaml`](../.github/workflows/ci.yaml)
-- 触发方式：推送到 `main`，或在 `main` 上手动运行 `CI`
+- CI 工作流：[`.github/workflows/ci.yaml`](../.github/workflows/ci.yaml)，负责类型检查、格式检查、依赖审计、测试、构建和 smoke
+- CD 工作流：[`.github/workflows/cd.yaml`](../.github/workflows/cd.yaml)，在 `main` 的 CI 成功后发布到 npm
+- 触发方式：推送到 `main`，或在 `main` 上手动运行 `CI`；不需要创建或推送版本标签
 - 发布方式：npm Trusted Publisher（GitHub OIDC），不需要长期 `NPM_TOKEN`
-- 发布条件：类型检查、格式检查、依赖审计、测试、构建、CLI smoke 全部通过
 - 幂等处理：如果 `package.json` 中的版本已经存在于 npm，发布步骤会跳过
 - 发布产物带 npm provenance
 
-不需要创建或推送版本标签。版本合并到 `main` 且 CI 通过后即自动发布。
+CD 只会在 CI 结论为成功、且 CI 运行来自 `main` 的 `push` 或 `workflow_dispatch` 时执行。`pull_request` 运行和其他分支不会触发发布。
 
 ## 一次性配置
 
@@ -20,12 +20,12 @@
 | Provider             | GitHub Actions |
 | Organization or user | `JsBot-Dev`    |
 | Repository           | `JsBot-Tellus` |
-| Workflow filename    | `ci.yaml`      |
+| Workflow filename    | `cd.yaml`      |
 | Environment          | 留空           |
 
-工作流文件名必须与实际文件一致。如果以后重命名 `ci.yaml`，需要同步修改 npm 的 Trusted Publisher 配置。
+工作流文件名必须与实际文件一致。如果以后重命名 `cd.yaml`，需要同步修改 npm 的 Trusted Publisher 配置。
 
-工作流已经声明：
+CD 工作流已经声明：
 
 ```yaml
 permissions:
@@ -46,15 +46,15 @@ git commit -m "Release v$(node -p "require('./package.json').version")"
 git push
 ```
 
-将 `patch` 换成 `minor` 或 `major` 可以发布对应版本。合并到 `main`（或直接推送到 `main`）后，CI 会在全部检查通过时自动发布该版本。
+将 `patch` 换成 `minor` 或 `major` 可以发布对应版本。合并到 `main`（或直接推送到 `main`）后，CI 会先运行；CI 成功后 CD 自动发布该版本。
 
-如果 `main` 上的版本已经在 npm 存在，发布步骤只会输出提示并跳过，不会失败。因此重复推送 `main` 是安全的。
+如果 `main` 上的版本已经在 npm 存在，CD 只会输出提示并跳过，不会失败。因此重复推送 `main` 是安全的。
 
 ## 手动运行
 
-在 GitHub Actions 中打开 `CI`，选择 `Run workflow`，并选择 `main` 分支。CI 通过后会执行与普通推送相同的发布步骤。
+在 GitHub Actions 中打开 `CI`，选择 `Run workflow`，并选择 `main` 分支。CI 成功后，CD 会像普通推送一样自动发布。
 
-在其他分支上手动运行只执行检查，不会发布。
+如果 CD 因临时故障失败，可以在 Actions 中打开对应的 `CD` 运行并选择 `Re-run failed jobs`，不需要重新推送代码。
 
 ## 验证
 
@@ -74,7 +74,8 @@ jsbot --help
 
 ## 常见失败
 
-- **`ENEEDAUTH` / `E403`**：检查 npm Trusted Publisher 的组织、仓库和工作流文件名是否完全匹配（文件名必须是 `ci.yaml`）。
-- **`npm publish` 提示版本已存在**：说明该版本此前已经发布；提升 `package.json` 版本后重新推送到 `main`。
-- **provenance 失败**：确认工作流仍有 `id-token: write` 权限，并且仓库是公开的。
-- **CI 未触发发布**：确认提交已推送到 `main`，且工作流运行成功；`pull_request` 运行不会发布。
+- **`ENEEDAUTH` / `E403`**：检查 npm Trusted Publisher 的组织、仓库和工作流文件名是否完全匹配（文件名必须是 `cd.yaml`）。
+- **`npm publish` 提示版本已存在**：说明该版本此前已经发布；提升 `package.json` 版本后重新推送到 `main`。正常情况下 CD 会自动跳过已发布版本。
+- **provenance 失败**：确认 CD 工作流仍有 `id-token: write` 权限，并且仓库是公开的。
+- **CD 没有触发**：确认 `CI` 已在 `main` 上成功完成；`pull_request` 运行和其他分支不会触发发布。
+- **CD 找不到要发布的提交**：确认 `ci.yaml` 和 `cd.yaml` 都已经在默认分支上。
