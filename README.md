@@ -144,7 +144,7 @@ npm run build:local   # 构建 plugins
 
 ## 发布
 
-CD 由 [`.github/workflows/cd.yaml`](.github/workflows/cd.yaml) 驱动：推送 `v*` 标签时自动检查、构建并通过 npm Trusted Publisher 发布，也支持手动 dry run。首次配置和版本发布步骤见[发布流程](docs/release.md)。
+发布由 [`.github/workflows/ci.yaml`](.github/workflows/ci.yaml) 驱动：推送到 `main` 且检查、测试、构建全部通过后，通过 npm Trusted Publisher 自动发布；已存在的版本会跳过。不需要版本标签。首次配置和版本发布步骤见[发布流程](docs/release.md)。
 
 ## 文档
 
