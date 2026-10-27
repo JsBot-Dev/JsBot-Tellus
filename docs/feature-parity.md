@@ -2,18 +2,19 @@
 
 ## 保留并重建
 
-| 旧能力        | 新位置                     | 说明                           |
-| ------------- | -------------------------- | ------------------------------ |
-| 配置加载      | `core/config`              | v2 schema，错误带路径          |
-| WebSocket     | `core/client.ts`           | 只暴露 `BotClient`             |
-| 命令注册      | `core/plugin/types.ts`     | `definePlugin` + Router 注册表 |
-| 权限          | `core/security`            | `User/Admin/SuperAdmin`        |
-| 群开关        | `PluginGate`               | `enabled/private/groups`       |
-| 消息发送      | `core/messaging/sender.ts` | reply、长消息 forward          |
-| 插件 KV       | `core/plugin/kv.ts`        | 按插件 ID 隔离的 SQLite KV     |
-| 管理发送      | `src/plugins/admin`        | `/utter`、`/utter.raw`         |
-| 角色查询/帮助 | `src/plugins/core`         | `/role`、`/help`、`/status`    |
-| 内置插件      | `src/plugins/*`            | 普通源码，随内核编译           |
+| 旧能力        | 新位置                     | 说明                                           |
+| ------------- | -------------------------- | ---------------------------------------------- |
+| 配置加载      | `core/config`              | v2 schema，错误带路径                          |
+| WebSocket     | `core/client.ts`           | 只暴露 `BotClient`                             |
+| 命令注册      | `core/plugin/types.ts`     | `definePlugin` + Router 注册表                 |
+| 权限          | `core/security`            | `User/Admin/SuperAdmin`                        |
+| 群开关        | `PluginGate`               | `enabled/private/groups`                       |
+| 消息发送      | `core/messaging/sender.ts` | reply、长消息 forward                          |
+| 插件 KV       | `core/plugin/kv.ts`        | 按插件 ID 隔离的 SQLite KV                     |
+| 管理发送      | `src/plugins/admin`        | `/utter`、`/utter.raw`                         |
+| 角色查询/帮助 | `src/plugins/core`         | `/role`、`/help`、`/status`                    |
+| 内置插件      | `src/plugins/*`            | 普通源码，随内核编译                           |
+| 在线安装      | `core/plugin/installer.ts` | `/plugin install/list/remove/update`，重启生效 |
 
 ## 本地插件
 
@@ -36,7 +37,7 @@
 | `echo` 插件                       | 不重建；由 `admin` 的 `/utter` 覆盖      |
 | `like-me`                         | 不重建                                   |
 | 旧配置/旧 DB                      | 不读取、不迁移                           |
-| 热加载/插件市场                   | 不在范围内                               |
+| 热加载 / 插件市场界面             | 不在范围内；支持 npm 安装，重启后生效    |
 
 ## 验收场景
 
@@ -50,4 +51,6 @@
 - 配置错误包含路径，未知插件 ID 启动失败。
 - 外部插件目录可以加载并执行。
 - 本地插件可以通过 `--plugin-dir` 加载。
+- 已安装的 npm 插件包可以在重启后加载，安装失败会回滚。
+- 非 SuperAdmin 不能安装、卸载或更新插件包。
 - `npm run build` 后 `node dist/app.js` 可用。

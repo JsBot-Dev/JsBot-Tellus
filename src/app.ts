@@ -13,12 +13,13 @@ import {
     parseLogLevel,
     type Logger,
 } from './core/logging/logger.js'
+import { resolveInstallDir } from './core/plugin/install-dir.js'
+import { NpmPluginInstaller } from './core/plugin/installer.js'
+import { loadInstalledPlugins } from './core/plugin/installed.js'
 import { loadPluginsFromDirectory } from './core/plugin/loader.js'
 import type { AnyPluginDefinition } from './core/plugin/types.js'
 import { openDatabase } from './core/storage/database.js'
 import { builtinPlugins } from './plugins/index.js'
-
-const builtinIds = new Set(builtinPlugins.map((plugin) => plugin.manifest.id))
 
 const USAGE = `Usage: jsbot [options]
 
@@ -55,32 +56,49 @@ function pickDirs(value: unknown): string[] {
         .filter((item) => item.length > 0)
 }
 
-async function loadPlugins(
-    directories: string[],
+interface PluginSource {
+    label: string
+    plugins: AnyPluginDefinition[]
+}
+
+function mergePlugins(
+    sources: PluginSource[],
     logger: Logger
-): Promise<AnyPluginDefinition[]> {
-    if (directories.length === 0) return builtinPlugins
+): AnyPluginDefinition[] {
+    const seen = new Set<string>()
+    const plugins: AnyPluginDefinition[] = []
 
-    const external: AnyPluginDefinition[] = []
+    for (const source of sources) {
+        for (const plugin of source.plugins) {
+            const id = plugin.manifest.id
 
-    for (const directory of directories) {
-        logger.info('loading external plugins', directory)
-
-        const loaded = await loadPluginsFromDirectory(directory)
-
-        for (const plugin of loaded) {
-            if (builtinIds.has(plugin.manifest.id)) {
+            if (seen.has(id)) {
                 logger.warn(
-                    `skipping external plugin ${plugin.manifest.id}: built-in plugin already loaded`
+                    `skipping ${source.label} plugin ${id}: plugin id already loaded`
                 )
                 continue
             }
 
-            external.push(plugin)
+            seen.add(id)
+            plugins.push(plugin)
         }
     }
 
-    return [...builtinPlugins, ...external]
+    return plugins
+}
+
+async function loadExternalPlugins(
+    directories: string[],
+    logger: Logger
+): Promise<AnyPluginDefinition[]> {
+    const plugins: AnyPluginDefinition[] = []
+
+    for (const directory of directories) {
+        logger.info('loading external plugins', directory)
+        plugins.push(...(await loadPluginsFromDirectory(directory)))
+    }
+
+    return plugins
 }
 
 async function main(): Promise<void> {
@@ -124,7 +142,31 @@ async function main(): Promise<void> {
     const cliPluginDirs = pickDirs(values['plugin-dir'])
     const envPluginDirs = pickDirs(process.env.BOT_PLUGIN_DIR)
     const pluginDirs = cliPluginDirs.length > 0 ? cliPluginDirs : envPluginDirs
-    const plugins = await loadPlugins(pluginDirs, logger)
+    const externalPlugins = await loadExternalPlugins(pluginDirs, logger)
+    const installDir = resolveInstallDir(config.installer, dataDir)
+    const installed = await loadInstalledPlugins(installDir, logger)
+
+    if (installed.plugins.length > 0) {
+        logger.info(
+            `loaded ${installed.plugins.length} plugin(s) from ${installDir}`
+        )
+    }
+
+    const plugins = mergePlugins(
+        [
+            { label: 'built-in', plugins: builtinPlugins },
+            { label: 'external', plugins: externalPlugins },
+            { label: 'installed', plugins: installed.plugins },
+        ],
+        logger
+    )
+    const installer = new NpmPluginInstaller({
+        dir: installDir,
+        config: config.installer,
+        logger: logger.child('installer'),
+        reservedIds: () => new Set(plugins.map((plugin) => plugin.manifest.id)),
+        configuredPluginIds: () => new Set(Object.keys(config.plugins)),
+    })
     const database = openDatabase({ dataDir })
 
     const client = createBotClient({
@@ -138,6 +180,7 @@ async function main(): Promise<void> {
         logger,
         database,
         plugins,
+        installer,
     })
 
     let shuttingDown = false

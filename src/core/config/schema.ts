@@ -45,6 +45,17 @@ export const rolesConfigSchema = z
     .strict()
     .default({ superadmin: [], admin: [] })
 
+export const installerConfigSchema = z
+    .object({
+        enabled: z.boolean().default(true),
+        dir: z.string().min(1).optional(),
+        registry: z.url().default('https://registry.npmjs.org/'),
+        allowedPackages: z.array(z.string().min(1)).default([]),
+        allowScripts: z.boolean().default(false),
+        timeoutMs: z.number().int().positive().max(600_000).default(120_000),
+    })
+    .strict()
+
 export const appConfigSchema = z
     .object({
         url: z.url({ protocol: /^wss?$/ }).default('ws://127.0.0.1:3001/'),
@@ -52,6 +63,13 @@ export const appConfigSchema = z
         roles: rolesConfigSchema,
         message: messageConfigSchema,
         plugins: z.record(z.string(), pluginEnvelopeSchema).default({}),
+        installer: installerConfigSchema.default({
+            enabled: true,
+            registry: 'https://registry.npmjs.org/',
+            allowedPackages: [],
+            allowScripts: false,
+            timeoutMs: 120_000,
+        }),
     })
     .strict()
 
@@ -59,6 +77,7 @@ export type PluginGroups = z.infer<typeof pluginGroupsSchema>
 export type PluginEnvelope = z.infer<typeof pluginEnvelopeSchema>
 export type MessageConfig = z.infer<typeof messageConfigSchema>
 export type RolesConfig = z.infer<typeof rolesConfigSchema>
+export type InstallerConfig = z.infer<typeof installerConfigSchema>
 export type AppConfig = z.infer<typeof appConfigSchema>
 
 export function formatConfigIssues(error: z.ZodError, prefix?: string): string {

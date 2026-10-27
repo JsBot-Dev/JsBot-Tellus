@@ -171,9 +171,11 @@ const allowed = ctx.core.roles.can(role, 'Admin')
 const commands = ctx.core.commands.list()
 const plugins = ctx.core.plugins.list()
 const uptime = ctx.core.uptime()
+
+const installed = await ctx.core.installer.list()
 ```
 
-只读服务，适合帮助、状态类插件。
+核心服务由内核注入，适合帮助、状态类插件。`ctx.core.installer` 额外提供 `install` / `remove` / `update` / `list`；它不会检查调用者角色，权限判断由调用方负责（`admin` 的 `/plugin` 命令要求 SuperAdmin）。第三方插件不应把这些方法暴露给普通用户。
 
 ## 命令
 
@@ -334,20 +336,24 @@ node dist/app.js --plugin-dir examples/plugins
 
 TypeScript 插件必须在生产运行前编译为 JavaScript。外部插件和内置插件共用同一个 `PluginContext` API。
 
-推荐把插件做成独立包，至少包含 `package.json`、`tsconfig.json` 和 `src/index.ts`。`package.json` 的入口指向构建后的 `dist/index.js`，并把 `@jsbot/core` 声明为依赖：
+推荐把插件做成独立包，至少包含 `package.json`、`tsconfig.json` 和 `src/index.ts`。`package.json` 的入口指向构建后的 `dist/index.js`：
 
 ```json
 {
-    "name": "@jsbot/plugin-demo",
-    "private": true,
+    "name": "@yourscope/plugin-demo",
     "type": "module",
     "main": "./dist/index.js",
     "types": "./dist/index.d.ts",
-    "dependencies": {
+    "devDependencies": {
         "@jsbot/core": "file:../.."
+    },
+    "dependencies": {
+        "zod": "^4.6.7"
     }
 }
 ```
+
+`@jsbot/core` 只用于类型和 `definePlugin`，运行时由宿主提供。本地开发可以像上面一样用 `file:` 或 workspace 链接；发布到 npm 时不要把 `@jsbot/core` 写进 `dependencies` 或 `peerDependencies`，`file:` 开发依赖也可以直接删掉。仅在本机使用的包可以加 `"private": true`。插件自己的第三方依赖放在 `dependencies`，npm 安装插件时会一并安装。
 
 内置插件 `core`、`admin` 是 `src/plugins/` 下的普通源码。其他插件放在 `local-plugins/`，该目录整体被 `.gitignore` 排除，并且有自己的本地 workspace 根：
 
@@ -361,3 +367,30 @@ node dist/app.js \
 ```
 
 示例见 [`examples/plugins/hello`](../examples/plugins/hello)。
+
+## 通过 npm 发布与安装
+
+发布到 npm registry 的插件包必须是可直接运行的构建产物，安装后不再执行编译。要求：
+
+- ESM 包（`"type": "module"`），发布 `dist/` 中的 JavaScript 和 `.d.ts`。
+- 通过 `exports["."]` 或 `main` 提供包根入口；安装器只解析根入口。
+- 根入口导出插件定义：`export default plugin`、`export const plugin = ...` 或 `export const plugins = [...]`。
+- `manifest.id` 必须匹配 `[a-z0-9][a-z0-9._-]*`，且不能与内置插件、`--plugin-dir` 插件或其它已安装插件重复。
+- 插件之间的依赖写在 `manifest.dependencies`，依赖必须由同一个包导出，或已由其它已安装包提供。
+- 不要依赖源码仓库或相对的 `file:` 依赖；第三方运行时依赖写入 `dependencies`。
+- 不要把 `@jsbot/core` 写进 `dependencies` 或 `peerDependencies`。宿主会在安装目录创建 `node_modules/@jsbot/core` 链接，运行时直接解析到当前内核。
+- 不要依赖 `postinstall` 构建。安装器默认使用 `--ignore-scripts`，只有 `installer.allowScripts=true` 才会执行 npm 脚本。
+
+发布后在聊天中安装：
+
+```text
+/plugin install @yourscope/plugin-demo@1.0.0
+/plugin install @yourscope/plugin-demo@latest
+/plugin list
+/plugin update @yourscope/plugin-demo
+/plugin remove @yourscope/plugin-demo
+```
+
+安装、更新和卸载在重启后生效。安装器只接受 npm registry 包，拒绝 git、file、URL、workspace、link 和版本范围。安装目录默认是 `<data-dir>/plugins`，配置见[插件安装器](configuration.md#插件安装器)。
+
+插件配置仍然写在 `bot.config.v2.json` 的 `plugins.<id>` 中。安装器不会自动修改配置；卸载时如果配置里仍保留对应 ID，命令会提示先删除，否则重启会因未知插件 ID 失败。

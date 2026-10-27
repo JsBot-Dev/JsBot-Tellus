@@ -134,8 +134,39 @@ node dist/app.js \
 
 `--plugin-dir` 可以重复。应用会跳过与内置插件同 ID 的外部插件，避免重复注册。
 
+## 在线安装插件
+
+`admin` 插件注册 `/plugin` 命令，通过 `ctx.core.installer` 调用 `NpmPluginInstaller`。安装器位于 `src/core/plugin/`：
+
+```text
+spec.ts             解析并校验 npm 包名 / 精确版本 / dist-tag
+npm-runner.ts       execFile 调用 npm，支持超时和取消
+install-dir.ts      <data-dir>/plugins 的 manifest、状态文件和 @jsbot/core 链接
+install-validate.ts 在子进程中 import 包，确认它导出插件定义
+installer.ts        安装 / 列表 / 卸载 / 更新、串行化、备份与回滚
+installed.ts        启动时从安装目录加载已安装包
+```
+
+安装流程：
+
+```text
+/plugin install <spec>
+  -> 校验 npm registry 来源和允许列表
+  -> npm install <spec> --save-exact [--ignore-scripts]
+  -> 重建 node_modules/@jsbot/core 链接
+  -> 子进程 import 包，收集 manifest.id / version / dependencies
+  -> 检查 id 冲突和插件依赖
+  -> 写入 .jsbot-installed.json
+  -> 重启后由 installed.ts 加载
+```
+
+npm 或校验失败时，安装器恢复安装前的 `package.json` / `package-lock.json`，并运行 `npm ci`（没有旧 lockfile 时运行 `npm install`）恢复 `node_modules`。所有安装操作通过内部队列串行执行。
+
+加载顺序是内置插件 → `--plugin-dir` 外部插件 → `<data-dir>/plugins` 已安装插件。重复 ID 保留先加载的插件并记录警告。安装器不会热加载插件，也不会修改 `plugins` 配置。
+
 ## 测试边界
 
 - `FakeClient` 替代真实 WebSocket。
 - 内存 SQLite 替代 `data-v2`。
 - Router、PluginHost、TaskQueue、Session、`core` 和 `admin` 都有独立测试。
+- 安装器使用假的 npm runner 和校验器覆盖安装、回滚、卸载、更新、并发和禁用场景；子进程校验脚本另有真实测试。

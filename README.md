@@ -49,6 +49,10 @@ npm run dev
 | `/role`           | User       | 显示当前用户角色   |
 | `/utter <文本>`   | Admin      | 向当前会话发送文本 |
 | `/utter.raw <CQ>` | SuperAdmin | 发送原始 CQ 消息   |
+| `/plugin list`    | Admin      | 列出已安装插件包   |
+| `/plugin install` | SuperAdmin | 安装 npm 插件包    |
+| `/plugin remove`  | SuperAdmin | 卸载插件包         |
+| `/plugin update`  | SuperAdmin | 更新插件包         |
 
 ## 内置与本地插件
 
@@ -81,6 +85,25 @@ BOT_PLUGIN_DIR=local-plugins/poke/dist,local-plugins/llm/dist npm start
 ```
 
 外部目录中与内置插件同 ID 的插件会被跳过。外部插件是普通 ESM 模块，默认导出、`plugin` 命名导出或 `plugins` 数组导出均可被加载。开发和发布方式见 [docs/plugin-api.md](docs/plugin-api.md)，示例位于 [`examples/plugins/hello`](examples/plugins/hello)。
+
+## 在线安装插件包
+
+在聊天中由 SuperAdmin 执行：
+
+```text
+/plugin install @scope/plugin@1.0.0
+/plugin list
+/plugin update @scope/plugin
+/plugin remove @scope/plugin
+```
+
+- 只接受 npm registry 包，`name`、`name@版本`、`name@tag`、`@scope/name[@版本|tag]`；拒绝 git、file、URL、workspace、link 等来源。
+- 安装目录默认是 `<data-dir>/plugins`，可用 `installer.dir` 修改。每个包带自己的依赖，不影响内核依赖。
+- 安装完成后需要重启才能加载。`/plugin list` 会标记“已加载”或“重启后生效”。
+- 默认使用 `--ignore-scripts`；只有显式设置 `installer.allowScripts=true` 才会执行 npm 生命周期脚本。
+- 卸载不会修改 `plugins` 配置。如果配置里仍有对应插件 ID，重启前需要手动删除，命令会给出警告；其它已安装包依赖被卸载插件 ID 时也会提示。
+
+安装器默认开启，但安装、卸载和更新始终要求 SuperAdmin。配置项见 [docs/configuration.md](docs/configuration.md#插件安装器)，发布要求见 [docs/plugin-api.md](docs/plugin-api.md#通过-npm-发布与安装)。
 
 ## CLI
 

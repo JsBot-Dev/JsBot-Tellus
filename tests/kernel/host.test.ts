@@ -15,6 +15,7 @@ import {
     PluginHost,
     sortPlugins,
 } from '../../src/core/plugin/host.js'
+import { createDisabledInstaller } from '../../src/core/plugin/installer.js'
 import { SqlitePluginKV } from '../../src/core/plugin/kv.js'
 import type {
     AnyPluginDefinition,
@@ -99,6 +100,7 @@ function harness(
         plugins: {
             list: () => [],
         },
+        installer: createDisabledInstaller(),
         uptime: () => 0,
     }
 

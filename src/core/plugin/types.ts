@@ -120,6 +120,40 @@ export interface PluginStatus {
     list(): PluginStatusEntry[]
 }
 
+export interface InstalledPackageInfo {
+    packageName: string
+    version: string
+    spec: string
+    pluginIds: string[]
+    installedAt: string
+    loaded: boolean
+}
+
+export interface PluginInstallResult {
+    packageName: string
+    version: string
+    pluginIds: string[]
+}
+
+export interface PluginRemoveResult {
+    packageName: string
+    pluginIds: string[]
+    warnings: string[]
+}
+
+export interface PluginUpdateResult {
+    updated: PluginInstallResult[]
+    failed: Array<{ packageName: string; message: string }>
+}
+
+export interface PluginInstaller {
+    readonly enabled: boolean
+    list(): Promise<InstalledPackageInfo[]>
+    install(spec: string, signal?: AbortSignal): Promise<PluginInstallResult>
+    remove(target: string, signal?: AbortSignal): Promise<PluginRemoveResult>
+    update(target?: string, signal?: AbortSignal): Promise<PluginUpdateResult>
+}
+
 export interface CoreServices {
     roles: {
         roleOf(userId: number): Permission
@@ -129,6 +163,7 @@ export interface CoreServices {
         list(): ReadonlyArray<CommandInfo>
     }
     plugins: PluginStatus
+    installer: PluginInstaller
     uptime(): number
 }
 

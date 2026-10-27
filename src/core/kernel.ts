@@ -9,8 +9,13 @@ import { createMessageSender } from './messaging/sender.js'
 import { createPluginContext } from './plugin/context.js'
 import { PluginGate } from './plugin/gating.js'
 import { PluginHost } from './plugin/host.js'
+import { createDisabledInstaller } from './plugin/installer.js'
 import { SqlitePluginKV } from './plugin/kv.js'
-import type { AnyPluginDefinition, CoreServices } from './plugin/types.js'
+import type {
+    AnyPluginDefinition,
+    CoreServices,
+    PluginInstaller,
+} from './plugin/types.js'
 import { RoleService } from './security/roles.js'
 import type { Database } from './storage/database.js'
 import { SqliteSessionStore } from './storage/session.js'
@@ -21,6 +26,7 @@ export interface KernelOptions {
     logger: Logger
     database: Database
     plugins?: AnyPluginDefinition[] | undefined
+    installer?: PluginInstaller | undefined
     drainTimeoutMs?: number | undefined
 }
 
@@ -76,6 +82,7 @@ export class Kernel {
             plugins: {
                 list: () => host.listStatus(),
             },
+            installer: options.installer ?? createDisabledInstaller(),
             uptime: () =>
                 this.startedAt === null ? 0 : Date.now() - this.startedAt,
         }

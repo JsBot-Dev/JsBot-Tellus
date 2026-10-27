@@ -25,6 +25,13 @@
         "charThreshold": 50,
         "lineThreshold": 3
     },
+    "installer": {
+        "enabled": true,
+        "registry": "https://registry.npmjs.org/",
+        "allowedPackages": [],
+        "allowScripts": false,
+        "timeoutMs": 120000
+    },
     "plugins": {
         "core": {
             "enabled": true
@@ -44,11 +51,46 @@
 | `accessToken` | string | 无                                        | OneBot access token       |
 | `roles`       | object | `{ superadmin: [], admin: [] }`           | 角色名单                  |
 | `message`     | object | `{ charThreshold: 50, lineThreshold: 3 }` | 长消息转 forward 阈值     |
+| `installer`   | object | 见下文                                    | npm 插件安装器            |
 | `plugins`     | object | `{}`                                      | 以插件 ID 为键的配置      |
 
 顶层未知字段会导致启动失败。
 
 `message.charThreshold` 按 CQ 字符串长度计算；`message.lineThreshold` 按换行后的行数计算。任一阈值超过都会把回复转成 forward 发送。
+
+## 插件安装器
+
+`installer` 控制 `/plugin install`、`/plugin remove`、`/plugin update` 的行为。安装器默认开启，但所有写操作始终要求 SuperAdmin。
+
+```json
+{
+    "installer": {
+        "enabled": true,
+        "dir": "data-v2/plugins",
+        "registry": "https://registry.npmjs.org/",
+        "allowedPackages": ["@scope/*", "another-plugin"],
+        "allowScripts": false,
+        "timeoutMs": 120000
+    }
+}
+```
+
+| 字段              | 默认值                        | 说明                                                |
+| ----------------- | ----------------------------- | --------------------------------------------------- |
+| `enabled`         | `true`                        | 为 `false` 时禁用安装、卸载和更新；列表仍可用       |
+| `dir`             | `<data-dir>/plugins`          | 安装目录，相对路径按 `process.cwd()` 解析           |
+| `registry`        | `https://registry.npmjs.org/` | npm registry，可换成镜像（如 npmmirror）            |
+| `allowedPackages` | `[]`                          | 允许安装的包；空表示不限制，支持精确名和 `@scope/*` |
+| `allowScripts`    | `false`                       | 为 `false` 时 npm 操作带 `--ignore-scripts`         |
+| `timeoutMs`       | `120000`                      | 单次 npm/校验操作的超时，最大 600000                |
+
+安装目录由内核维护，包含 `package.json`、`package-lock.json` 和 `.jsbot-installed.json`。不要手动修改；安装失败时内核会恢复安装前的 manifest/lock 并重装依赖。
+
+安装器会在安装目录创建 `node_modules/@jsbot/core` 链接，指向当前内核包。`@jsbot/core` 的入口是 `dist/core/index.js`，所以在线安装和加载已安装插件都需要先执行 `npm run build`；直接从 TypeScript 源码运行（`tsx`）时不要依赖安装器。
+
+安装只接受 npm registry 包。以下来源会被拒绝：git/github 地址、`file:`、`http(s):`、`workspace:`、`link:`、本地路径和 semver 范围（`^`、`~`、`1.x`）。版本部分只接受精确版本或 dist-tag。
+
+安装、更新后需要重启进程才能加载新插件。启动时加载顺序是：内置插件 → `--plugin-dir` 外部插件 → 已安装插件；出现重复插件 ID 时保留先加载的插件并记录警告。
 
 ## 插件公共信封
 
@@ -108,6 +150,8 @@ node dist/app.js \
     --plugin-dir local-plugins/poke/dist \
     --plugin-dir local-plugins/llm/dist
 ```
+
+通过 `/plugin install` 安装的包会自动从 `<data-dir>/plugins` 加载，不需要 `--plugin-dir`。安装目录、registry 和允许列表见[插件安装器](#插件安装器)。
 
 插件自己的配置字段由 `manifest.configSchema` 校验。例如一个 `demo` 插件：
 

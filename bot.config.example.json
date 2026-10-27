@@ -9,6 +9,12 @@
         "charThreshold": 50,
         "lineThreshold": 3
     },
+    "installer": {
+        "enabled": true,
+        "registry": "https://registry.npmjs.org/",
+        "allowedPackages": [],
+        "allowScripts": false
+    },
     "plugins": {
         "core": {
             "enabled": true

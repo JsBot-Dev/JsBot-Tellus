@@ -18,6 +18,13 @@ const config: AppConfig = {
         lineThreshold: 3,
     },
     plugins: {},
+    installer: {
+        enabled: true,
+        registry: 'https://registry.npmjs.org/',
+        allowedPackages: [],
+        allowScripts: false,
+        timeoutMs: 120_000,
+    },
 }
 
 function createFakeDatabase(): {

@@ -12,6 +12,17 @@
 
 `--plugin-dir` 可以重复，应用会跳过与内置插件同 ID 的外部插件。没有加载的插件不能出现在 `plugins` 配置中，否则会因未知插件 ID 启动失败。
 
+发布到 npm registry 的插件也可以由 SuperAdmin 在聊天中安装：
+
+```text
+/plugin install @scope/plugin@1.0.0
+/plugin list
+/plugin update @scope/plugin
+/plugin remove @scope/plugin
+```
+
+安装目录默认是 `<data-dir>/plugins`，重启后生效。它不会修改 `plugins` 配置，因此卸载后需要手动删除对应的 `plugins.<id>`。详见[插件 API](plugin-api.md#通过-npm-发布与安装)和[配置](configuration.md#插件安装器)。
+
 ## 迁移步骤
 
 1. 备份旧配置和数据库：
@@ -76,7 +87,7 @@
 - 本地 `llm` 插件默认关闭，必须显式配置 provider 和启用范围。
 - 本地 `llm` 插件按 session 存储上下文，不再整份 KV 重写。
 - 旧 `auth`、`echo`、`like-me` 不重建；权限由 `core` + `roles` 负责，发送文本由 `admin` 负责。
-- 不支持热加载、插件市场和旧装饰器。
+- 不支持热加载、插件市场界面和旧装饰器；npm 插件安装需要重启才能生效。
 - 仓库只跟踪 `core`、`admin`；其它插件通过本地目录或外部目录加载。
 
 ## 回滚
