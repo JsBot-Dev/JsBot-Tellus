@@ -169,7 +169,7 @@ describe('lifecycle', () => {
         await lifecycle.stop()
 
         expect(lifecycle.state).toBe('stopped')
-        expect(onStop).not.toHaveBeenCalled()
+        expect(onStop).toHaveBeenCalledTimes(1)
 
         await expect(lifecycle.start()).rejects.toThrow(
             /cannot start lifecycle/

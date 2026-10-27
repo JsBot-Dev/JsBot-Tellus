@@ -1,4 +1,7 @@
-import type { SnowLumaEvent, SnowLumaEventContext } from '@snowluma/sdk'
+import type {
+    SnowLumaEvent,
+    SnowLumaEventContextWithQuote,
+} from '@snowluma/sdk'
 import type { Logger } from '../logging/logger.js'
 import type { MessageSender } from '../messaging/sender.js'
 import type { Permission } from './permission.js'
@@ -11,7 +14,7 @@ export class PermissionRefuser {
 
     async send(
         event: SnowLumaEvent,
-        context: SnowLumaEventContext,
+        context: SnowLumaEventContextWithQuote,
         required: Permission,
         actual: Permission
     ): Promise<void> {

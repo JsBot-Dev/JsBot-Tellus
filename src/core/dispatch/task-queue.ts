@@ -47,32 +47,40 @@ export class PerKeyTaskQueue implements TaskQueue {
     }
 
     async drain(timeoutMs = 5_000): Promise<boolean> {
-        const pending = [...this.chains.values()]
+        const deadline = Date.now() + timeoutMs
 
-        if (pending.length === 0) return true
+        for (;;) {
+            const pending = [...this.chains.values()]
 
-        if (timeoutMs <= 0) return false
+            if (pending.length === 0) return true
 
-        return await new Promise<boolean>((resolve) => {
-            let settled = false
+            const remaining = deadline - Date.now()
 
-            const timer = setTimeout(() => {
-                if (settled) return
+            if (remaining <= 0) return false
 
-                settled = true
-                resolve(false)
-            }, timeoutMs)
+            const completed = await new Promise<boolean>((resolve) => {
+                let settled = false
 
-            const finish = (): void => {
-                if (settled) return
+                const timer = setTimeout(() => {
+                    if (settled) return
 
-                settled = true
-                clearTimeout(timer)
-                resolve(true)
-            }
+                    settled = true
+                    resolve(false)
+                }, remaining)
 
-            void Promise.allSettled(pending).then(finish)
-        })
+                const finish = (): void => {
+                    if (settled) return
+
+                    settled = true
+                    clearTimeout(timer)
+                    resolve(true)
+                }
+
+                void Promise.allSettled(pending).then(finish)
+            })
+
+            if (!completed) return false
+        }
     }
 
     cancelAll(): void {

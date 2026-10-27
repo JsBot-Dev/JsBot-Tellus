@@ -1,5 +1,4 @@
 import type {
-    LoginInfo,
     OneBotMessageEvent,
     OneBotNoticeEvent,
     OneBotRequestEvent,
@@ -10,7 +9,7 @@ import type { z } from 'zod'
 import type { BotApi } from '../api.js'
 import type { TaskQueue } from '../dispatch/task-queue.js'
 import type { Logger } from '../logging/logger.js'
-import type { MessageSender, SendOptions } from '../messaging/sender.js'
+import type { SendOptions } from '../messaging/sender.js'
 import type { PluginKV } from '../plugin/kv.js'
 import type { Permission } from '../security/permission.js'
 import type { SessionStore } from '../storage/session.js'
@@ -120,6 +119,45 @@ export interface PluginStatus {
     list(): PluginStatusEntry[]
 }
 
+export interface InstalledPackageInfo {
+    packageName: string
+    version: string
+    spec: string
+    pluginIds: string[]
+    installedAt: string
+    loaded: boolean
+}
+
+export interface PluginInstallResult {
+    packageName: string
+    version: string
+    pluginIds: string[]
+    warnings: string[]
+}
+
+export interface PluginRemoveResult {
+    packageName: string
+    pluginIds: string[]
+    warnings: string[]
+}
+
+export interface PluginUpdateResult {
+    updated: PluginInstallResult[]
+    failed: Array<{ packageName: string; message: string }>
+}
+
+export interface PluginInstaller {
+    readonly enabled: boolean
+    list(): Promise<InstalledPackageInfo[]>
+    install(spec: string, signal?: AbortSignal): Promise<PluginInstallResult>
+    remove(
+        target: string,
+        signal?: AbortSignal,
+        options?: { force?: boolean | undefined } | undefined
+    ): Promise<PluginRemoveResult>
+    update(target?: string, signal?: AbortSignal): Promise<PluginUpdateResult>
+}
+
 export interface CoreServices {
     roles: {
         roleOf(userId: number): Permission
@@ -129,6 +167,8 @@ export interface CoreServices {
         list(): ReadonlyArray<CommandInfo>
     }
     plugins: PluginStatus
+    installer: PluginInstaller
+    restart(): void
     uptime(): number
 }
 
@@ -164,12 +204,6 @@ export interface PluginDefinition<TConfig = unknown, TState = void> {
 }
 
 export type AnyPluginDefinition = PluginDefinition<unknown, unknown>
-
-export interface PluginRuntime {
-    sender: MessageSender
-    api: BotApi
-    loginInfo(): Promise<LoginInfo>
-}
 
 export function definePlugin<TConfig, TState = void>(
     definition: PluginDefinition<TConfig, TState>

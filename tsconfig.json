@@ -1,21 +1,9 @@
 {
+    "extends": "./tsconfig.base.json",
     "compilerOptions": {
-        "module": "nodenext",
-        "target": "esnext",
-        "moduleResolution": "nodenext",
-        "lib": ["esnext"],
-        "types": ["node"],
-        "verbatimModuleSyntax": true,
-        "isolatedModules": true,
-        "moduleDetection": "force",
-        "noUncheckedSideEffectImports": true,
-
-        "strict": true,
-        "noUncheckedIndexedAccess": true,
-        "exactOptionalPropertyTypes": true,
-
-        "skipLibCheck": true,
-        "noEmit": true
+        "paths": {
+            "@jsbot-tellus/core": ["./src/core/index.ts"]
+        }
     },
     "include": ["src", "tests"]
 }

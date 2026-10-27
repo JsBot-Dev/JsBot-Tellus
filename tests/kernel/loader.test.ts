@@ -103,6 +103,31 @@ describe('external plugin loader', () => {
         ])
     })
 
+    it('ignores helper modules without plugin exports', async () => {
+        const directory = await temporaryDirectory()
+
+        await writeFile(
+            join(directory, 'helper.mjs'),
+            'export function helper() { return 1 }\n',
+            'utf8'
+        )
+        await writeFile(
+            join(directory, 'plugin.mjs'),
+            [
+                "import { z } from 'zod'",
+                'export default {',
+                "    manifest: { id: 'plugin', version: '1.0.0', configSchema: z.object({}) },",
+                '    setup() {},',
+                '}',
+            ].join('\n'),
+            'utf8'
+        )
+
+        const plugins = await loadPluginsFromDirectory(directory)
+
+        expect(plugins.map((plugin) => plugin.manifest.id)).toEqual(['plugin'])
+    })
+
     it('rejects a missing directory', async () => {
         await expect(
             loadPluginsFromDirectory(

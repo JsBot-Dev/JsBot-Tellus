@@ -32,6 +32,12 @@ export class SqlitePluginKV implements PluginKV {
     }
 
     async set<T>(key: string, value: T): Promise<void> {
+        const serialized = JSON.stringify(value)
+
+        if (serialized === undefined) {
+            throw new TypeError(`plugin kv value is not serializable: ${key}`)
+        }
+
         this.database.connection
             .prepare(
                 `INSERT INTO plugin_kv (plugin_id, key, value, updated_at)
@@ -40,7 +46,7 @@ export class SqlitePluginKV implements PluginKV {
                      value = excluded.value,
                      updated_at = excluded.updated_at`
             )
-            .run(this.pluginId, key, JSON.stringify(value), Date.now())
+            .run(this.pluginId, key, serialized, Date.now())
     }
 
     async delete(key: string): Promise<boolean> {

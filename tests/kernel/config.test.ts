@@ -45,6 +45,13 @@ describe('config', () => {
                 lineThreshold: 3,
             },
             plugins: {},
+            installer: {
+                enabled: false,
+                registry: 'https://registry.npmjs.org/',
+                allowedPackages: [],
+                allowScripts: false,
+                timeoutMs: 120_000,
+            },
         })
     })
 
@@ -103,6 +110,37 @@ describe('config', () => {
             enabled: true,
             cooldownMs: 3000,
         })
+    })
+
+    it('merges installer defaults', async () => {
+        const filePath = await writeConfig({
+            installer: {
+                enabled: false,
+                allowedPackages: ['@scope/*'],
+            },
+        })
+
+        const config = await loadConfig(filePath)
+
+        expect(config.installer).toEqual({
+            enabled: false,
+            registry: 'https://registry.npmjs.org/',
+            allowedPackages: ['@scope/*'],
+            allowScripts: false,
+            timeoutMs: 120_000,
+        })
+    })
+
+    it('rejects invalid installer values', async () => {
+        for (const installer of [
+            { timeoutMs: 0 },
+            { registry: 'not-a-url' },
+            { unknown: true },
+        ]) {
+            const filePath = await writeConfig({ installer })
+
+            await expect(loadConfig(filePath)).rejects.toThrow(/installer/)
+        }
     })
 
     it('rejects an invalid url with a path', async () => {
@@ -186,7 +224,7 @@ describe('config', () => {
                 cwd,
                 env: {},
             })
-        ).toBe(resolve(cwd, 'bot.config.v2.json'))
+        ).toBe(resolve(cwd, 'bot.config.json'))
     })
 
     it('resolves data dir by CLI, env, then default', () => {
@@ -216,7 +254,7 @@ describe('config', () => {
                 cwd,
                 env: {},
             })
-        ).toBe(resolve(cwd, 'data-v2'))
+        ).toBe(resolve(cwd, 'data'))
     })
 
     it('ignores empty path values', () => {
@@ -228,6 +266,6 @@ describe('config', () => {
                 config: '   ',
                 env: {},
             })
-        ).toBe(resolve(cwd, 'bot.config.v2.json'))
+        ).toBe(resolve(cwd, 'bot.config.json'))
     })
 })

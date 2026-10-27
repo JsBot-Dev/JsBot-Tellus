@@ -2,62 +2,15 @@ import { stat } from 'node:fs/promises'
 import { resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import fg from 'fast-glob'
+import type { Logger } from '../logging/logger.js'
+import { collectPluginExports } from './exports.js'
 import type { AnyPluginDefinition } from './types.js'
 
-function isPluginDefinition(value: unknown): value is AnyPluginDefinition {
-    if (typeof value !== 'object' || value === null) return false
-
-    if (!('manifest' in value) || !('setup' in value)) return false
-
-    const manifest = value.manifest
-
-    return (
-        typeof manifest === 'object' &&
-        manifest !== null &&
-        'id' in manifest &&
-        typeof manifest.id === 'string' &&
-        'configSchema' in manifest &&
-        typeof manifest.configSchema === 'object' &&
-        manifest.configSchema !== null &&
-        typeof value.setup === 'function'
-    )
-}
-
-function collect(
-    value: unknown,
-    filePath: string,
-    result: AnyPluginDefinition[]
-): void {
-    if (Array.isArray(value)) {
-        for (const item of value) {
-            collect(item, filePath, result)
-        }
-
-        return
-    }
-
-    if (isPluginDefinition(value)) {
-        result.push(value)
-        return
-    }
-
-    if (
-        typeof value === 'object' &&
-        value !== null &&
-        'plugins' in value &&
-        Array.isArray(value.plugins)
-    ) {
-        collect(value.plugins, filePath, result)
-        return
-    }
-
-    if (value !== undefined && value !== null) {
-        throw new Error(`invalid plugin export: ${filePath}`)
-    }
-}
+type LoaderLogger = Pick<Logger, 'warn' | 'error'>
 
 export async function loadPluginsFromDirectory(
-    directory: string
+    directory: string,
+    logger?: LoaderLogger | undefined
 ): Promise<AnyPluginDefinition[]> {
     const absolute = resolve(directory)
     const info = await stat(absolute).catch(() => null)
@@ -74,24 +27,35 @@ export async function loadPluginsFromDirectory(
     })
 
     const plugins: AnyPluginDefinition[] = []
+    const invalid: string[] = []
 
     for (const file of files.sort()) {
-        const imported: unknown = await import(pathToFileURL(file).href)
+        let imported: unknown
 
-        if (typeof imported !== 'object' || imported === null) {
+        try {
+            imported = await import(pathToFileURL(file).href)
+        } catch (error) {
+            logger?.error(`failed to import plugin file: ${file}`, error)
+            invalid.push(
+                `failed to import ${file}: ${
+                    error instanceof Error ? error.message : String(error)
+                }`
+            )
             continue
         }
 
-        const record = imported as Record<string, unknown>
-        const candidates = [
-            record['default'],
-            record['plugin'],
-            record['plugins'],
-        ]
+        plugins.push(
+            ...collectPluginExports(imported, file, {
+                onInvalid: (message) => {
+                    logger?.warn(message)
+                    invalid.push(message)
+                },
+            })
+        )
+    }
 
-        for (const candidate of candidates) {
-            collect(candidate, file, plugins)
-        }
+    if (plugins.length === 0 && invalid.length > 0) {
+        throw new Error(invalid[0])
     }
 
     return plugins

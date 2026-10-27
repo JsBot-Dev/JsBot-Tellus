@@ -1,9 +1,8 @@
 {
-    "name": "@jsbot/core",
-    "private": true,
-    "version": "1.0.0",
+    "name": "@jsbot-tellus/core",
+    "version": "2.0.2",
     "engines": {
-        "node": ">=24.22.1"
+        "node": "^24.22.1 || >=26.12.1"
     },
     "description": "a new version of JsBot",
     "keywords": [
@@ -22,8 +21,18 @@
     "license": "AGPL-3.0-or-later",
     "author": "J-SLY",
     "type": "module",
+    "files": [
+        "dist",
+        "src",
+        "docs",
+        "examples",
+        "bot.config.example.json"
+    ],
     "main": "./dist/core/index.js",
     "types": "./dist/core/index.d.ts",
+    "publishConfig": {
+        "access": "public"
+    },
     "exports": {
         ".": {
             "types": "./dist/core/index.d.ts",
@@ -32,14 +41,19 @@
         "./package.json": "./package.json"
     },
     "bin": {
-        "jsbot": "./dist/app.js"
+        "jsbot": "dist/app.js"
     },
     "scripts": {
         "test": "vitest run",
         "check": "tsc --noEmit",
         "clean": "node -e \"require('node:fs').rmSync('dist', { recursive: true, force: true })\"",
         "build": "npm run clean && tsc -p tsconfig.build.json && node -e \"require('node:fs').chmodSync('dist/app.js', 0o755)\"",
+        "prepack": "npm run build",
+        "prepublishOnly": "npm run check && npm test",
+        "build:local": "npm run build --prefix plugins/poke && npm run build --prefix plugins/llm",
+        "check:local": "npm run check --prefix plugins/poke && npm run check --prefix plugins/llm",
         "start": "node dist/app.js",
+        "start:build": "npm run build && node dist/app.js",
         "start:source": "tsx src/app.ts",
         "dev": "tsx watch src/app.ts",
         "smoke": "node dist/app.js --help",
@@ -49,7 +63,6 @@
     "dependencies": {
         "@snowluma/sdk": "^2.2.0",
         "fast-glob": "^3.3.3",
-        "openai": "^7.43.0",
         "zod": "^4.6.7"
     },
     "devDependencies": {

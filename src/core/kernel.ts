@@ -9,8 +9,13 @@ import { createMessageSender } from './messaging/sender.js'
 import { createPluginContext } from './plugin/context.js'
 import { PluginGate } from './plugin/gating.js'
 import { PluginHost } from './plugin/host.js'
+import { createDisabledInstaller } from './plugin/installer.js'
 import { SqlitePluginKV } from './plugin/kv.js'
-import type { AnyPluginDefinition, CoreServices } from './plugin/types.js'
+import type {
+    AnyPluginDefinition,
+    CoreServices,
+    PluginInstaller,
+} from './plugin/types.js'
 import { RoleService } from './security/roles.js'
 import type { Database } from './storage/database.js'
 import { SqliteSessionStore } from './storage/session.js'
@@ -21,6 +26,8 @@ export interface KernelOptions {
     logger: Logger
     database: Database
     plugins?: AnyPluginDefinition[] | undefined
+    installer?: PluginInstaller | undefined
+    onRestart?: (() => void) | undefined
     drainTimeoutMs?: number | undefined
 }
 
@@ -76,6 +83,8 @@ export class Kernel {
             plugins: {
                 list: () => host.listStatus(),
             },
+            installer: options.installer ?? createDisabledInstaller(),
+            restart: options.onRestart ?? (() => {}),
             uptime: () =>
                 this.startedAt === null ? 0 : Date.now() - this.startedAt,
         }
@@ -103,7 +112,7 @@ export class Kernel {
         })
 
         this.host = host
-        this.client.use(this.router.dispatch)
+        this.client.use(this.router.dispatch as Parameters<BotClient['use']>[0])
 
         this.lifecycle = new Lifecycle({
             onStart: () => this.startKernel(),
@@ -123,8 +132,37 @@ export class Kernel {
         return this.lifecycle.stop()
     }
 
-    drain(timeoutMs = 5_000): Promise<boolean> {
-        return this.tasks.drain(timeoutMs)
+    pause(): void {
+        this.router.accepting = false
+        this.logger.debug('kernel paused')
+    }
+
+    resume(): void {
+        if (this.lifecycle.state !== 'running') return
+
+        this.router.accepting = true
+        this.logger.debug('kernel resumed')
+    }
+
+    async drain(timeoutMs = 5_000): Promise<boolean> {
+        const deadline = Date.now() + timeoutMs
+
+        for (;;) {
+            if (!(await this.tasks.drain(Math.max(deadline - Date.now(), 0)))) {
+                return false
+            }
+
+            if (
+                !(await this.router.drain(Math.max(deadline - Date.now(), 0)))
+            ) {
+                return false
+            }
+
+            // A finishing event handler may have enqueued another task.
+            if (await this.tasks.drain(0)) return true
+
+            if (Date.now() >= deadline) return false
+        }
     }
 
     private async startKernel(): Promise<void> {
@@ -152,7 +190,7 @@ export class Kernel {
         this.router.accepting = false
 
         try {
-            const drained = await this.tasks.drain(this.drainTimeoutMs)
+            const drained = await this.drain(this.drainTimeoutMs)
 
             if (!drained) {
                 this.logger.warn('task queue drain timed out, cancelling')

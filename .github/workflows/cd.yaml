@@ -1,0 +1,49 @@
+name: CD
+
+on:
+    workflow_run:
+        workflows: ['CI']
+        types: [completed]
+        branches: [main]
+
+permissions:
+    contents: read
+    id-token: write
+
+concurrency:
+    group: npm-publish
+    cancel-in-progress: false
+
+jobs:
+    publish:
+        name: publish
+        if: ${{ github.repository == 'JsBot-Dev/JsBot-Tellus' && github.event.workflow_run.conclusion == 'success' && (github.event.workflow_run.event == 'push' || github.event.workflow_run.event == 'workflow_dispatch') && github.event.workflow_run.head_branch == 'main' }}
+        runs-on: ubuntu-latest
+        timeout-minutes: 20
+        steps:
+            - name: Check out tested commit
+              uses: actions/checkout@v4
+              with:
+                  ref: ${{ github.event.workflow_run.head_sha }}
+
+            - name: Setup node.js
+              uses: actions/setup-node@v4
+              with:
+                  node-version: '24'
+                  cache: 'npm'
+                  registry-url: 'https://registry.npmjs.org'
+
+            - name: Ensure npm supports trusted publishing
+              run: npm install --global 'npm@^11.5.1'
+
+            - name: Install dependencies
+              run: npm ci
+
+            - name: Publish to npm
+              run: |
+                  version="$(node -p "require('./package.json').version")"
+                  if npm view "@jsbot-tellus/core@$version" version >/dev/null 2>&1; then
+                      echo "::notice::@jsbot-tellus/core@$version is already published, skipping"
+                      exit 0
+                  fi
+                  npm publish --provenance --access public

@@ -3,7 +3,8 @@
 ## 分层
 
 ```text
-src/plugins/*  ->  src/core/index.ts 的公共 API
+src/plugins/*  ->  src/core/index.ts 的公共 API（内置插件）
+外部插件包     ->  @jsbot-tellus/core 的公共 API
 src/core/*     ->  SDK adapter、Node 内置模块、SQLite
 src/core/*     -X-> src/plugins/*
 ```
@@ -13,8 +14,10 @@ src/core/*     -X-> src/plugins/*
 - 插件不能直接 import `SnowLumaWebSocketClient`。
 - 插件不能直接操作 `Router`、数据库或 SDK client。
 - 插件只能通过 `PluginContext`、`EventContext` 和 `BotApi` 使用能力。
-- `core` 不 import 任何内置插件；内置插件在 `src/plugins/index.ts` 显式注册。
+- `core` 不 import 任何插件；`core`、`admin` 在 `src/plugins/index.ts` 显式注册。
+- 内置插件是普通源码，随内核一起编译；没有独立依赖，不单独建包。
 - 外部插件由 `src/app.ts` 在启动前扫描并追加到内置插件之后。
+- 本地插件放在不跟踪的 `plugins/`，每个插件是独立包，通过 `--plugin-dir` 加载。
 
 ## 运行时主链路
 
@@ -31,7 +34,7 @@ SDK WebSocket
      -> 错误隔离
 ```
 
-命令一旦命中，即使插件被 gating 关闭或权限不足，也不会继续进入普通 `onMessage` handler。这样可以避免命令消息被 LLM 等普通消息 handler 重复处理。
+命令一旦命中，即使插件被 gating 关闭或权限不足，也不会继续进入普通 `onMessage` handler。
 
 ## 目录
 
@@ -42,7 +45,7 @@ src/
     kernel.ts             运行时组装和生命周期
     client.ts             BotClient 接口和 SDK adapter
     api.ts                BotApi
-    config/               v2 配置 schema 和加载
+    config/               配置 schema 和加载
     dispatch/
       router.ts           唯一 SDK middleware
       command.ts          命令索引和冲突检测
@@ -61,11 +64,12 @@ src/
     storage/              SQLite 和 Session
     lifecycle/            启动/停止状态机
   plugins/
-    core/                 /help、/status、/role
-    admin/                /utter、/utter.raw
-    poke/                 poke 回复
-    llm/                  OpenAI 兼容 LLM
-  plugins/index.ts        内置插件清单
+    core/index.ts         /help、/status、/role
+    admin/index.ts        /utter、/utter.raw
+    index.ts              内置插件清单
+plugins/                  本地插件根目录，整个目录不跟踪
+  poke/
+  llm/
 ```
 
 ## 启动顺序
@@ -105,9 +109,65 @@ kernel.stop()
 - `client.connect()` 失败：插件停止，client 和数据库关闭。
 - 插件 `start()` 失败：已经启动的插件逆序停止，client 和数据库关闭。
 
+## 构建
+
+仓库是单包结构，没有 `workspaces`。内置插件和内核共用一个 `tsconfig.build.json`：
+
+```bash
+npm run build   # 一次 tsc，输出 dist/core 和 dist/plugins
+npm run smoke   # node dist/app.js --help
+```
+
+`@jsbot-tellus/core` 的包入口指向 `dist/core/index.js`，供 `plugins/` 里的独立包在运行时解析。
+
+## 本地插件
+
+本地插件放在 `plugins/`，该目录整体不进入 git。每个插件是独立包，有自己的 `package.json`、lockfile 和 `node_modules`：
+
+```bash
+npm install --prefix plugins/poke
+npm install --prefix plugins/llm
+npm run build:local
+node dist/app.js \
+    --plugin-dir plugins/poke/dist \
+    --plugin-dir plugins/llm/dist
+```
+
+`--plugin-dir` 可以重复。应用会跳过与内置插件同 ID 的外部插件，避免重复注册。
+
+## 在线安装插件
+
+`admin` 插件注册 `/plugin` 命令，通过 `ctx.core.installer` 调用 `NpmPluginInstaller`。安装器位于 `src/core/plugin/`：
+
+```text
+spec.ts             解析并校验 npm 包名 / 精确版本 / dist-tag
+npm-runner.ts       execFile 调用 npm，支持超时和取消
+install-dir.ts      <data-dir>/plugins 的 manifest、状态文件和 @jsbot-tellus/core 链接
+install-validate.ts 在子进程中 import 包，确认它导出插件定义
+installer.ts        安装 / 列表 / 卸载 / 更新、串行化、备份与回滚
+installed.ts        启动时从安装目录加载已安装包
+```
+
+安装流程：
+
+```text
+/plugin install <spec>
+  -> 校验 npm registry 来源和允许列表
+  -> npm install <spec> --save-exact [--ignore-scripts]
+  -> 重建 node_modules/@jsbot-tellus/core 链接
+  -> 子进程 import 包，收集 manifest.id / version / dependencies
+  -> 检查 id 冲突和完整依赖图（缺失、自依赖、循环）
+  -> 原子写入 .jsbot-installed.json
+  -> 自动重建运行时，由 installed.ts 重新加载
+```
+
+npm 或校验失败时，安装器恢复安装前的 `package.json` / `package-lock.json` / `.jsbot-installed.json`，并运行 `npm ci`（没有旧 lockfile 时运行 `npm install`）恢复 `node_modules`。所有安装操作通过内部队列串行执行。状态文件损坏时安装器会明确报错，不会用空状态覆盖其它包记录。
+
+加载顺序是内置插件 → `--plugin-dir` 外部插件 → `<data-dir>/plugins` 已安装插件。重复 ID 保留先加载的插件并记录警告。安装器不直接修改运行中的插件状态；操作成功后由应用重建运行时并重新加载。卸载时如果检测到配置残留，会跳过自动重启并提示手动处理；如果其它已安装包依赖被卸载的插件，默认拒绝卸载，`--force` 可强制继续。安装器默认关闭，安装的插件是完全可信的宿主进程代码。
+
 ## 测试边界
 
 - `FakeClient` 替代真实 WebSocket。
-- 内存 SQLite 替代 `data-v2`。
-- `FakeLlm` 注入 `LlmRuntimeFactory`，测试不访问网络。
-- Router、PluginHost、TaskQueue、Session 和每个内置插件都有独立测试。
+- 内存 SQLite 替代 `data/` 目录。
+- Router、PluginHost、TaskQueue、Session、`core` 和 `admin` 都有独立测试。
+- 安装器使用假的 npm runner 和校验器覆盖安装、回滚、卸载、更新、并发和禁用场景；子进程校验脚本另有真实测试。

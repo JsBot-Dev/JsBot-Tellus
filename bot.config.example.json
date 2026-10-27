@@ -9,29 +9,18 @@
         "charThreshold": 50,
         "lineThreshold": 3
     },
+    "installer": {
+        "enabled": true,
+        "registry": "https://registry.npmjs.org/",
+        "allowedPackages": [],
+        "allowScripts": false
+    },
     "plugins": {
         "core": {
             "enabled": true
         },
         "admin": {
             "enabled": true
-        },
-        "poke": {
-            "enabled": true,
-            "cooldownMs": 3000,
-            "reply": "你戳我干嘛"
-        },
-        "llm": {
-            "enabled": false,
-            "private": true,
-            "groups": {
-                "allow": []
-            },
-            "contextSize": 50,
-            "rateLimitMs": 3000,
-            "api": "chat-completions",
-            "personas": {},
-            "providers": {}
         }
     }
 }

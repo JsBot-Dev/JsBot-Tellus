@@ -1,7 +1,7 @@
 import type {
-    EventMiddleware,
+    EventNext,
     SnowLumaEvent,
-    SnowLumaEventContext,
+    SnowLumaEventContextWithQuote,
 } from '@snowluma/sdk'
 import { isMessageEvent, isNoticeEvent, isRequestEvent } from '@snowluma/sdk'
 import type { Logger } from '../logging/logger.js'
@@ -34,6 +34,12 @@ import {
     MiddlewareRegistry,
     type MiddlewareRegistration,
 } from './middleware.js'
+
+export type RouterEventMiddleware = (
+    event: SnowLumaEvent,
+    context: SnowLumaEventContextWithQuote,
+    next: EventNext
+) => void | Promise<void>
 
 export interface RouterDeps {
     sender: MessageSender
@@ -78,6 +84,7 @@ export class Router {
     private readonly commands = new CommandRegistry()
     private readonly handlers = new HandlerRegistry()
     private readonly middlewares = new MiddlewareRegistry()
+    private readonly active = new Set<Promise<void>>()
 
     constructor(deps: RouterDeps) {
         this.sender = deps.sender
@@ -87,9 +94,28 @@ export class Router {
         this.refuser = new PermissionRefuser(deps.sender, this.logger)
     }
 
-    readonly dispatch: EventMiddleware = async (event, sdkContext, next) => {
+    readonly dispatch: RouterEventMiddleware = async (
+        event,
+        sdkContext,
+        next
+    ) => {
         if (!this.accepting) return
 
+        const run = this.handleEvent(event, sdkContext, next)
+        this.active.add(run)
+
+        try {
+            await run
+        } finally {
+            this.active.delete(run)
+        }
+    }
+
+    private async handleEvent(
+        event: SnowLumaEvent,
+        sdkContext: SnowLumaEventContextWithQuote,
+        next: EventNext
+    ): Promise<void> {
         try {
             const context = createEventContext(event, sdkContext, this.sender)
 
@@ -222,6 +248,41 @@ export class Router {
         return this.commands.list()
     }
 
+    async drain(timeoutMs = 5_000): Promise<boolean> {
+        const deadline = Date.now() + timeoutMs
+
+        for (;;) {
+            const pending = [...this.active]
+
+            if (pending.length === 0) return true
+
+            const remaining = deadline - Date.now()
+
+            if (remaining <= 0) return false
+
+            const completed = await new Promise<boolean>((resolve) => {
+                let settled = false
+
+                const timer = setTimeout(() => {
+                    if (settled) return
+
+                    settled = true
+                    resolve(false)
+                }, remaining)
+
+                void Promise.allSettled(pending).then(() => {
+                    if (settled) return
+
+                    settled = true
+                    clearTimeout(timer)
+                    resolve(true)
+                })
+            })
+
+            if (!completed) return false
+        }
+    }
+
     private async runMiddlewares(
         event: SnowLumaEvent,
         context: ReturnType<typeof createEventContext>
@@ -268,7 +329,7 @@ export class Router {
 
     private async runHandlers(
         event: SnowLumaEvent,
-        sdkContext: SnowLumaEventContext
+        sdkContext: SnowLumaEventContextWithQuote
     ): Promise<void> {
         if (isMessageEvent(event)) {
             const messageContext = createEventContext(

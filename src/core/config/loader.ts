@@ -29,8 +29,7 @@ function pickFirst(...values: Array<string | undefined>): string | undefined {
 export function resolveConfigPath(options: PathOptions = {}): string {
     const cwd = options.cwd ?? process.cwd()
     const env = options.env ?? process.env
-    const value =
-        pickFirst(options.config, env.BOT_CONFIG) ?? 'bot.config.v2.json'
+    const value = pickFirst(options.config, env.BOT_CONFIG) ?? 'bot.config.json'
 
     return resolve(cwd, value)
 }
@@ -38,7 +37,7 @@ export function resolveConfigPath(options: PathOptions = {}): string {
 export function resolveDataDir(options: PathOptions = {}): string {
     const cwd = options.cwd ?? process.cwd()
     const env = options.env ?? process.env
-    const value = pickFirst(options.dataDir, env.BOT_DATA_DIR) ?? 'data-v2'
+    const value = pickFirst(options.dataDir, env.BOT_DATA_DIR) ?? 'data'
 
     return resolve(cwd, value)
 }

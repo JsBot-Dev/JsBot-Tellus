@@ -19,6 +19,7 @@ export class PluginConfigError extends Error {
 interface LoadedPlugin {
     definition: AnyPluginDefinition
     state: unknown
+    started: boolean
     stopped: boolean
 }
 
@@ -154,6 +155,7 @@ export class PluginHost {
                 this.loaded.push({
                     definition,
                     state,
+                    started: false,
                     stopped: false,
                 })
 
@@ -169,6 +171,7 @@ export class PluginHost {
         try {
             for (const plugin of this.loaded) {
                 await plugin.definition.start?.(plugin.state)
+                plugin.started = true
             }
         } catch (error) {
             await this.stop()
@@ -214,7 +217,9 @@ export class PluginHost {
         plugin.stopped = true
 
         try {
-            await plugin.definition.stop?.(plugin.state)
+            if (plugin.started) {
+                await plugin.definition.stop?.(plugin.state)
+            }
         } catch (error) {
             this.deps.logger.error(`plugin ${id} stop failed`, error)
         } finally {

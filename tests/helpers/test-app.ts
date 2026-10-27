@@ -7,7 +7,10 @@ import {
     type RolesConfig,
 } from '../../src/core/config/schema.js'
 import { Kernel } from '../../src/core/kernel.js'
-import type { AnyPluginDefinition } from '../../src/core/plugin/types.js'
+import type {
+    AnyPluginDefinition,
+    PluginInstaller,
+} from '../../src/core/plugin/types.js'
 import { openMemoryDatabase } from '../../src/core/storage/database.js'
 import { FakeClient } from './fake-client.js'
 import { FakeEventContext } from './event-context.js'
@@ -22,6 +25,8 @@ export interface TestAppOptions {
     client?: FakeClient | undefined
     database?: Database | undefined
     logger?: Logger | undefined
+    installer?: PluginInstaller | undefined
+    onRestart?: (() => void) | undefined
 }
 
 export interface TestApp {
@@ -55,6 +60,12 @@ export async function createTestApp(
         database,
         logger,
         plugins: options.plugins ?? [],
+        ...(options.installer !== undefined
+            ? { installer: options.installer }
+            : {}),
+        ...(options.onRestart !== undefined
+            ? { onRestart: options.onRestart }
+            : {}),
         ...(options.drainTimeoutMs !== undefined
             ? { drainTimeoutMs: options.drainTimeoutMs }
             : {}),

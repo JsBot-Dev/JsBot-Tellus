@@ -1,14 +1,15 @@
 import {
     isMessageEvent,
     node,
-    toCQString,
+    type LoginInfo,
     type OutgoingMessage,
     type SnowLumaEvent,
-    type SnowLumaEventContext,
+    type SnowLumaEventContextWithQuote,
 } from '@snowluma/sdk'
 import type { BotClient, BotSendOptions } from '../client.js'
 import type { MessageConfig } from '../config/schema.js'
 import type { Logger } from '../logging/logger.js'
+import { isTooLong } from './render.js'
 
 export interface SendOptions extends BotSendOptions {
     quote?: boolean
@@ -17,7 +18,7 @@ export interface SendOptions extends BotSendOptions {
 export interface MessageSender {
     send(
         event: SnowLumaEvent,
-        sdkContext: SnowLumaEventContext,
+        sdkContext: SnowLumaEventContextWithQuote,
         message: OutgoingMessage,
         options?: SendOptions
     ): Promise<unknown>
@@ -99,13 +100,6 @@ function parseSessionId(sessionId: string): Target {
     throw new Error(`unknown session kind: ${kind}`)
 }
 
-function isTooLong(text: string, messageConfig: MessageConfig): boolean {
-    return (
-        text.length > messageConfig.charThreshold ||
-        text.split('\n').length > messageConfig.lineThreshold
-    )
-}
-
 function sdkOptions(options?: SendOptions): BotSendOptions | undefined {
     if (!options || options.autoEscape === undefined) {
         return undefined
@@ -132,10 +126,13 @@ export function createMessageSender(
     async function sendForward(
         target: Target,
         message: OutgoingMessage,
-        selfId: number
+        loginInfo: LoginInfo
     ): Promise<unknown> {
-        const loginInfo = await client.getLoginInfo()
-        const forward = node(selfId, loginInfo.nickname || 'Bot', message)
+        const forward = node(
+            loginInfo.user_id,
+            loginInfo.nickname || 'Bot',
+            message
+        )
 
         return target.kind === 'group'
             ? client.sendGroupForwardMessage(target.id, forward)
@@ -147,9 +144,9 @@ export function createMessageSender(
             try {
                 const target = targetOf(event)
 
-                if (!isTooLong(toCQString(message), messageConfig)) {
+                if (!isTooLong(message, messageConfig)) {
                     if (isMessageEvent(event) && sendOptions?.quote !== false) {
-                        return await sdkContext.reply(
+                        return await sdkContext.quote(
                             message,
                             sdkOptions(sendOptions)
                         )
@@ -162,7 +159,9 @@ export function createMessageSender(
                     )
                 }
 
-                return await sendForward(target, message, event.self_id)
+                const loginInfo = await client.getLoginInfo()
+
+                return await sendForward(target, message, loginInfo)
             } catch (error) {
                 logger.error('failed to send message', error)
                 throw error
@@ -173,7 +172,7 @@ export function createMessageSender(
             try {
                 const target = parseSessionId(sessionId)
 
-                if (!isTooLong(toCQString(message), messageConfig)) {
+                if (!isTooLong(message, messageConfig)) {
                     return await sendDirect(
                         target,
                         message,
@@ -183,7 +182,7 @@ export function createMessageSender(
 
                 const loginInfo = await client.getLoginInfo()
 
-                return await sendForward(target, message, loginInfo.user_id)
+                return await sendForward(target, message, loginInfo)
             } catch (error) {
                 logger.error(`failed to send to session ${sessionId}`, error)
                 throw error
