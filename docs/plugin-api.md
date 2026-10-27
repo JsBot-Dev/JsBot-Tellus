@@ -191,6 +191,8 @@ ctx.core.restart()
 
 ## 命令
 
+### 普通命令
+
 ```ts
 ctx.commands.register(
     {
@@ -214,13 +216,79 @@ ctx.commands.register(
 | `permission`  | `'User'` | `User`、`Admin`、`SuperAdmin` |
 | `description` | 无       | `/help` 中展示                |
 
-命令命中后会立即 `stopPropagation()`。同一前缀下的命令或别名冲突会在注册时抛错。
+`name` 和 `aliases` 的每一项只能是一个路径段；多级命令请使用 `commands.group()`。
+
+### 指令组
+
+```ts
+ctx.commands.group(
+    {
+        name: 'plugin',
+        aliases: ['p'],
+        permission: 'SuperAdmin',
+        description: '管理已安装的插件包',
+        // 可选；省略时自动生成用法提示
+        handler: async (_event, context) => {
+            await context.send('用法：/plugin <list|install>')
+        },
+    },
+    (plugin) => {
+        plugin.register(
+            {
+                name: 'list',
+                description: '列出插件包',
+            },
+            async (_event, context) => {
+                await context.send('...')
+            }
+        )
+
+        plugin.register(
+            {
+                name: 'install',
+                description: '安装插件包',
+            },
+            async (_event, context, match) => {
+                await context.send(`安装：${match.rest}`)
+            }
+        )
+
+        plugin.group({ name: 'cache' }, (cache) => {
+            cache.register({ name: 'clear' }, async () => {})
+        })
+    }
+)
+```
+
+指令组规则：
+
+- `group()` 的 `name` 和 `aliases` 同样是单个路径段；通过嵌套 `group()` 组成任意层级。
+- 子命令自动拼接组路径，例如上面的 `plugin` + `install` 对应 `/plugin install`。
+- 子命令默认继承组的 `prefixes`、`permission`，也可以在子命令上覆盖。
+- 组别名和子命令别名会自动组合；组 `plugin` 别名 `p`、子命令 `install` 别名 `i` 时，`/p i` 也能命中。
+- 组根没有提供 `handler` 时，会自动注册根命令并生成用法提示，列出直接子命令和描述。
+- 组根提供了 `handler` 时，未命中子命令的输入（例如 `/plugin`、`/plugin help`、`/plugin unknown`）会进入该 handler。
+- `group()` 返回 disposer，会注销组根和所有子命令；组 setup 抛错或注册冲突时会自动回滚整组。
+- `/help` 中会显示完整路径，例如 `/plugin install`。
+
+同一前缀下按完整路径进行冲突检测。命令命中后会立即 `stopPropagation()`。
+
+匹配时前缀最长优先，同一前缀下完整路径最长优先：
+
+```text
+/plugin install demo
+-> command: "plugin install"
+-> args: ["demo"]
+-> rest: "demo"
+```
+
+`/plugin unknown` 在 `plugin` 组根存在时会回退到组根，`args` 为 `["unknown"]`。
 
 `CommandMatch`：
 
 ```ts
 interface CommandMatch {
-    command: string
+    command: string // 命中的完整路径，例如 "plugin install"
     prefix: string
     args: string[]
     rest: string

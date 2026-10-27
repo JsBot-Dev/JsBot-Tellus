@@ -11,7 +11,7 @@
 | 群开关        | `PluginGate`               | `enabled/private/groups`                       |
 | 消息发送      | `core/messaging/sender.ts` | reply、长消息 forward                          |
 | 插件 KV       | `core/plugin/kv.ts`        | 按插件 ID 隔离的 SQLite KV                     |
-| 管理发送      | `src/plugins/admin`        | `/utter`、`/utter.raw`                         |
+| 管理发送      | `src/plugins/admin`        | `/utter`、`/utter raw`                         |
 | 角色查询/帮助 | `src/plugins/core`         | `/role`、`/help`、`/status`                    |
 | 内置插件      | `src/plugins/*`            | 普通源码，随内核编译                           |
 | 在线安装      | `core/plugin/installer.ts` | `/plugin install/list/remove/update`，重启生效 |
@@ -42,6 +42,7 @@
 ## 验收场景
 
 - 只注册一个 SDK middleware。
+- 命令支持多级路径，按最长路径匹配；组根未提供 handler 时自动生成用法提示。
 - 命令命中后不会进入普通消息 handler。
 - 禁用命令不会穿透到普通消息 handler。
 - 权限不足不执行 handler，并返回通用提示。

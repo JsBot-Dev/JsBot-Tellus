@@ -105,6 +105,52 @@ describe('router', () => {
         expect(next).not.toHaveBeenCalled()
     })
 
+    it('dispatches group subcommands and generates group usage', async () => {
+        const { router, dispatch } = harness()
+        const child = vi.fn<CommandHandler>(async () => {})
+
+        router.registerCommandGroup(
+            {
+                pluginId: 'test',
+                name: 'group',
+            },
+            (group) => {
+                group.register({ name: 'child', description: '子命令' }, child)
+            }
+        )
+
+        const handled = await dispatch(
+            groupMessage({
+                raw_message: '/group child value',
+                user_id: 30000,
+            })
+        )
+
+        expect(child).toHaveBeenCalledTimes(1)
+        expect(child.mock.calls[0]?.[2]).toEqual({
+            command: 'group child',
+            prefix: '/',
+            args: ['value'],
+            rest: 'value',
+        })
+        expect(handled.context.stopped).toBe(true)
+
+        const usage = await dispatch(
+            groupMessage({
+                raw_message: '/group',
+                user_id: 30000,
+            })
+        )
+
+        expect(usage.context.stopped).toBe(true)
+        expect(String(usage.context.replies.at(-1)?.message)).toContain(
+            '用法：/group <child>'
+        )
+        expect(String(usage.context.replies.at(-1)?.message)).toContain(
+            '/group child - 子命令'
+        )
+    })
+
     it('refuses commands above the user role', async () => {
         const { router, dispatch, client } = harness()
         const handler = vi.fn(async () => {})

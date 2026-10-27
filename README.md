@@ -57,13 +57,13 @@ npm run dev
 | `/status`、`/s`   | User       | 运行时长和插件状态 |
 | `/role`           | User       | 显示当前用户角色   |
 | `/utter <文本>`   | Admin      | 向当前会话发送文本 |
-| `/utter.raw <CQ>` | SuperAdmin | 发送原始 CQ 消息   |
+| `/utter raw <CQ>` | SuperAdmin | 发送原始 CQ 消息   |
 | `/plugin list`    | SuperAdmin | 列出已安装插件包   |
 | `/plugin install` | SuperAdmin | 安装 npm 插件包    |
 | `/plugin remove`  | SuperAdmin | 卸载插件包         |
 | `/plugin update`  | SuperAdmin | 更新插件包         |
 
-`/plugin` 的所有子命令（包括 `help` 和 `list`）都要求 SuperAdmin。
+`/plugin` 的所有子命令（包括 `help` 和 `list`）都要求 SuperAdmin。`/utter.raw` 已迁移为 `/utter raw` 子命令。
 
 ## 内置与本地插件
 
@@ -72,7 +72,7 @@ npm run dev
 ```text
 src/plugins/
   core/index.ts     /help、/status、/role
-  admin/index.ts    /utter、/utter.raw
+  admin/index.ts    /utter、/utter raw
   index.ts          内置插件清单
 ```
 

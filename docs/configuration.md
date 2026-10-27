@@ -141,7 +141,7 @@ npm 包会在宿主进程中执行，拥有与内核相同的文件系统、环�
 ```
 
 - `/utter <文本>`：Admin 权限，发送自动转义的纯文本（CQ 码不会被解析）。
-- `/utter.raw <CQ 消息>`：SuperAdmin 权限，发送原始 CQ 字符串。
+- `/utter raw <CQ 消息>`：SuperAdmin 权限，发送原始 CQ 字符串。
 
 ## 外部与本地插件配置
 

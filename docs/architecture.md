@@ -25,7 +25,7 @@ src/core/*     -X-> src/plugins/*
 SDK WebSocket
   -> client.use(router.dispatch)
      -> Router 中间件（按 priority 降序，逐插件 gating）
-     -> CommandRegistry.match
+     -> CommandRegistry.match（前缀最长优先，完整路径最长优先）
         -> 命中命令：stopPropagation
         -> 插件启用 / 群组 / 私聊 gating
         -> 权限检查
@@ -48,7 +48,7 @@ src/
     config/               配置 schema 和加载
     dispatch/
       router.ts           唯一 SDK middleware
-      command.ts          命令索引和冲突检测
+      command.ts          命令索引、组注册、多级匹配和冲突检测
       handler.ts          事件 handler 注册表
       middleware.ts       插件中间件注册表
       task-queue.ts       按 key 串行任务队列
@@ -65,7 +65,7 @@ src/
     lifecycle/            启动/停止状态机
   plugins/
     core/index.ts         /help、/status、/role
-    admin/index.ts        /utter、/utter.raw
+    admin/index.ts        /utter、/utter raw
     index.ts              内置插件清单
 plugins/                  本地插件根目录，整个目录不跟踪
   poke/
@@ -137,7 +137,7 @@ node dist/app.js \
 
 ## 在线安装插件
 
-`admin` 插件注册 `/plugin` 命令，通过 `ctx.core.installer` 调用 `NpmPluginInstaller`。安装器位于 `src/core/plugin/`：
+`admin` 插件注册 `/plugin` 指令组，通过 `ctx.core.installer` 调用 `NpmPluginInstaller`。安装器位于 `src/core/plugin/`：
 
 ```text
 spec.ts             解析并校验 npm 包名 / 精确版本 / dist-tag

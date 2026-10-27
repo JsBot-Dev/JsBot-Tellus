@@ -12,6 +12,8 @@
 
 `--plugin-dir` 可以重复，应用会跳过与内置插件同 ID 的外部插件。没有加载的插件不能出现在 `plugins` 配置中，否则会因未知插件 ID 启动失败。
 
+管理命令方面，`/utter.raw` 已迁移为 `/utter raw` 指令组子命令。
+
 发布到 npm registry 的插件也可以由 SuperAdmin 在聊天中安装：
 
 ```text

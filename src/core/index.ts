@@ -17,6 +17,8 @@ export type { PluginKV } from './plugin/kv.js'
 export { definePlugin } from './plugin/types.js'
 export type {
     AnyPluginDefinition,
+    CommandGroupOptions,
+    CommandGroupRegistrar,
     CommandHandler,
     CommandInfo,
     CommandMatch,

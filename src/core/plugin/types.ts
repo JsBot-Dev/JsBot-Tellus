@@ -79,6 +79,18 @@ export interface CommandOptions {
     description?: string | undefined
 }
 
+export interface CommandGroupOptions extends CommandOptions {
+    handler?: CommandHandler | undefined
+}
+
+export interface CommandGroupRegistrar {
+    register(options: CommandOptions, handler: CommandHandler): () => void
+    group(
+        options: CommandGroupOptions,
+        setup: (group: CommandGroupRegistrar) => void
+    ): () => void
+}
+
 export interface NoticeOptions {
     noticeType?: string | undefined
     subType?: string | undefined
@@ -94,8 +106,7 @@ export interface MiddlewareOptions {
     priority?: number | undefined
 }
 
-export interface CommandRegistrar {
-    register(options: CommandOptions, handler: CommandHandler): () => void
+export interface CommandRegistrar extends CommandGroupRegistrar {
     list(): ReadonlyArray<CommandInfo>
 }
 
