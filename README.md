@@ -142,6 +142,10 @@ npm run check:local   # 检查 plugins（需要先安装本地依赖）
 npm run build:local   # 构建 plugins
 ```
 
+## 发布
+
+CD 由 [`.github/workflows/cd.yaml`](.github/workflows/cd.yaml) 驱动：推送 `v*` 标签时自动检查、构建并通过 npm Trusted Publisher 发布，也支持手动 dry run。首次配置和版本发布步骤见[发布流程](docs/release.md)。
+
 ## 文档
 
 - [架构](docs/architecture.md)
@@ -149,6 +153,7 @@ npm run build:local   # 构建 plugins
 - [配置](docs/configuration.md)
 - [迁移与回滚](docs/migration.md)
 - [功能对照](docs/feature-parity.md)
+- [发布流程](docs/release.md)
 
 ## 许可证
 
