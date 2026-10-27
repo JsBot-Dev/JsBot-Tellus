@@ -46,9 +46,9 @@ git commit -m "Release v$(node -p "require('./package.json').version")"
 git push
 ```
 
-将 `patch` 换成 `minor` 或 `major` 可以发布对应版本。合并到 `main`（或直接推送到 `main`）后，CI 会先运行；CI 成功后 CD 自动发布该版本。
+将 `patch` 换成 `minor` 或 `major` 可以发布对应版本。提交并通过 Pull Request 合并到 `main` 后，CI 会先运行；CI 成功后 CD 自动发布该版本。`main` 受分支保护，不能直接推送。
 
-如果 `main` 上的版本已经在 npm 存在，CD 只会输出提示并跳过，不会失败。因此重复推送 `main` 是安全的。
+如果 `main` 上的版本已经在 npm 存在，CD 只会输出提示并跳过，不会失败。因此版本提交重复合并不影响已发布版本。
 
 ## 手动运行
 
