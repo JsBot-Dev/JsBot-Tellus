@@ -48,7 +48,6 @@ export const rolesConfigSchema = z
 export const installerConfigSchema = z
     .object({
         enabled: z.boolean().default(false),
-        dir: z.string().min(1).optional(),
         registry: z.url().default('https://registry.npmjs.org/'),
         allowedPackages: z.array(z.string().min(1)).default([]),
         allowScripts: z.boolean().default(false),

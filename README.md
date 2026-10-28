@@ -8,7 +8,7 @@
 - 插件只通过 `PluginContext` 使用内核能力，不直接接触 SDK client、Router 或数据库。
 - SDK 只注册一个 middleware：`client.use(router.dispatch)`。
 - 内置插件 `core`、`admin` 是普通源码，位于 `src/plugins/`，随内核一起编译。
-- `poke`、`llm` 等本地插件放在不跟踪的 `plugins/`，各自是独立包，通过 `--plugin-dir` 加载。
+- `poke`、`llm` 等本地插件放在不跟踪的 `plugins/`，各自是独立包，构建后从 `plugins/<id>/dist` 自动加载。
 
 ## 环境要求
 
@@ -85,18 +85,10 @@ npm install --prefix plugins/poke
 npm install --prefix plugins/llm
 npm run build:local
 
-node dist/app.js \
-    --plugin-dir plugins/poke/dist \
-    --plugin-dir plugins/llm/dist
+node dist/app.js
 ```
 
-`--plugin-dir` 可以重复使用，`BOT_PLUGIN_DIR` 使用逗号分隔多个目录：
-
-```bash
-BOT_PLUGIN_DIR=plugins/poke/dist,plugins/llm/dist npm start
-```
-
-外部目录中与内置插件同 ID 的插件会被跳过。外部插件是普通 ESM 模块，默认导出、`plugin` 命名导出或 `plugins` 数组导出均可被加载。开发和发布方式见 [docs/plugin-api.md](docs/plugin-api.md)，示例位于 [`examples/plugins/hello`](examples/plugins/hello)。
+应用启动时会固定扫描 `plugins/<id>/dist`，不需要路径参数。`plugins/` 中没有 `dist` 的目录会被跳过并记录警告；`plugins/` 中与内置插件同 ID 的插件也会被跳过。本地插件是普通 ESM 模块，默认导出、`plugin` 命名导出或 `plugins` 数组导出均可被加载。开发和发布方式见 [插件开发指南](docs/plugin-development.md)，示例位于 [`examples/plugins/hello`](examples/plugins/hello)。
 
 ## 在线安装插件包
 
@@ -110,8 +102,9 @@ BOT_PLUGIN_DIR=plugins/poke/dist,plugins/llm/dist npm start
 ```
 
 - 只接受 npm registry 包，`name`、`name@版本`、`name@tag`、`@scope/name[@版本|tag]`；拒绝 git、file、URL、workspace、link 等来源。
-- 安装目录默认是 `<data-dir>/plugins`，可用 `installer.dir` 修改。每个包带自己的依赖，不影响内核依赖。
-- 安装、更新、卸载成功后会自动重启运行时并加载新插件，无需手动重启；进程本身不会退出。`/plugin list` 会标记“已加载”或“重启后生效”。
+- 包会直接安装到 `plugins/<插件id>/`，和本地插件一样从 `plugins/<插件id>/dist` 加载；不会放进共享的 `node_modules`。每个包带自己的依赖，不影响内核依赖。
+- 首次安装时，一个包导出多个插件会使用包名作为目录（例如 `@scope/bundle` 对应 `plugins/@scope__bundle/`）。
+- 安装、更新、卸载成功后会自动重启运行时并加载新插件，无需手动重启；进程本身不会退出。`/plugin list` 会标记“已加载”或“重启后生效”。安装状态保存在 `plugins/.jsbot-installed.json`。
 - 默认使用 `--ignore-scripts`；只有显式设置 `installer.allowScripts=true` 才会执行 npm 生命周期脚本。
 - 卸载不会修改 `plugins` 配置。如果配置里仍有对应插件 ID，命令会给出警告并跳过自动重启，需要在处理配置后手动重启；其它已安装包依赖被卸载插件 ID 时默认拒绝卸载，可使用 `/plugin remove <目标> --force` 强制卸载。
 
@@ -125,8 +118,9 @@ jsbot [options]
 --config <path>      配置文件，优先级 CLI > BOT_CONFIG > ./bot.config.json
 --data-dir <path>    数据目录，优先级 CLI > BOT_DATA_DIR > ./data
 --log-level <level>  debug、info、warn、error，优先级 CLI > BOT_LOG_LEVEL
---plugin-dir <path>  外部插件目录，可重复；BOT_PLUGIN_DIR 使用逗号分隔
 --help               显示帮助
+
+本地插件固定从 ./plugins/<id>/dist 自动加载。
 ```
 
 ## 开发与校验
@@ -149,6 +143,7 @@ npm run build:local   # 构建 plugins
 ## 文档
 
 - [架构](docs/architecture.md)
+- [插件开发](docs/plugin-development.md)
 - [插件 API](docs/plugin-api.md)
 - [配置](docs/configuration.md)
 - [迁移与回滚](docs/migration.md)

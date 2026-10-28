@@ -1,14 +1,19 @@
-# Hello external plugin
+# Hello local plugin
 
-This is a minimal external plugin. It registers `/hello` and `/hey`, and reads
-its own `reply` option from `plugins.hello`.
+This is a minimal local plugin. It registers `/hello` and `/hey`, and reads its
+own `reply` option from `plugins.hello`.
 
-Point the bot at this directory:
+Build the project first, then copy the example into the fixed local plugin
+directory:
 
 ```bash
 npm run build
-node dist/app.js --plugin-dir examples/plugins
+mkdir -p plugins/hello/dist
+cp examples/plugins/hello/index.js plugins/hello/dist/index.js
+node dist/app.js
 ```
+
+The app automatically loads `plugins/<id>/dist`.
 
 Enable and configure it in `bot.config.json`:
 

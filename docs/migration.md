@@ -8,9 +8,9 @@
 
 - 安装本地依赖：`npm install --prefix plugins/poke`、`npm install --prefix plugins/llm`
 - 构建本地插件：`npm run build:local`
-- 启动时加载：`--plugin-dir plugins/poke/dist --plugin-dir plugins/llm/dist`
+- 启动时加载：应用会自动扫描 `plugins/<id>/dist`，不需要路径参数
 
-`--plugin-dir` 可以重复，应用会跳过与内置插件同 ID 的外部插件。没有加载的插件不能出现在 `plugins` 配置中，否则会因未知插件 ID 启动失败。
+应用会跳过与内置插件同 ID 的本地插件。没有加载的插件不能出现在 `plugins` 配置中，否则会因未知插件 ID 启动失败。
 
 管理命令方面，`/utter.raw` 已迁移为 `/utter raw` 指令组子命令。
 
@@ -23,7 +23,7 @@
 /plugin remove @scope/plugin
 ```
 
-安装目录默认是 `<data-dir>/plugins`，安装、更新、卸载成功后会自动重启运行时。它不会修改 `plugins` 配置，因此卸载后需要手动删除对应的 `plugins.<id>`；存在残留配置时会跳过自动重启并提示手动处理。详见[插件 API](plugin-api.md#通过-npm-发布与安装)和[配置](configuration.md#插件安装器)。
+包会直接安装到 `plugins/<插件id>/`，和本地插件使用同一个目录、同一个加载器；安装、更新、卸载成功后会自动重启运行时。它不会修改 `plugins` 配置，因此卸载后需要手动删除对应的 `plugins.<id>`；存在残留配置时会跳过自动重启并提示手动处理。旧版本的 `<data-dir>/plugins` 安装目录不再读取，升级后需要用 `/plugin install` 重新安装在线插件；旧配置中的 `installer.dir` 也已移除，继续保留会导致配置校验失败，需要删除该字段。详见[插件 API](plugin-api.md#通过-npm-发布与安装)和[配置](configuration.md#插件安装器)。
 
 ## 迁移步骤
 
@@ -65,21 +65,19 @@
     npm install --prefix plugins/poke
     npm install --prefix plugins/llm
     npm run build:local
-    node dist/app.js \
-        --plugin-dir plugins/poke/dist \
-        --plugin-dir plugins/llm/dist
+    node dist/app.js
     ```
 
 6. 验证 `core`、`admin` 和已加载的本地插件。确认后再切换生产进程和反向代理配置。
 
 ## 目录对照
 
-| 项目            | 迁移前                                       | 迁移后                               |
-| --------------- | -------------------------------------------- | ------------------------------------ |
-| 配置文件        | `bot.config.json` → `bot.config.legacy.json` | 新建 `bot.config.json`               |
-| 数据目录        | `data/` → `data.legacy/`                     | 新建 `data/`                         |
-| 旧插件目录      | 保留原样                                     | 内置 `core`/`admin` + `--plugin-dir` |
-| 旧 KV / Session | 保留在 `data.legacy/bot.db`                  | `data/bot.db`                        |
+| 项目            | 迁移前                                       | 迁移后                           |
+| --------------- | -------------------------------------------- | -------------------------------- |
+| 配置文件        | `bot.config.json` → `bot.config.legacy.json` | 新建 `bot.config.json`           |
+| 数据目录        | `data/` → `data.legacy/`                     | 新建 `data/`                     |
+| 旧插件目录      | 保留原样                                     | 内置 `core`/`admin` + `plugins/` |
+| 旧 KV / Session | 保留在 `data.legacy/bot.db`                  | `data/bot.db`                    |
 
 新版不会读取 `bot.config.legacy.json` 或 `data.legacy/`。备份文件可以保留，方便回退。
 
@@ -91,7 +89,7 @@
 - 本地 `llm` 插件按 session 存储上下文，不再整份 KV 重写。
 - 旧 `auth`、`echo`、`like-me` 不重建；权限由 `core` + `roles` 负责，发送文本由 `admin` 负责。
 - 不支持热加载、插件市场界面和旧装饰器；npm 插件安装成功后会重建运行时。
-- 仓库只跟踪 `core`、`admin`；其它插件通过本地目录或外部目录加载。
+- 仓库只跟踪 `core`、`admin`；其它插件从 `plugins/` 加载，在线安装的插件也在这里。
 
 ## 回滚
 

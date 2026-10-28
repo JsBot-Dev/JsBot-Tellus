@@ -4,7 +4,7 @@
 
 ```text
 src/plugins/*  ->  src/core/index.ts 的公共 API（内置插件）
-外部插件包     ->  @jsbot-tellus/core 的公共 API
+本地/npm 插件包 ->  @jsbot-tellus/core 的公共 API
 src/core/*     ->  SDK adapter、Node 内置模块、SQLite
 src/core/*     -X-> src/plugins/*
 ```
@@ -16,8 +16,8 @@ src/core/*     -X-> src/plugins/*
 - 插件只能通过 `PluginContext`、`EventContext` 和 `BotApi` 使用能力。
 - `core` 不 import 任何插件；`core`、`admin` 在 `src/plugins/index.ts` 显式注册。
 - 内置插件是普通源码，随内核一起编译；没有独立依赖，不单独建包。
-- 外部插件由 `src/app.ts` 在启动前扫描并追加到内置插件之后。
-- 本地插件放在不跟踪的 `plugins/`，每个插件是独立包，通过 `--plugin-dir` 加载。
+- 本地插件由 `src/app.ts` 在启动前扫描 `plugins/<id>/dist` 并追加到内置插件之后。
+- 本地插件放在不跟踪的 `plugins/`，每个插件是独立包，构建后自动加载。
 
 ## 运行时主链路
 
@@ -58,7 +58,7 @@ src/
       host.ts             插件排序、配置校验、setup/start/stop
       gating.ts           enabled/private/groups
       kv.ts               SQLite KV
-      loader.ts           外部插件目录加载
+      loader.ts           本地插件目录加载
     security/             角色、权限、拒绝提示
     messaging/            reply/forward 发送和回复分段
     storage/              SQLite 和 Session
@@ -75,7 +75,7 @@ plugins/                  本地插件根目录，整个目录不跟踪
 ## 启动顺序
 
 ```text
-加载配置和外部插件
+加载配置和本地插件
   -> 打开数据库
   -> 创建 Kernel
      -> 创建 Router、PluginGate、SessionStore、TaskQueue、BotApi
@@ -128,12 +128,10 @@ npm run smoke   # node dist/app.js --help
 npm install --prefix plugins/poke
 npm install --prefix plugins/llm
 npm run build:local
-node dist/app.js \
-    --plugin-dir plugins/poke/dist \
-    --plugin-dir plugins/llm/dist
+node dist/app.js
 ```
 
-`--plugin-dir` 可以重复。应用会跳过与内置插件同 ID 的外部插件，避免重复注册。
+应用会固定扫描 `plugins/<id>/dist`，并跳过与内置插件同 ID 的本地插件，避免重复注册。没有 `dist` 的插件目录会被跳过并记录警告。
 
 ## 在线安装插件
 
@@ -142,10 +140,9 @@ node dist/app.js \
 ```text
 spec.ts             解析并校验 npm 包名 / 精确版本 / dist-tag
 npm-runner.ts       execFile 调用 npm，支持超时和取消
-install-dir.ts      <data-dir>/plugins 的 manifest、状态文件和 @jsbot-tellus/core 链接
-install-validate.ts 在子进程中 import 包，确认它导出插件定义
-installer.ts        安装 / 列表 / 卸载 / 更新、串行化、备份与回滚
-installed.ts        启动时从安装目录加载已安装包
+install-dir.ts      plugins/ 的安装状态、校验脚本和 @jsbot-tellus/core 链接
+install-validate.ts 在子进程中扫描插件 dist，确认它导出插件定义
+installer.ts        安装 / 列表 / 卸载 / 更新、串行化、目录替换与回滚
 ```
 
 安装流程：
@@ -153,17 +150,18 @@ installed.ts        启动时从安装目录加载已安装包
 ```text
 /plugin install <spec>
   -> 校验 npm registry 来源和允许列表
-  -> npm install <spec> --save-exact [--ignore-scripts]
-  -> 重建 node_modules/@jsbot-tellus/core 链接
-  -> 子进程 import 包，收集 manifest.id / version / dependencies
+  -> 在 plugins/.staging-<uuid> 中 npm install <spec> --save-exact [--ignore-scripts]
+  -> 把包内容移到插件目录根，依赖留在 <插件目录>/node_modules
+  -> 创建 <插件目录>/node_modules/@jsbot-tellus/core 链接
+  -> 子进程扫描 dist，收集 manifest.id / version / dependencies
   -> 检查 id 冲突和完整依赖图（缺失、自依赖、循环）
-  -> 原子写入 .jsbot-installed.json
-  -> 自动重建运行时，由 installed.ts 重新加载
+  -> 原子替换 plugins/<插件id>，写入 plugins/.jsbot-installed.json
+  -> 自动重建运行时，由同一个本地插件加载器重新加载
 ```
 
-npm 或校验失败时，安装器恢复安装前的 `package.json` / `package-lock.json` / `.jsbot-installed.json`，并运行 `npm ci`（没有旧 lockfile 时运行 `npm install`）恢复 `node_modules`。所有安装操作通过内部队列串行执行。状态文件损坏时安装器会明确报错，不会用空状态覆盖其它包记录。
+安装或校验失败时目标目录不会被替换；更新会先用暂存目录完成下载和校验，再替换旧目录。所有安装操作通过内部队列串行执行。状态文件损坏时安装器会明确报错，不会用空状态覆盖其它包记录。
 
-加载顺序是内置插件 → `--plugin-dir` 外部插件 → `<data-dir>/plugins` 已安装插件。重复 ID 保留先加载的插件并记录警告。安装器不直接修改运行中的插件状态；操作成功后由应用重建运行时并重新加载。卸载时如果检测到配置残留，会跳过自动重启并提示手动处理；如果其它已安装包依赖被卸载的插件，默认拒绝卸载，`--force` 可强制继续。安装器默认关闭，安装的插件是完全可信的宿主进程代码。
+启动时加载顺序是内置插件 → `plugins/` 中的全部目录（本地插件和在线安装的插件没有区别）。重复 ID 保留先加载的插件并记录警告。安装器不直接修改运行中的插件状态；操作成功后由应用重建运行时并重新加载。卸载时如果检测到配置残留，会跳过自动重启并提示手动处理；如果其它已安装包依赖被卸载的插件，默认拒绝卸载，`--force` 可强制继续。安装器默认关闭，安装的插件是完全可信的宿主进程代码。
 
 ## 测试边界
 

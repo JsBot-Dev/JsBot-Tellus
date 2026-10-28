@@ -1,20 +1,26 @@
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { dirname, join } from 'node:path'
+import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { installerConfigSchema } from '../../src/core/config/schema.js'
 import {
     INSTALL_STATE_FILE,
-    ensureInstallDir,
+    ensureInstallRoot,
+    pathExists,
+    readInstallState,
 } from '../../src/core/plugin/install-dir.js'
 import { NpmPluginInstaller } from '../../src/core/plugin/installer.js'
+import { loadLocalPlugins } from '../../src/core/plugin/loader.js'
 import {
     ProcessError,
     type NpmRunner,
     type ProcessOptions,
     type ProcessResult,
 } from '../../src/core/plugin/npm-runner.js'
-import type { ValidatedPlugin } from '../../src/core/plugin/install-validate.js'
+import {
+    validateInstalledPackage,
+    type ValidatedPlugin,
+} from '../../src/core/plugin/install-validate.js'
 import { createTestLogger } from '../helpers/loggers.js'
 
 interface FakePackage {
@@ -57,8 +63,6 @@ class FakeRunner implements NpmRunner {
 
             if (args[0] === 'install') {
                 await this.install(dir, args[1])
-            } else if (args[0] === 'uninstall') {
-                await this.uninstall(dir, args[1])
             }
 
             return { stdout: '', stderr: '' }
@@ -105,30 +109,6 @@ class FakeRunner implements NpmRunner {
         )
         await writePackage(dir, name, version)
     }
-
-    private async uninstall(dir: string, name?: string): Promise<void> {
-        if (name === undefined) return
-
-        const manifestPath = join(dir, 'package.json')
-        const manifest = JSON.parse(
-            await readFile(manifestPath, 'utf8')
-        ) as Record<string, unknown>
-        const dependencies = {
-            ...((manifest['dependencies'] as Record<string, string>) ?? {}),
-        }
-
-        delete dependencies[name]
-        manifest['dependencies'] = dependencies
-        await writeFile(
-            manifestPath,
-            `${JSON.stringify(manifest, null, 4)}\n`,
-            'utf8'
-        )
-        await rm(join(dir, 'node_modules', name), {
-            recursive: true,
-            force: true,
-        })
-    }
 }
 
 async function writePackage(
@@ -136,11 +116,35 @@ async function writePackage(
     name: string,
     version: string
 ): Promise<void> {
-    const location = join(dir, 'node_modules', name, 'package.json')
-    await mkdir(dirname(location), { recursive: true })
+    const location = join(dir, 'node_modules', name)
+    const id = name.startsWith('@') ? name.split('/').at(-1) : name
+
+    await mkdir(join(location, 'dist'), { recursive: true })
     await writeFile(
-        location,
-        `${JSON.stringify({ name, version, type: 'module', main: './index.js' }, null, 4)}\n`,
+        join(location, 'package.json'),
+        `${JSON.stringify(
+            {
+                name,
+                version,
+                type: 'module',
+                main: './dist/index.js',
+            },
+            null,
+            4
+        )}\n`,
+        'utf8'
+    )
+    await writeFile(
+        join(location, 'dist', 'index.js'),
+        `export default {
+    manifest: {
+        id: '${id ?? name}',
+        version: '${version}',
+        configSchema: { safeParse: () => ({ success: true, data: {} }) },
+    },
+    setup() {},
+}
+`,
         'utf8'
     )
 }
@@ -172,7 +176,7 @@ describe('NpmPluginInstaller', () => {
 
     beforeEach(async () => {
         directory = await mkdtemp(join(tmpdir(), 'jsbot-installer-'))
-        await ensureInstallDir(directory)
+        await ensureInstallRoot(directory)
         runner = new FakeRunner()
         validator = new FakeValidator()
     })
@@ -191,6 +195,7 @@ describe('NpmPluginInstaller', () => {
             allowScripts?: boolean
             reservedIds?: string[]
             configuredPluginIds?: string[]
+            realValidator?: boolean
         } = {}
     ): NpmPluginInstaller {
         return new NpmPluginInstaller({
@@ -206,7 +211,11 @@ describe('NpmPluginInstaller', () => {
             }),
             logger: createTestLogger('installer'),
             runner,
-            validate: (dir, name) => validator.validate(dir, name),
+            ...(overrides.realValidator
+                ? { validate: validateInstalledPackage }
+                : {
+                      validate: (dir, name) => validator.validate(dir, name),
+                  }),
             reservedIds: () => new Set(overrides.reservedIds ?? []),
             configuredPluginIds: () =>
                 new Set(overrides.configuredPluginIds ?? []),
@@ -231,15 +240,11 @@ describe('NpmPluginInstaller', () => {
         validator.plugins.set(name, options.plugins ?? [plugin(name)])
     }
 
-    async function dependencies(): Promise<Record<string, string>> {
-        const manifest = JSON.parse(
-            await readFile(join(directory, 'package.json'), 'utf8')
-        ) as Record<string, unknown>
-
-        return (manifest['dependencies'] as Record<string, string>) ?? {}
+    async function state() {
+        return readInstallState(directory)
     }
 
-    it('installs an npm package and records its plugins', async () => {
+    it('installs a package into plugins/<id>/dist', async () => {
         registerPackage('demo-plugin')
         const installer = createInstaller()
 
@@ -251,7 +256,31 @@ describe('NpmPluginInstaller', () => {
             pluginIds: ['demo-plugin'],
             warnings: [],
         })
-        expect(await dependencies()).toEqual({ 'demo-plugin': '1.0.0' })
+
+        const record = (await state()).packages['demo-plugin']
+
+        expect(record).toMatchObject({
+            spec: 'demo-plugin',
+            version: '1.0.0',
+            pluginIds: ['demo-plugin'],
+            dir: 'demo-plugin',
+            installedAt: '2026-01-02T03:04:05.000Z',
+        })
+        expect(
+            await pathExists(join(directory, 'demo-plugin', 'dist', 'index.js'))
+        ).toBe(true)
+        expect(
+            await pathExists(
+                join(directory, 'demo-plugin', 'node_modules', 'demo-plugin')
+            )
+        ).toBe(false)
+        expect(
+            await pathExists(join(directory, 'node_modules', 'demo-plugin'))
+        ).toBe(false)
+
+        const loaded = await loadLocalPlugins(directory)
+
+        expect(loaded.map((item) => item.manifest.id)).toEqual(['demo-plugin'])
 
         const call = runner.calls.find((args) => args[1] === 'demo-plugin')
 
@@ -272,6 +301,26 @@ describe('NpmPluginInstaller', () => {
         ])
     })
 
+    it('validates the flattened directory with the real validator', async () => {
+        registerPackage('real-plugin')
+        const installer = createInstaller({ realValidator: true })
+
+        const result = await installer.install('real-plugin')
+
+        expect(result.pluginIds).toEqual(['real-plugin'])
+        expect(
+            await pathExists(
+                join(
+                    directory,
+                    'real-plugin',
+                    'node_modules',
+                    '@jsbot-tellus',
+                    'core'
+                )
+            )
+        ).toBe(true)
+    })
+
     it('reports a corrupted install state instead of resetting it', async () => {
         await writeFile(
             join(directory, INSTALL_STATE_FILE),
@@ -284,32 +333,16 @@ describe('NpmPluginInstaller', () => {
         )
     })
 
-    it('rejects install, update and remove when dependencies lack state records', async () => {
-        registerPackage('installed-plugin')
-        registerPackage('new-plugin')
-        const installer = createInstaller()
-
-        await installer.install('installed-plugin')
-        await rm(join(directory, INSTALL_STATE_FILE), { force: true })
-
-        const callsBefore = runner.calls.length
-        const message = /安装状态与 package.json 不一致[\s\S]*installed-plugin/
-
-        await expect(installer.install('new-plugin')).rejects.toThrow(message)
-        await expect(installer.update()).rejects.toThrow(message)
-        await expect(installer.remove('installed-plugin')).rejects.toThrow(
-            message
-        )
-        expect(runner.calls).toHaveLength(callsBefore)
-    })
-
-    it('aborts before npm when the backup cannot be read', async () => {
+    it('refuses to overwrite an unmanaged local plugin directory', async () => {
         registerPackage('demo-plugin')
-        await mkdir(join(directory, 'package-lock.json'), { recursive: true })
-        const installer = createInstaller()
+        await mkdir(join(directory, 'demo-plugin', 'dist'), {
+            recursive: true,
+        })
 
-        await expect(installer.install('demo-plugin')).rejects.toThrow()
-        expect(runner.calls).toHaveLength(0)
+        await expect(createInstaller().install('demo-plugin')).rejects.toThrow(
+            /安装目录已存在且不是由安装器管理/
+        )
+        expect((await state()).packages).toEqual({})
     })
 
     it('honours exact versions and dist-tags', async () => {
@@ -320,10 +353,10 @@ describe('NpmPluginInstaller', () => {
         const installer = createInstaller()
 
         await installer.install('demo-plugin@1.0.0')
-        expect(await dependencies()).toEqual({ 'demo-plugin': '1.0.0' })
+        expect((await state()).packages['demo-plugin']?.version).toBe('1.0.0')
 
         await installer.install('demo-plugin@latest')
-        expect(await dependencies()).toEqual({ 'demo-plugin': '2.0.0' })
+        expect((await state()).packages['demo-plugin']?.version).toBe('2.0.0')
     })
 
     it('runs install scripts only when allowed', async () => {
@@ -374,6 +407,26 @@ describe('NpmPluginInstaller', () => {
         }).install('@scope/plugin')
 
         expect(result.packageName).toBe('@scope/plugin')
+        expect((await state()).packages['@scope/plugin']?.dir).toBe(
+            'scope-plugin'
+        )
+    })
+
+    it('uses the package name for packages with multiple plugins', async () => {
+        registerPackage('@scope/bundle', {
+            plugins: [plugin('first'), plugin('second')],
+        })
+
+        await createInstaller().install('@scope/bundle')
+
+        expect((await state()).packages['@scope/bundle']?.dir).toBe(
+            '@scope__bundle'
+        )
+        expect(
+            await pathExists(
+                join(directory, '@scope__bundle', 'dist', 'index.js')
+            )
+        ).toBe(true)
     })
 
     it('rolls back when npm fails', async () => {
@@ -385,8 +438,9 @@ describe('NpmPluginInstaller', () => {
             'npm failed'
         )
 
-        expect(await dependencies()).toEqual({})
+        expect((await state()).packages).toEqual({})
         expect(await createInstaller().list()).toEqual([])
+        expect(await pathExists(join(directory, 'demo-plugin'))).toBe(false)
     })
 
     it('rolls back when package validation fails', async () => {
@@ -399,7 +453,7 @@ describe('NpmPluginInstaller', () => {
             'not a plugin'
         )
 
-        expect(await dependencies()).toEqual({})
+        expect((await state()).packages).toEqual({})
         expect(await createInstaller().list()).toEqual([])
     })
 
@@ -412,7 +466,7 @@ describe('NpmPluginInstaller', () => {
             createInstaller({ reservedIds: ['core'] }).install('demo-plugin')
         ).rejects.toThrow('插件 id 已被占用: core')
 
-        expect(await dependencies()).toEqual({})
+        expect((await state()).packages).toEqual({})
     })
 
     it('rejects plugin ids used by another installed package', async () => {
@@ -429,7 +483,7 @@ describe('NpmPluginInstaller', () => {
         await expect(installer.install('second-plugin')).rejects.toThrow(
             '插件 id 已被占用: shared'
         )
-        expect(await dependencies()).toEqual({ 'first-plugin': '1.0.0' })
+        expect(Object.keys((await state()).packages)).toEqual(['first-plugin'])
     })
 
     it('rejects duplicate ids within one package', async () => {
@@ -471,7 +525,7 @@ describe('NpmPluginInstaller', () => {
         expect((await restarted.list())[0]?.loaded).toBe(true)
     })
 
-    it('removes a package and reports configured plugin ids', async () => {
+    it('removes a package directory and reports configured plugin ids', async () => {
         registerPackage('demo-plugin', {
             plugins: [plugin('demo')],
         })
@@ -487,7 +541,8 @@ describe('NpmPluginInstaller', () => {
         expect(result.pluginIds).toEqual(['demo'])
         expect(result.warnings).toHaveLength(1)
         expect(result.warnings[0]).toContain('plugins.demo')
-        expect(await dependencies()).toEqual({})
+        expect((await state()).packages).toEqual({})
+        expect(await pathExists(join(directory, 'demo'))).toBe(false)
         expect(await installer.list()).toEqual([])
     })
 
@@ -506,10 +561,10 @@ describe('NpmPluginInstaller', () => {
         await expect(installer.remove('base')).rejects.toThrow(
             /会破坏其它插件包的依赖/
         )
-        expect(await dependencies()).toEqual({
-            'base-plugin': '1.0.0',
-            'app-plugin': '1.0.0',
-        })
+        expect(Object.keys((await state()).packages)).toEqual([
+            'app-plugin',
+            'base-plugin',
+        ])
     })
 
     it('allows a forced removal with dependency warnings', async () => {
@@ -535,7 +590,7 @@ describe('NpmPluginInstaller', () => {
                     warning.includes('已卸载的插件 base')
             )
         ).toBe(true)
-        expect(await dependencies()).toEqual({ 'app-plugin': '1.0.0' })
+        expect(Object.keys((await state()).packages)).toEqual(['app-plugin'])
     })
 
     it('rejects self-dependencies and dependency cycles', async () => {
@@ -581,7 +636,38 @@ describe('NpmPluginInstaller', () => {
                 warnings: [],
             },
         ])
-        expect(await dependencies()).toEqual({ 'demo-plugin': '2.0.0' })
+        expect((await state()).packages['demo-plugin']?.version).toBe('2.0.0')
+        expect(
+            JSON.parse(
+                await readFile(
+                    join(directory, 'demo-plugin', 'package.json'),
+                    'utf8'
+                )
+            )
+        ).toMatchObject({ version: '2.0.0' })
+    })
+
+    it('keeps the existing directory when an update changes plugin ids', async () => {
+        registerPackage('demo-plugin', {
+            plugins: [plugin('old')],
+        })
+        const installer = createInstaller()
+
+        await installer.install('demo-plugin')
+
+        registerPackage('demo-plugin', {
+            version: '1.0.0',
+            latest: '2.0.0',
+            plugins: [plugin('new')],
+        })
+
+        const result = await installer.update('demo-plugin')
+        const record = (await state()).packages['demo-plugin']
+
+        expect(result.updated[0]?.pluginIds).toEqual(['new'])
+        expect(record?.dir).toBe('old')
+        expect(await pathExists(join(directory, 'old', 'dist'))).toBe(true)
+        expect(await pathExists(join(directory, 'new'))).toBe(false)
     })
 
     it('warns when an update removes a configured plugin id', async () => {
@@ -628,6 +714,8 @@ describe('NpmPluginInstaller', () => {
         await installer.install('ok-plugin')
         await installer.install('bad-plugin')
 
+        const before = (await state()).packages['bad-plugin']?.version
+
         validator.plugins.delete('bad-plugin')
 
         const result = await installer.update()
@@ -637,6 +725,7 @@ describe('NpmPluginInstaller', () => {
         ])
         expect(result.failed).toHaveLength(1)
         expect(result.failed[0]?.packageName).toBe('bad-plugin')
+        expect((await state()).packages['bad-plugin']?.version).toBe(before)
     })
 
     it('rejects operations when disabled', async () => {
@@ -665,9 +754,9 @@ describe('NpmPluginInstaller', () => {
         ])
 
         expect(runner.maxActive).toBe(1)
-        expect(await dependencies()).toEqual({
-            'first-plugin': '1.0.0',
-            'second-plugin': '1.0.0',
-        })
+        expect(Object.keys((await state()).packages)).toEqual([
+            'first-plugin',
+            'second-plugin',
+        ])
     })
 })
