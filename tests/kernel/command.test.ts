@@ -13,6 +13,7 @@ function registration(
         pluginId: string
         aliases: string[]
         prefixes: string[]
+        params: string
     }> = {}
 ) {
     return {
@@ -21,6 +22,7 @@ function registration(
         aliases: overrides.aliases ?? [],
         prefixes: overrides.prefixes ?? ['/'],
         permission: 'User' as const,
+        ...(overrides.params !== undefined ? { params: overrides.params } : {}),
         handler,
     }
 }
@@ -33,6 +35,7 @@ function groupRegistration(
         prefixes?: string[]
         permission?: 'User' | 'Admin' | 'SuperAdmin'
         description?: string
+        params?: string
         handler?: CommandHandler
     } = {}
 ): CommandGroupRegistration {
@@ -45,6 +48,7 @@ function groupRegistration(
         ...(overrides.description !== undefined
             ? { description: overrides.description }
             : {}),
+        ...(overrides.params !== undefined ? { params: overrides.params } : {}),
         ...(overrides.handler !== undefined
             ? { handler: overrides.handler }
             : {}),
@@ -140,6 +144,36 @@ describe('command registry', () => {
         ])
     })
 
+    it('lists usage generated from params', () => {
+        const registry = new CommandRegistry()
+
+        registry.register(
+            registration('ask', {
+                params: '<question:string> [count:number=1]',
+            })
+        )
+
+        expect(registry.list()).toEqual([
+            {
+                name: 'ask',
+                aliases: [],
+                permission: 'User',
+                usage: '<question> [count]',
+                pluginId: 'test',
+            },
+        ])
+    })
+
+    it('rejects invalid params declarations at registration', () => {
+        const registry = new CommandRegistry()
+
+        expect(() =>
+            registry.register(registration('bad', { params: '<arg> <arg>' }))
+        ).toThrow(/参数名重复/)
+
+        expect(registry.list()).toEqual([])
+    })
+
     it('removes a command when its disposer runs', () => {
         const registry = new CommandRegistry()
         const dispose = registry.register(registration('temp'))
@@ -227,6 +261,57 @@ describe('command registry', () => {
 
         expect(String(messages[0])).toContain('用法：/plugin <install>')
         expect(String(messages[0])).toContain('/plugin install - 安装插件包')
+    })
+
+    it('shows child params in group usage', async () => {
+        const registry = new CommandRegistry()
+        const messages: unknown[] = []
+
+        registry.group(groupRegistration('demo'), (demo) => {
+            demo.register(
+                {
+                    name: 'ask',
+                    params: '<question:text>',
+                    description: '提问',
+                },
+                handler
+            )
+        })
+
+        const found = registry.match('/demo')
+
+        if (!found) throw new Error('expected group root')
+
+        await found.registration.handler(
+            {} as never,
+            {
+                send: async (message: unknown) => {
+                    messages.push(message)
+                },
+            } as never,
+            found.match
+        )
+
+        expect(String(messages[0])).toContain('/demo ask <question...> - 提问')
+        expect(
+            registry.list().find((item) => item.name === 'demo ask')?.usage
+        ).toBe('<question...>')
+    })
+
+    it('records usage for group roots with params', () => {
+        const registry = new CommandRegistry()
+
+        registry.group(
+            groupRegistration('demo', { params: '[target:string]' }),
+            (demo) => {
+                demo.register({ name: 'child' }, handler)
+            }
+        )
+
+        expect(registry.list()[0]).toMatchObject({
+            name: 'demo',
+            usage: '[target]',
+        })
     })
 
     it('composes group and command aliases', () => {

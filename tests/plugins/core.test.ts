@@ -1,4 +1,6 @@
 import { describe, expect, it } from 'vitest'
+import { z } from 'zod'
+import { definePlugin } from '../../src/core/plugin/types.js'
 import { corePlugin } from '../../src/plugins/core/index.js'
 import { adminPlugin } from '../../src/plugins/admin/index.js'
 import type { FakeEventContext } from '../helpers/event-context.js'
@@ -81,6 +83,46 @@ describe('core plugin', () => {
         expect(superadminText).toContain('/utter raw')
         expect(superadminText).toContain('/plugin install')
         expect(superadminText).toContain('/plugin list')
+
+        await app.stop()
+    })
+
+    it('shows command params in help', async () => {
+        const askPlugin = definePlugin({
+            manifest: {
+                id: 'ask',
+                version: '1.0.0',
+                defaultEnabled: true,
+                configSchema: z.object({}).strict(),
+            },
+            setup(ctx) {
+                ctx.commands.register(
+                    {
+                        name: 'ask',
+                        permission: 'User',
+                        description: '提问',
+                        params: '<question:string> [count:number=1]',
+                    },
+                    async () => {}
+                )
+            },
+        })
+        const app = await createTestApp({
+            plugins: [corePlugin, askPlugin],
+        })
+
+        const result = await app.dispatch(
+            groupMessage({
+                raw_message: '/help',
+                user_id: 30000,
+            })
+        )
+
+        expect(
+            messageText(app, result)
+                .replaceAll('&#91;', '[')
+                .replaceAll('&#93;', ']')
+        ).toContain('/ask <question> [count] - 提问')
 
         await app.stop()
     })

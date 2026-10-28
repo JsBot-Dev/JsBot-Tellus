@@ -1,15 +1,17 @@
-import { readFile, rm, writeFile } from 'node:fs/promises'
+import { randomUUID } from 'node:crypto'
+import { cp, mkdir, rename, rm, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import type { InstallerConfig } from '../config/schema.js'
 import type { Logger } from '../logging/logger.js'
 import {
-    CORE_PACKAGE_NAME,
-    INSTALL_STATE_FILE,
     ensureCoreLink,
-    ensureInstallDir,
-    readDependencies,
+    ensureInstallRoot,
+    packageDirectoryName,
+    pathExists,
     readInstallState,
-    readInstalledVersion,
+    readJsonFile,
+    readPackageVersion,
+    VALIDATE_SCRIPT_FILE,
     writeInstallState,
     type InstalledPackageRecord,
     type InstallState,
@@ -42,6 +44,7 @@ export class InstallerError extends Error {
 }
 
 export interface InstallerOptions {
+    /** Plugins root. Installed packages are placed in subdirectories here. */
     dir: string
     config: InstallerConfig
     logger: Logger
@@ -52,13 +55,14 @@ export interface InstallerOptions {
     now?: (() => Date) | undefined
 }
 
-interface BackupFile {
-    path: string
-    content: string | null
-}
-
 const ID_PATTERN = /^[a-z0-9][a-z0-9._-]*$/i
 const NPM_FLAGS = ['--no-audit', '--no-fund', '--loglevel=error']
+const STAGING_MANIFEST = {
+    name: '@jsbot-tellus/plugin-staging',
+    private: true,
+    version: '0.0.0',
+    type: 'module',
+}
 
 function messageOf(error: unknown): string {
     return error instanceof Error ? error.message : String(error)
@@ -72,6 +76,15 @@ function asInstallerError(error: unknown): InstallerError {
     }
 
     return new InstallerError(messageOf(error), { cause: error })
+}
+
+function installDirectoryName(
+    packageName: string,
+    pluginIds: readonly string[]
+): string {
+    const only = pluginIds.length === 1 ? pluginIds[0] : undefined
+
+    return only ?? packageDirectoryName(packageName)
 }
 
 export class NpmPluginInstaller implements PluginInstaller {
@@ -101,30 +114,28 @@ export class NpmPluginInstaller implements PluginInstaller {
     }
 
     async list(): Promise<InstalledPackageInfo[]> {
-        const dependencies = await readDependencies(this.dir)
         const state = await readInstallState(this.dir)
         const loadedIds = this.reservedIds()
         const result: InstalledPackageInfo[] = []
 
-        for (const name of Object.keys(dependencies).sort()) {
-            if (name === CORE_PACKAGE_NAME) continue
-
+        for (const name of Object.keys(state.packages).sort()) {
             const record = state.packages[name]
+
+            if (!record) continue
+
             const version =
-                (await readInstalledVersion(this.dir, name)) ??
-                record?.version ??
-                ''
-            const pluginIds = record?.pluginIds ?? []
+                (await readPackageVersion(join(this.dir, record.dir))) ??
+                record.version
 
             result.push({
                 packageName: name,
                 version,
-                spec: record?.spec ?? dependencies[name] ?? name,
-                pluginIds,
-                installedAt: record?.installedAt ?? '',
+                spec: record.spec,
+                pluginIds: [...record.pluginIds],
+                installedAt: record.installedAt,
                 loaded:
-                    pluginIds.length > 0 &&
-                    pluginIds.every((id) => loadedIds.has(id)),
+                    record.pluginIds.length > 0 &&
+                    record.pluginIds.every((id) => loadedIds.has(id)),
             })
         }
 
@@ -157,13 +168,14 @@ export class NpmPluginInstaller implements PluginInstaller {
         }
 
         return this.serialize(async () => {
-            await ensureInstallDir(this.dir)
-
-            const dependencies = await readDependencies(this.dir)
             const state = await readInstallState(this.dir)
-            this.assertStateCovers(dependencies, state)
-            const name = this.resolveTarget(target, dependencies, state)
+            const name = this.resolveTarget(target, state)
             const record = state.packages[name]
+
+            if (!record) {
+                throw new InstallerError(`未找到已安装的插件包: ${name}`)
+            }
+
             const warnings = this.removalWarnings(name, record, state)
             const dependents = this.dependentWarnings(name, record, state)
 
@@ -177,35 +189,51 @@ export class NpmPluginInstaller implements PluginInstaller {
                 )
             }
 
-            const backup = await this.backup()
+            const destination = join(this.dir, record.dir)
+            const backup = this.temporaryPath('backup')
+            const existed = await pathExists(destination)
 
             try {
-                await this.runner.run(
-                    [
-                        'uninstall',
-                        name,
-                        '--prefix',
-                        this.dir,
-                        ...NPM_FLAGS,
-                        '--ignore-scripts',
-                    ],
-                    { timeoutMs: this.config.timeoutMs, signal }
-                )
-                await ensureCoreLink(this.dir)
+                if (existed) await rename(destination, backup)
 
-                delete state.packages[name]
-                await writeInstallState(this.dir, state)
+                try {
+                    delete state.packages[name]
+                    await writeInstallState(this.dir, state)
+                } catch (error) {
+                    if (existed) {
+                        await rename(backup, destination).catch(
+                            (restoreError) => {
+                                this.logger.error(
+                                    'failed to restore plugin directory',
+                                    restoreError
+                                )
+                            }
+                        )
+                    }
 
-                this.logger.info(`removed plugin package ${name}`)
-
-                return {
-                    packageName: name,
-                    pluginIds: record?.pluginIds ?? [],
-                    warnings,
+                    throw error
                 }
             } catch (error) {
-                await this.rollback(backup, error)
                 throw asInstallerError(error)
+            }
+
+            if (existed) {
+                await rm(backup, { recursive: true, force: true }).catch(
+                    (error) => {
+                        this.logger.warn(
+                            `failed to remove backup directory ${backup}`,
+                            error
+                        )
+                    }
+                )
+            }
+
+            this.logger.info(`removed plugin package ${name}`)
+
+            return {
+                packageName: name,
+                pluginIds: [...record.pluginIds],
+                warnings,
             }
         })
     }
@@ -221,24 +249,14 @@ export class NpmPluginInstaller implements PluginInstaller {
         }
 
         return this.serialize(async () => {
-            await ensureInstallDir(this.dir)
-
-            const dependencies = await readDependencies(this.dir)
             const state = await readInstallState(this.dir)
-            this.assertStateCovers(dependencies, state)
             const names =
                 target === undefined || target.trim().length === 0
-                    ? Object.keys(dependencies)
-                          .filter((name) => name !== CORE_PACKAGE_NAME)
-                          .sort()
-                    : [this.resolveTarget(target, dependencies, state)]
+                    ? Object.keys(state.packages).sort()
+                    : [this.resolveTarget(target, state)]
 
             const updated: PluginInstallResult[] = []
             const failed: Array<{ packageName: string; message: string }> = []
-
-            if (names.length === 0) {
-                return { updated, failed }
-            }
 
             for (const name of names) {
                 if (signal?.aborted) {
@@ -275,20 +293,30 @@ export class NpmPluginInstaller implements PluginInstaller {
         spec: PackageSpec,
         signal: AbortSignal | undefined
     ): Promise<PluginInstallResult> {
-        await ensureInstallDir(this.dir)
+        await ensureInstallRoot(this.dir)
 
-        const previousState = await readInstallState(this.dir)
-        const dependencies = await readDependencies(this.dir)
-        this.assertStateCovers(dependencies, previousState)
-        const backup = await this.backup()
+        const state = await readInstallState(this.dir)
+        const previous = state.packages[spec.name]
+        const staging = this.temporaryPath('staging')
+        const backup = this.temporaryPath('backup')
+        let target: string | null = null
+        let movedTarget = false
+        let movedBackup = false
 
         try {
+            await mkdir(staging, { recursive: true })
+            await writeFile(
+                join(staging, 'package.json'),
+                `${JSON.stringify(STAGING_MANIFEST, null, 4)}\n`,
+                'utf8'
+            )
+
             await this.runner.run(
                 [
                     'install',
                     spec.raw,
                     '--prefix',
-                    this.dir,
+                    staging,
                     '--save-exact',
                     ...NPM_FLAGS,
                     ...(this.config.allowScripts ? [] : ['--ignore-scripts']),
@@ -297,28 +325,76 @@ export class NpmPluginInstaller implements PluginInstaller {
                 { timeoutMs: this.config.timeoutMs, signal }
             )
 
-            await ensureCoreLink(this.dir)
+            const packagePath = join(staging, 'node_modules', spec.name)
+            const manifest = await readJsonFile(
+                join(packagePath, 'package.json')
+            )
 
-            const validated = await this.validate(this.dir, spec.name, {
+            if (
+                typeof manifest !== 'object' ||
+                manifest === null ||
+                Array.isArray(manifest)
+            ) {
+                throw new InstallerError(`npm 没有安装插件包: ${spec.name}`)
+            }
+
+            const flat = join(staging, 'flat')
+
+            await cp(packagePath, flat, {
+                recursive: true,
+                dereference: true,
+            })
+            await rename(
+                join(staging, 'node_modules'),
+                join(flat, 'node_modules')
+            )
+            await rm(join(flat, 'node_modules', spec.name), {
+                recursive: true,
+                force: true,
+            })
+            await ensureCoreLink(flat)
+
+            const validated = await this.validate(flat, spec.name, {
                 timeoutMs: this.config.timeoutMs,
                 signal,
+                script: join(this.dir, '.jsbot', VALIDATE_SCRIPT_FILE),
             })
 
-            this.checkPlugins(spec.name, validated, previousState)
+            this.checkPlugins(spec.name, validated, state)
 
-            const version = await readInstalledVersion(this.dir, spec.name)
+            const version = await readPackageVersion(flat)
 
             if (version === undefined) {
                 throw new InstallerError(`无法读取已安装包的版本: ${spec.name}`)
             }
 
             const pluginIds = validated.map((plugin) => plugin.id)
-            const state = previousState
+            const directory =
+                previous?.dir ?? installDirectoryName(spec.name, pluginIds)
+
+            target = join(this.dir, directory)
+
+            await this.assertTargetAvailable(
+                state,
+                spec.name,
+                directory,
+                target,
+                previous
+            )
+
             const warnings = this.configuredWarnings(
-                (previousState.packages[spec.name]?.pluginIds ?? []).filter(
+                (previous?.pluginIds ?? []).filter(
                     (id) => !pluginIds.includes(id)
                 )
             )
+
+            if (await pathExists(target)) {
+                await rename(target, backup)
+                movedBackup = true
+            }
+
+            await rename(flat, target)
+            movedTarget = true
 
             state.packages[spec.name] = {
                 spec: spec.raw,
@@ -328,11 +404,28 @@ export class NpmPluginInstaller implements PluginInstaller {
                     validated.map((plugin) => [plugin.id, plugin.dependencies])
                 ),
                 installedAt: this.now().toISOString(),
+                dir: directory,
             }
 
             await writeInstallState(this.dir, state)
 
-            this.logger.info(`installed plugin package ${spec.name}@${version}`)
+            movedTarget = false
+
+            if (movedBackup) {
+                await rm(backup, { recursive: true, force: true }).catch(
+                    (error) => {
+                        this.logger.warn(
+                            `failed to remove backup directory ${backup}`,
+                            error
+                        )
+                    }
+                )
+                movedBackup = false
+            }
+
+            this.logger.info(
+                `installed plugin package ${spec.name}@${version} into ${target}`
+            )
 
             return {
                 packageName: spec.name,
@@ -341,8 +434,62 @@ export class NpmPluginInstaller implements PluginInstaller {
                 warnings,
             }
         } catch (error) {
-            await this.rollback(backup, error)
+            if (movedTarget && target !== null) {
+                await rm(target, { recursive: true, force: true }).catch(
+                    (cleanupError) => {
+                        this.logger.error(
+                            'failed to remove partially installed plugin',
+                            cleanupError
+                        )
+                    }
+                )
+            }
+
+            if (movedBackup && target !== null) {
+                await rename(backup, target).catch((restoreError) => {
+                    this.logger.error(
+                        'failed to restore previous plugin directory',
+                        restoreError
+                    )
+                })
+                movedBackup = false
+            }
+
             throw asInstallerError(error)
+        } finally {
+            await rm(staging, { recursive: true, force: true }).catch(
+                (error) => {
+                    this.logger.warn(
+                        `failed to remove staging directory ${staging}`,
+                        error
+                    )
+                }
+            )
+        }
+    }
+
+    private async assertTargetAvailable(
+        state: InstallState,
+        packageName: string,
+        directory: string,
+        target: string,
+        previous: InstalledPackageRecord | undefined
+    ): Promise<void> {
+        for (const [name, record] of Object.entries(state.packages)) {
+            if (name === packageName) continue
+            if (record.dir !== directory) continue
+
+            throw new InstallerError(
+                `插件目录已被其它已安装包使用: ${record.dir}（${name}）`
+            )
+        }
+
+        if (previous !== undefined) return
+
+        if (await pathExists(target)) {
+            throw new InstallerError(
+                `安装目录已存在且不是由安装器管理: ${target}。请先移除该本地插件或为其改名。`
+            )
         }
     }
 
@@ -437,18 +584,14 @@ export class NpmPluginInstaller implements PluginInstaller {
         for (const id of graph.keys()) visit(id)
     }
 
-    private resolveTarget(
-        target: string,
-        dependencies: Record<string, string>,
-        state: InstallState
-    ): string {
+    private resolveTarget(target: string, state: InstallState): string {
         const value = target.trim()
 
         if (value.length === 0) {
             throw new InstallerError('请提供包名或插件 id')
         }
 
-        if (dependencies[value] !== undefined) return value
+        if (state.packages[value] !== undefined) return value
 
         for (const [name, record] of Object.entries(state.packages)) {
             if (record.pluginIds.includes(value)) return name
@@ -516,113 +659,14 @@ export class NpmPluginInstaller implements PluginInstaller {
         return parsed
     }
 
-    private assertStateCovers(
-        dependencies: Record<string, string>,
-        state: InstallState
-    ): void {
-        const missing = Object.keys(dependencies)
-            .filter((name) => name !== CORE_PACKAGE_NAME)
-            .filter((name) => state.packages[name] === undefined)
-            .sort()
-
-        if (missing.length === 0) return
-
-        throw new InstallerError(
-            [
-                '安装状态与 package.json 不一致，以下依赖缺少安装记录：',
-                ...missing.map((name) => `- ${name}`),
-                `请检查安装目录中的 ${INSTALL_STATE_FILE}，或手动清理后重新安装。`,
-            ].join('\n')
-        )
+    private temporaryPath(kind: 'staging' | 'backup'): string {
+        return join(this.dir, `.${kind}-${randomUUID()}`)
     }
 
     private assertEnabled(): void {
         if (!this.enabled) {
             throw new InstallerError(
                 '插件安装功能未启用（installer.enabled=false）'
-            )
-        }
-    }
-
-    private async backup(): Promise<BackupFile[]> {
-        const files: BackupFile[] = []
-
-        for (const name of [
-            'package.json',
-            'package-lock.json',
-            INSTALL_STATE_FILE,
-        ]) {
-            const path = join(this.dir, name)
-
-            try {
-                files.push({ path, content: await readFile(path, 'utf8') })
-            } catch (error) {
-                if ((error as NodeJS.ErrnoException).code !== 'ENOENT') {
-                    throw error
-                }
-
-                files.push({ path, content: null })
-            }
-        }
-
-        return files
-    }
-
-    private async rollback(files: BackupFile[], cause: unknown): Promise<void> {
-        try {
-            for (const file of files) {
-                if (file.content === null) {
-                    await rm(file.path, { force: true })
-                } else {
-                    await writeFile(file.path, file.content, 'utf8')
-                }
-            }
-
-            const manifest = files.find((file) =>
-                file.path.endsWith('package.json')
-            )
-            const lock = files.find((file) =>
-                file.path.endsWith('package-lock.json')
-            )
-
-            if (manifest?.content === null) {
-                await rm(join(this.dir, 'node_modules'), {
-                    recursive: true,
-                    force: true,
-                })
-                return
-            }
-
-            if (lock?.content !== null && lock !== undefined) {
-                await this.runner.run(
-                    [
-                        'ci',
-                        '--prefix',
-                        this.dir,
-                        ...NPM_FLAGS,
-                        '--ignore-scripts',
-                    ],
-                    { timeoutMs: this.config.timeoutMs }
-                )
-            } else {
-                await this.runner.run(
-                    [
-                        'install',
-                        '--prefix',
-                        this.dir,
-                        ...NPM_FLAGS,
-                        '--ignore-scripts',
-                    ],
-                    { timeoutMs: this.config.timeoutMs }
-                )
-            }
-
-            await ensureCoreLink(this.dir)
-        } catch (error) {
-            this.logger.error('plugin install rollback failed', error)
-            throw new InstallerError(
-                `安装失败且回滚失败：${messageOf(cause)}`,
-                { cause }
             )
         }
     }

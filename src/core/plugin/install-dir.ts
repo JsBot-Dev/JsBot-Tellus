@@ -10,11 +10,10 @@ import {
     symlink,
     writeFile,
 } from 'node:fs/promises'
-import { dirname, join, resolve } from 'node:path'
+import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 export const CORE_PACKAGE_NAME = '@jsbot-tellus/core'
-export const INSTALL_PACKAGE_NAME = '@jsbot-tellus/installed-plugins'
 export const INSTALL_STATE_FILE = '.jsbot-installed.json'
 export const VALIDATE_SCRIPT_FILE = 'validate.mjs'
 
@@ -24,10 +23,12 @@ export interface InstalledPackageRecord {
     pluginIds: string[]
     dependencies: Record<string, string[]>
     installedAt: string
+    /** Directory name under the plugins root. */
+    dir: string
 }
 
 export interface InstallState {
-    version: 1
+    version: 2
     packages: Record<string, InstalledPackageRecord>
 }
 
@@ -38,25 +39,8 @@ export class InstallStateError extends Error {
     }
 }
 
-const INSTALL_MANIFEST = {
-    name: INSTALL_PACKAGE_NAME,
-    private: true,
-    version: '0.0.0',
-    type: 'module',
-    dependencies: {},
-}
-
-export function resolveInstallDir(
-    config: { dir?: string | undefined },
-    dataDir: string
-): string {
-    return config.dir
-        ? resolve(process.cwd(), config.dir)
-        : join(dataDir, 'plugins')
-}
-
-export function packageDir(dir: string, name: string): string {
-    return join(dir, 'node_modules', name)
+export function packageDirectoryName(name: string): string {
+    return name.startsWith('@') ? name.replace('/', '__') : name
 }
 
 export async function readJsonFile(path: string): Promise<unknown> {
@@ -69,74 +53,28 @@ export async function readJsonFile(path: string): Promise<unknown> {
     }
 }
 
-export async function ensureInstallDir(dir: string): Promise<void> {
-    await mkdir(dir, { recursive: true })
-
-    const manifestPath = join(dir, 'package.json')
-    const manifest = await readJsonFile(manifestPath)
-
-    if (manifest === undefined) {
-        await writeFile(
-            manifestPath,
-            `${JSON.stringify(INSTALL_MANIFEST, null, 4)}\n`
-        )
-    } else if (
-        typeof manifest !== 'object' ||
-        manifest === null ||
-        Array.isArray(manifest)
-    ) {
-        throw new Error(`安装目录的 package.json 无效: ${manifestPath}`)
-    }
-
-    await mkdir(join(dir, '.jsbot'), { recursive: true })
-    await writeFile(
-        join(dir, '.jsbot', VALIDATE_SCRIPT_FILE),
-        VALIDATE_SCRIPT,
-        'utf8'
-    )
-}
-
-export async function readDependencies(
-    dir: string
-): Promise<Record<string, string>> {
-    const manifest = await readJsonFile(join(dir, 'package.json'))
-
-    if (typeof manifest !== 'object' || manifest === null) return {}
-
-    const dependencies = (manifest as Record<string, unknown>)['dependencies']
-
-    if (
-        typeof dependencies !== 'object' ||
-        dependencies === null ||
-        Array.isArray(dependencies)
-    ) {
-        return {}
-    }
-
-    const result: Record<string, string> = {}
-
-    for (const [name, value] of Object.entries(dependencies)) {
-        if (typeof value === 'string') {
-            result[name] = value
-        }
-    }
-
-    return result
-}
-
-export async function readInstalledVersion(
-    dir: string,
-    name: string
+export async function readPackageVersion(
+    directory: string
 ): Promise<string | undefined> {
-    const manifest = await readJsonFile(
-        join(packageDir(dir, name), 'package.json')
-    ).catch(() => undefined)
+    const manifest = await readJsonFile(join(directory, 'package.json')).catch(
+        () => undefined
+    )
 
     if (typeof manifest !== 'object' || manifest === null) return undefined
 
     const version = (manifest as Record<string, unknown>)['version']
 
     return typeof version === 'string' ? version : undefined
+}
+
+function isSafeDirectoryName(value: string): boolean {
+    return (
+        value.length > 0 &&
+        value !== '.' &&
+        value !== '..' &&
+        !value.includes('/') &&
+        !value.includes('\\')
+    )
 }
 
 export async function readInstallState(dir: string): Promise<InstallState> {
@@ -152,14 +90,14 @@ export async function readInstallState(dir: string): Promise<InstallState> {
     }
 
     if (value === undefined) {
-        return { version: 1, packages: {} }
+        return { version: 2, packages: {} }
     }
 
     if (typeof value !== 'object' || value === null || Array.isArray(value)) {
         throw new InstallStateError(`安装状态文件格式无效: ${path}`)
     }
 
-    if ((value as Record<string, unknown>)['version'] !== 1) {
+    if ((value as Record<string, unknown>)['version'] !== 2) {
         throw new InstallStateError(`不支持的安装状态版本，请检查 ${path}`)
     }
 
@@ -174,6 +112,7 @@ export async function readInstallState(dir: string): Promise<InstallState> {
     }
 
     const result: Record<string, InstalledPackageRecord> = {}
+    const directories = new Set<string>()
 
     for (const [name, rawRecord] of Object.entries(packages)) {
         if (
@@ -187,16 +126,27 @@ export async function readInstallState(dir: string): Promise<InstallState> {
         const record = rawRecord as Record<string, unknown>
         const pluginIds = record['pluginIds']
         const dependencies = record['dependencies']
+        const directory = record['dir']
 
         if (
             typeof record['spec'] !== 'string' ||
             typeof record['version'] !== 'string' ||
             typeof record['installedAt'] !== 'string' ||
+            typeof directory !== 'string' ||
+            !isSafeDirectoryName(directory) ||
             !Array.isArray(pluginIds) ||
             pluginIds.some((item) => typeof item !== 'string')
         ) {
             throw new InstallStateError(`安装状态记录不完整: ${name}`)
         }
+
+        if (directories.has(directory)) {
+            throw new InstallStateError(
+                `安装状态存在重复的插件目录: ${directory}`
+            )
+        }
+
+        directories.add(directory)
 
         if (
             typeof dependencies !== 'object' ||
@@ -227,17 +177,18 @@ export async function readInstallState(dir: string): Promise<InstallState> {
             pluginIds: [...pluginIds],
             dependencies: parsedDependencies,
             installedAt: record['installedAt'],
+            dir: directory,
         }
     }
 
-    return { version: 1, packages: result }
+    return { version: 2, packages: result }
 }
 
 export async function writeInstallState(
     dir: string,
     state: InstallState
 ): Promise<void> {
-    const sorted: InstallState = { version: 1, packages: {} }
+    const sorted: InstallState = { version: 2, packages: {} }
 
     for (const name of Object.keys(state.packages).sort()) {
         const record = state.packages[name]
@@ -312,10 +263,57 @@ export async function pathExists(path: string): Promise<boolean> {
     return (await stat(path).catch(() => null)) !== null
 }
 
-const VALIDATE_SCRIPT = `import process from 'node:process'
+export async function ensureInstallRoot(root: string): Promise<void> {
+    await mkdir(root, { recursive: true })
+    await mkdir(join(root, '.jsbot'), { recursive: true })
+    await writeFile(
+        join(root, '.jsbot', VALIDATE_SCRIPT_FILE),
+        VALIDATE_SCRIPT,
+        'utf8'
+    )
+}
 
-const name = process.argv[2]
-const entry = process.argv[3]
+const VALIDATE_SCRIPT = `import { readdir } from 'node:fs/promises'
+import { extname, join } from 'node:path'
+import { pathToFileURL } from 'node:url'
+
+const directory = process.argv[2]
+
+if (!directory) {
+    console.error('missing plugin directory')
+    process.exit(2)
+}
+
+const extensions = new Set(['.js', '.mjs', '.cjs'])
+
+async function filesIn(directory) {
+    const entries = await readdir(directory, { withFileTypes: true })
+    entries.sort((a, b) => a.name.localeCompare(b.name))
+
+    const files = []
+
+    for (const entry of entries) {
+        if (entry.name.startsWith('.')) continue
+
+        const path = join(directory, entry.name)
+
+        if (entry.isDirectory()) {
+            if (entry.name === 'node_modules') continue
+            files.push(...(await filesIn(path)))
+            continue
+        }
+
+        if (
+            entry.isFile() &&
+            extensions.has(extname(entry.name)) &&
+            !/\\.d\\.(ts|mts|cts)$/.test(entry.name)
+        ) {
+            files.push(path)
+        }
+    }
+
+    return files
+}
 
 function isPlugin(value) {
     if (typeof value !== 'object' || value === null) return false
@@ -367,39 +365,47 @@ function collect(value, result) {
     }
 }
 
-if (!name) {
-    console.error('missing package name')
-    process.exit(2)
-}
-
-if (!entry) {
-    console.error('missing package entry')
-    process.exit(2)
-}
-
-let imported
-
-try {
-    imported = await import(entry)
-} catch (error) {
-    console.error(error instanceof Error ? error.stack ?? error.message : String(error))
+const files = await filesIn(directory).catch((error) => {
+    console.error(error instanceof Error ? error.message : String(error))
     process.exit(3)
+})
+
+if (files.length === 0) {
+    console.error('插件 dist 目录中没有可加载的文件')
+    process.exit(4)
 }
 
 const found = []
+const invalid = []
 
-if (typeof imported === 'object' && imported !== null) {
+for (const file of files) {
+    let imported
+
+    try {
+        imported = await import(pathToFileURL(file).href)
+    } catch (error) {
+        invalid.push(
+            \`failed to import \${file}: \${error instanceof Error ? error.message : String(error)}\`
+        )
+        continue
+    }
+
+    if (typeof imported !== 'object' || imported === null) continue
+
     for (const candidate of [imported.default, imported.plugin, imported.plugins]) {
         collect(candidate, found)
     }
 }
 
-if (found.length === 0) {
-    console.error('package does not export a JsBot plugin (default / plugin / plugins)')
-    process.exit(4)
-}
-
 const unique = found.filter((plugin, index) => found.indexOf(plugin) === index)
+
+if (unique.length === 0) {
+    console.error(
+        invalid[0] ??
+            'package does not export a JsBot plugin (default / plugin / plugins)'
+    )
+    process.exit(5)
+}
 
 console.log(
     '__JSBOT_PLUGIN__' +

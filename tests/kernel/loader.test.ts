@@ -1,8 +1,11 @@
-import { mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
-import { loadPluginsFromDirectory } from '../../src/core/plugin/loader.js'
+import {
+    loadLocalPlugins,
+    loadPluginsFromDirectory,
+} from '../../src/core/plugin/loader.js'
 import { pluginEnvelopeSchema } from '../../src/core/config/schema.js'
 import { corePlugin } from '../../src/plugins/core/index.js'
 import { groupMessage } from '../helpers/events.js'
@@ -26,7 +29,7 @@ afterEach(async () => {
     )
 })
 
-describe('external plugin loader', () => {
+describe('directory plugin loader', () => {
     it('loads an example plugin from a directory', async () => {
         const plugins = await loadPluginsFromDirectory(
             resolve('examples/plugins')
@@ -35,7 +38,7 @@ describe('external plugin loader', () => {
         expect(plugins.map((plugin) => plugin.manifest.id)).toContain('hello')
     })
 
-    it('runs an externally loaded plugin', async () => {
+    it('runs a plugin loaded from a directory', async () => {
         const plugins = await loadPluginsFromDirectory(
             resolve('examples/plugins')
         )
@@ -160,5 +163,50 @@ describe('external plugin loader', () => {
             enabled: true,
             cooldownMs: 1000,
         })
+    })
+})
+
+describe('local plugin loader', () => {
+    it('loads plugins from <root>/<id>/dist', async () => {
+        const root = await temporaryDirectory()
+        const dist = join(root, 'demo', 'dist')
+
+        await mkdir(dist, { recursive: true })
+        await writeFile(
+            join(dist, 'index.mjs'),
+            [
+                "import { z } from 'zod'",
+                'export default {',
+                "    manifest: { id: 'demo', version: '1.0.0', configSchema: z.object({}) },",
+                '    setup() {},',
+                '}',
+            ].join('\n'),
+            'utf8'
+        )
+
+        const plugins = await loadLocalPlugins(root)
+
+        expect(plugins.map((plugin) => plugin.manifest.id)).toEqual(['demo'])
+    })
+
+    it('skips plugin directories without dist', async () => {
+        const root = await temporaryDirectory()
+        const warnings: string[] = []
+
+        await mkdir(join(root, 'unbuilt'), { recursive: true })
+
+        const plugins = await loadLocalPlugins(root, {
+            warn: (message) => warnings.push(message),
+            error: () => {},
+        })
+
+        expect(plugins).toEqual([])
+        expect(warnings[0]).toContain('dist directory not found')
+    })
+
+    it('returns an empty list when the root does not exist', async () => {
+        const root = join(tmpdir(), 'jsbot-missing-local-plugin-directory')
+
+        await expect(loadLocalPlugins(root)).resolves.toEqual([])
     })
 })

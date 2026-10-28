@@ -1,5 +1,5 @@
-import { stat } from 'node:fs/promises'
-import { resolve } from 'node:path'
+import { readdir, stat } from 'node:fs/promises'
+import { join, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import fg from 'fast-glob'
 import type { Logger } from '../logging/logger.js'
@@ -56,6 +56,40 @@ export async function loadPluginsFromDirectory(
 
     if (plugins.length === 0 && invalid.length > 0) {
         throw new Error(invalid[0])
+    }
+
+    return plugins
+}
+
+export async function loadLocalPlugins(
+    root: string,
+    logger?: LoaderLogger | undefined
+): Promise<AnyPluginDefinition[]> {
+    const absolute = resolve(root)
+    const info = await stat(absolute).catch(() => null)
+
+    if (!info?.isDirectory()) return []
+
+    const entries = (await readdir(absolute, { withFileTypes: true })).sort(
+        (a, b) => a.name.localeCompare(b.name)
+    )
+    const plugins: AnyPluginDefinition[] = []
+
+    for (const entry of entries) {
+        if (!entry.isDirectory() || entry.name.startsWith('.')) continue
+        if (entry.name === 'node_modules') continue
+
+        const dist = join(absolute, entry.name, 'dist')
+        const distInfo = await stat(dist).catch(() => null)
+
+        if (!distInfo?.isDirectory()) {
+            logger?.warn(
+                `skipping local plugin ${entry.name}: dist directory not found`
+            )
+            continue
+        }
+
+        plugins.push(...(await loadPluginsFromDirectory(dist, logger)))
     }
 
     return plugins

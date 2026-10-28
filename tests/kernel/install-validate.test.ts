@@ -2,68 +2,80 @@ import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { ensureInstallDir } from '../../src/core/plugin/install-dir.js'
+import { ensureInstallRoot } from '../../src/core/plugin/install-dir.js'
 import { validateInstalledPackage } from '../../src/core/plugin/install-validate.js'
 
-async function writePackage(
-    directory: string,
+async function writePlugin(
+    root: string,
     name: string,
-    entry: string
-): Promise<void> {
-    const location = join(directory, 'node_modules', name)
-    await mkdir(location, { recursive: true })
+    files: Record<string, string>
+): Promise<string> {
+    const directory = join(root, name)
+
+    await mkdir(join(directory, 'dist'), { recursive: true })
     await writeFile(
-        join(location, 'package.json'),
+        join(directory, 'package.json'),
         `${JSON.stringify(
             {
                 name,
                 version: '1.2.3',
                 type: 'module',
-                exports: './index.js',
             },
             null,
             4
         )}\n`,
         'utf8'
     )
-    await writeFile(join(location, 'index.js'), entry, 'utf8')
+
+    for (const [file, content] of Object.entries(files)) {
+        const path = join(directory, 'dist', file)
+
+        await mkdir(dirname(path), { recursive: true })
+        await writeFile(path, content, 'utf8')
+    }
+
+    return directory
+}
+
+function pluginEntry(id: string, dependencies = '[]'): string {
+    return `export default {
+    manifest: {
+        id: '${id}',
+        version: '1.2.3',
+        dependencies: ${dependencies},
+        configSchema: { safeParse: () => ({ success: true, data: {} }) },
+    },
+    setup() {},
+}
+`
 }
 
 describe('validateInstalledPackage', () => {
-    let directory: string
+    let root: string
 
     beforeEach(async () => {
-        directory = await mkdtemp(join(tmpdir(), 'jsbot-validate-'))
-        await ensureInstallDir(directory)
+        root = await mkdtemp(join(tmpdir(), 'jsbot-validate-'))
+        await ensureInstallRoot(root)
     })
 
     afterEach(async () => {
-        await rm(directory, {
+        await rm(root, {
             recursive: true,
             force: true,
         })
     })
 
     it('loads plugin definitions in a child process', async () => {
-        await writePackage(
-            directory,
-            'demo-plugin',
-            `export default {
-    manifest: {
-        id: 'demo',
-        version: '1.2.3',
-        dependencies: ['helper'],
-        configSchema: { safeParse: () => ({ success: true, data: {} }) },
-    },
-    setup() {},
-}
-`
-        )
+        const directory = await writePlugin(root, 'demo-plugin', {
+            'index.js': pluginEntry('demo', "['helper']"),
+        })
 
         const result = await validateInstalledPackage(
             directory,
             'demo-plugin',
-            { timeoutMs: 15_000 }
+            {
+                timeoutMs: 15_000,
+            }
         )
 
         expect(result).toEqual([
@@ -76,10 +88,8 @@ describe('validateInstalledPackage', () => {
     })
 
     it('collects plugins from named and array exports', async () => {
-        await writePackage(
-            directory,
-            'demo-plugin',
-            `const first = {
+        const directory = await writePlugin(root, 'demo-plugin', {
+            'index.js': `const first = {
     manifest: { id: 'first', version: '1.0.0', configSchema: { safeParse: () => ({ success: true, data: {} }) } },
     setup() {},
 }
@@ -89,23 +99,23 @@ const second = {
 }
 export const plugin = first
 export const plugins = [second]
-`
-        )
+`,
+        })
 
         const result = await validateInstalledPackage(
             directory,
             'demo-plugin',
-            { timeoutMs: 15_000 }
+            {
+                timeoutMs: 15_000,
+            }
         )
 
         expect(result.map((item) => item.id)).toEqual(['first', 'second'])
     })
 
     it('skips malformed entries in plugin arrays', async () => {
-        await writePackage(
-            directory,
-            'mixed-plugin',
-            `const valid = {
+        const directory = await writePlugin(root, 'mixed-plugin', {
+            'index.js': `const valid = {
     manifest: {
         id: 'valid',
         version: '1.0.0',
@@ -121,23 +131,38 @@ export const plugins = [
         setup() {},
     },
 ]
-`
-        )
+`,
+        })
 
         const result = await validateInstalledPackage(
             directory,
             'mixed-plugin',
-            { timeoutMs: 15_000 }
+            {
+                timeoutMs: 15_000,
+            }
         )
 
         expect(result.map((item) => item.id)).toEqual(['valid'])
     })
 
-    it('rejects plugins with invalid dependencies or config schemas', async () => {
-        await writePackage(
+    it('ignores helper files without plugin exports', async () => {
+        const directory = await writePlugin(root, 'helper-plugin', {
+            'index.js': pluginEntry('helper-plugin'),
+            'helper.js': 'export const value = 1\n',
+        })
+
+        const result = await validateInstalledPackage(
             directory,
-            'bad-shape',
-            `export default {
+            'helper-plugin',
+            { timeoutMs: 15_000 }
+        )
+
+        expect(result.map((item) => item.id)).toEqual(['helper-plugin'])
+    })
+
+    it('rejects plugins with invalid dependencies or config schemas', async () => {
+        const directory = await writePlugin(root, 'bad-shape', {
+            'index.js': `export default {
     manifest: {
         id: 'bad-shape',
         version: '1.0.0',
@@ -146,8 +171,8 @@ export const plugins = [
     },
     setup() {},
 }
-`
-        )
+`,
+        })
 
         await expect(
             validateInstalledPackage(directory, 'bad-shape', {
@@ -157,7 +182,9 @@ export const plugins = [
     })
 
     it('rejects packages without a plugin export', async () => {
-        await writePackage(directory, 'not-a-plugin', 'export const x = 1\n')
+        const directory = await writePlugin(root, 'not-a-plugin', {
+            'index.js': 'export const x = 1\n',
+        })
 
         await expect(
             validateInstalledPackage(directory, 'not-a-plugin', {
@@ -167,11 +194,9 @@ export const plugins = [
     })
 
     it('rejects packages that fail to import', async () => {
-        await writePackage(
-            directory,
-            'broken-plugin',
-            'throw new Error("boom")\n'
-        )
+        const directory = await writePlugin(root, 'broken-plugin', {
+            'index.js': 'throw new Error("boom")\n',
+        })
 
         await expect(
             validateInstalledPackage(directory, 'broken-plugin', {
@@ -180,29 +205,9 @@ export const plugins = [
         ).rejects.toThrow('boom')
     })
 
-    it('validates packages with require-only exports', async () => {
-        const location = join(directory, 'node_modules', 'cjs-plugin')
-        await mkdir(location, { recursive: true })
-        await writeFile(
-            join(location, 'package.json'),
-            `${JSON.stringify(
-                {
-                    name: 'cjs-plugin',
-                    version: '1.0.0',
-                    exports: {
-                        '.': {
-                            require: './index.cjs',
-                        },
-                    },
-                },
-                null,
-                4
-            )}\n`,
-            'utf8'
-        )
-        await writeFile(
-            join(location, 'index.cjs'),
-            `module.exports = {
+    it('validates packages with CommonJS exports', async () => {
+        const directory = await writePlugin(root, 'cjs-plugin', {
+            'index.cjs': `module.exports = {
     manifest: {
         id: 'cjs',
         version: '1.0.0',
@@ -211,8 +216,7 @@ export const plugins = [
     setup() {},
 }
 `,
-            'utf8'
-        )
+        })
 
         const result = await validateInstalledPackage(directory, 'cjs-plugin', {
             timeoutMs: 15_000,
@@ -221,11 +225,32 @@ export const plugins = [
         expect(result.map((item) => item.id)).toEqual(['cjs'])
     })
 
-    it('rejects missing packages', async () => {
+    it('rejects packages without a dist directory', async () => {
+        const directory = join(root, 'missing-dist')
+
+        await mkdir(directory, { recursive: true })
+        await writeFile(
+            join(directory, 'package.json'),
+            '{"name":"missing-dist","version":"1.0.0"}\n',
+            'utf8'
+        )
+
         await expect(
-            validateInstalledPackage(directory, 'missing-plugin', {
+            validateInstalledPackage(directory, 'missing-dist', {
                 timeoutMs: 15_000,
             })
-        ).rejects.toThrow()
+        ).rejects.toThrow('缺少 dist 目录')
+    })
+
+    it('rejects an empty dist directory', async () => {
+        const directory = join(root, 'empty-dist')
+
+        await mkdir(join(directory, 'dist'), { recursive: true })
+
+        await expect(
+            validateInstalledPackage(directory, 'empty-dist', {
+                timeoutMs: 15_000,
+            })
+        ).rejects.toThrow('没有可加载的文件')
     })
 })

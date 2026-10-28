@@ -4,15 +4,12 @@ export default {
     manifest: {
         id: 'hello',
         version: '1.0.0',
-        description: 'External hello command example',
+        description: 'Local hello command example',
         priority: 10,
         defaultEnabled: true,
         configSchema: z
             .object({
-                reply: z
-                    .string()
-                    .min(1)
-                    .default('hello from an external plugin'),
+                reply: z.string().min(1).default('hello from a local plugin'),
             })
             .strict(),
     },
@@ -23,7 +20,7 @@ export default {
                 name: 'hello',
                 aliases: ['hey'],
                 permission: 'User',
-                description: 'External plugin demo',
+                description: 'Local plugin demo',
             },
             async (_event, context) => {
                 await context.send(ctx.config.reply)

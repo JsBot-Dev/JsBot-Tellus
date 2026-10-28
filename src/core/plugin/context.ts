@@ -1,10 +1,19 @@
+import type { OneBotMessageEvent } from '@snowluma/sdk'
 import type { BotApi } from '../api.js'
 import type { Router } from '../dispatch/router.js'
 import type { TaskQueue } from '../dispatch/task-queue.js'
 import type { Logger } from '../logging/logger.js'
 import type { SessionStore } from '../storage/session.js'
 import type { PluginKV } from './kv.js'
-import type { CoreServices, PluginContext, PluginDefinition } from './types.js'
+import type {
+    CommandGroupOptions,
+    CommandGroupRegistrar,
+    CommandHandler,
+    CommandOptions,
+    CoreServices,
+    PluginContext,
+    PluginDefinition,
+} from './types.js'
 
 export interface PluginContextDeps {
     config: unknown
@@ -34,7 +43,10 @@ export function createPluginContext<TConfig>(
         core: deps.core,
 
         commands: {
-            register(options, handler) {
+            register<TArgs extends unknown[] = []>(
+                options: CommandOptions,
+                handler: CommandHandler<OneBotMessageEvent, TArgs>
+            ) {
                 return deps.router.registerCommand({
                     pluginId: id,
                     name: options.name,
@@ -50,10 +62,16 @@ export function createPluginContext<TConfig>(
                     ...(options.description !== undefined
                         ? { description: options.description }
                         : {}),
+                    ...(options.params !== undefined
+                        ? { params: options.params }
+                        : {}),
                     handler,
                 })
             },
-            group(options, setup) {
+            group<TArgs extends unknown[] = []>(
+                options: CommandGroupOptions<TArgs>,
+                setup: (group: CommandGroupRegistrar) => void
+            ) {
                 return deps.router.registerCommandGroup(
                     {
                         pluginId: id,
@@ -69,6 +87,9 @@ export function createPluginContext<TConfig>(
                             : {}),
                         ...(options.description !== undefined
                             ? { description: options.description }
+                            : {}),
+                        ...(options.params !== undefined
+                            ? { params: options.params }
                             : {}),
                         ...(options.handler !== undefined
                             ? { handler: options.handler }

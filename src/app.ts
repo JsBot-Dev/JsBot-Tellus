@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { resolve } from 'node:path'
 import { parseArgs } from 'node:util'
 import { createBotClient } from './core/client.js'
 import type { AppConfig } from './core/config/schema.js'
@@ -14,13 +15,13 @@ import {
     parseLogLevel,
     type Logger,
 } from './core/logging/logger.js'
-import { resolveInstallDir } from './core/plugin/install-dir.js'
 import { NpmPluginInstaller } from './core/plugin/installer.js'
-import { loadInstalledPlugins } from './core/plugin/installed.js'
-import { loadPluginsFromDirectory } from './core/plugin/loader.js'
+import { loadLocalPlugins } from './core/plugin/loader.js'
 import type { AnyPluginDefinition } from './core/plugin/types.js'
 import { openDatabase } from './core/storage/database.js'
 import { builtinPlugins } from './plugins/index.js'
+
+const LOCAL_PLUGIN_DIR = 'plugins'
 
 const USAGE = `Usage: jsbot [options]
 
@@ -28,33 +29,17 @@ Options:
   --config <path>      Config file path (env: BOT_CONFIG)
   --data-dir <path>    Data directory (env: BOT_DATA_DIR)
   --log-level <level>  debug, info, warn or error (env: BOT_LOG_LEVEL)
-  --plugin-dir <path>  External plugin directory, repeatable (env: BOT_PLUGIN_DIR)
   --help               Show this help
 
 Config precedence: CLI > environment > ./bot.config.json.
 Data precedence: CLI > environment > ./data.
+Local plugins: ./${LOCAL_PLUGIN_DIR}/<id>/dist.
 `
 
 function pick(value: unknown): string | undefined {
     return typeof value === 'string' && value.trim().length > 0
         ? value
         : undefined
-}
-
-function pickDirs(value: unknown): string[] {
-    if (Array.isArray(value)) {
-        return value
-            .filter((item): item is string => typeof item === 'string')
-            .map((item) => item.trim())
-            .filter((item) => item.length > 0)
-    }
-
-    if (typeof value !== 'string') return []
-
-    return value
-        .split(',')
-        .map((item) => item.trim())
-        .filter((item) => item.length > 0)
 }
 
 interface PluginSource {
@@ -88,31 +73,16 @@ function mergePlugins(
     return plugins
 }
 
-async function loadExternalPlugins(
-    directories: string[],
-    logger: Logger
-): Promise<AnyPluginDefinition[]> {
-    const plugins: AnyPluginDefinition[] = []
-
-    for (const directory of directories) {
-        logger.info('loading external plugins', directory)
-        plugins.push(...(await loadPluginsFromDirectory(directory, logger)))
-    }
-
-    return plugins
-}
-
 interface RuntimeSettings {
     logger: Logger
     configPath: string
     dataDir: string
-    pluginDirs: string[]
 }
 
 interface RuntimeSpec {
     config: AppConfig
     dataDir: string
-    installDir: string
+    pluginDir: string
     plugins: AnyPluginDefinition[]
 }
 
@@ -129,24 +99,20 @@ async function loadRuntimeSpec(
     logger.info('loading config', settings.configPath)
 
     const config = await loadConfig(settings.configPath)
-    const externalPlugins = await loadExternalPlugins(
-        settings.pluginDirs,
-        logger
-    )
-    const installDir = resolveInstallDir(config.installer, settings.dataDir)
-    const installed = await loadInstalledPlugins(installDir, logger)
+    const pluginDir = resolve(LOCAL_PLUGIN_DIR)
 
-    if (installed.plugins.length > 0) {
-        logger.info(
-            `loaded ${installed.plugins.length} plugin(s) from ${installDir}`
-        )
+    logger.info('loading plugins from', pluginDir)
+
+    const localPlugins = await loadLocalPlugins(pluginDir, logger)
+
+    if (localPlugins.length > 0) {
+        logger.info(`loaded ${localPlugins.length} plugin(s) from ${pluginDir}`)
     }
 
     const plugins = mergePlugins(
         [
             { label: 'built-in', plugins: builtinPlugins },
-            { label: 'external', plugins: externalPlugins },
-            { label: 'installed', plugins: installed.plugins },
+            { label: 'plugins', plugins: localPlugins },
         ],
         logger
     )
@@ -154,7 +120,7 @@ async function loadRuntimeSpec(
     return {
         config,
         dataDir: settings.dataDir,
-        installDir,
+        pluginDir,
         plugins,
     }
 }
@@ -166,7 +132,7 @@ function createRuntime(
 ): Runtime {
     const { logger } = settings
     const installer = new NpmPluginInstaller({
-        dir: spec.installDir,
+        dir: spec.pluginDir,
         config: spec.config.installer,
         logger: logger.child('installer'),
         reservedIds: () =>
@@ -201,7 +167,6 @@ async function main(): Promise<void> {
             config: { type: 'string' },
             'data-dir': { type: 'string' },
             'log-level': { type: 'string' },
-            'plugin-dir': { type: 'string', multiple: true },
             help: { type: 'boolean', short: 'h' },
         },
         allowPositionals: false,
@@ -229,14 +194,10 @@ async function main(): Promise<void> {
         env: process.env,
     })
 
-    const cliPluginDirs = pickDirs(values['plugin-dir'])
-    const envPluginDirs = pickDirs(process.env.BOT_PLUGIN_DIR)
-    const pluginDirs = cliPluginDirs.length > 0 ? cliPluginDirs : envPluginDirs
     const settings: RuntimeSettings = {
         logger,
         configPath,
         dataDir,
-        pluginDirs,
     }
 
     let runtime: Runtime | null = null

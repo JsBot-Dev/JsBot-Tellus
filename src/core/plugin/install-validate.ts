@@ -1,11 +1,6 @@
-import { join } from 'node:path'
-import { pathToFileURL } from 'node:url'
-import {
-    VALIDATE_SCRIPT_FILE,
-    packageDir,
-    readJsonFile,
-} from './install-dir.js'
-import { packageEntry } from './installed.js'
+import { stat } from 'node:fs/promises'
+import { dirname, join, resolve } from 'node:path'
+import { pathExists, VALIDATE_SCRIPT_FILE } from './install-dir.js'
 import { runProcess } from './npm-runner.js'
 
 export interface ValidatedPlugin {
@@ -17,10 +12,29 @@ export interface ValidatedPlugin {
 export interface ValidateOptions {
     timeoutMs: number
     signal?: AbortSignal | undefined
+    script?: string | undefined
+}
+
+async function findValidationScript(directory: string): Promise<string> {
+    let current = dirname(directory)
+
+    for (;;) {
+        const script = join(current, '.jsbot', VALIDATE_SCRIPT_FILE)
+
+        if (await pathExists(script)) return script
+
+        const parent = dirname(current)
+
+        if (parent === current) break
+
+        current = parent
+    }
+
+    throw new Error('找不到插件校验脚本，请重新执行安装')
 }
 
 export type PackageValidator = (
-    dir: string,
+    directory: string,
     name: string,
     options: ValidateOptions
 ) => Promise<ValidatedPlugin[]>
@@ -28,36 +42,24 @@ export type PackageValidator = (
 export const PLUGIN_MARKER = '__JSBOT_PLUGIN__'
 
 export const validateInstalledPackage: PackageValidator = async (
-    dir,
+    directory,
     name,
     options
 ) => {
-    const script = join(dir, '.jsbot', VALIDATE_SCRIPT_FILE)
-    const location = packageDir(dir, name)
-    const manifest = await readJsonFile(join(location, 'package.json'))
+    const absolute = resolve(directory)
+    const dist = join(absolute, 'dist')
+    const info = await stat(dist).catch(() => null)
 
-    if (
-        typeof manifest !== 'object' ||
-        manifest === null ||
-        Array.isArray(manifest)
-    ) {
-        throw new Error(`插件包缺少有效的 package.json: ${name}`)
+    if (!info?.isDirectory()) {
+        throw new Error(`插件包缺少 dist 目录: ${name}`)
     }
 
-    // Resolve the same entry the runtime loader will import. Importing the
-    // package name here would fail for packages that only expose `require`.
-    const entry = pathToFileURL(
-        packageEntry(location, manifest as Record<string, unknown>)
-    ).href
-    const { stdout } = await runProcess(
-        process.execPath,
-        [script, name, entry],
-        {
-            cwd: dir,
-            timeoutMs: options.timeoutMs,
-            ...(options.signal !== undefined ? { signal: options.signal } : {}),
-        }
-    )
+    const script = options.script ?? (await findValidationScript(absolute))
+    const { stdout } = await runProcess(process.execPath, [script, absolute], {
+        cwd: absolute,
+        timeoutMs: options.timeoutMs,
+        ...(options.signal !== undefined ? { signal: options.signal } : {}),
+    })
 
     const line = stdout
         .split('\n')

@@ -52,6 +52,7 @@
         "prepublishOnly": "npm run check && npm test",
         "build:local": "npm run build --prefix plugins/poke && npm run build --prefix plugins/llm",
         "check:local": "npm run check --prefix plugins/poke && npm run check --prefix plugins/llm",
+        "plugin:gen": "tsx scripts/plugin-gen.ts",
         "start": "node dist/app.js",
         "start:build": "npm run build && node dist/app.js",
         "start:source": "tsx src/app.ts",

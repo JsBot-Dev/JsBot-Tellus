@@ -1,11 +1,13 @@
 import type {
     EventNext,
+    OneBotMessageEvent,
     SnowLumaEvent,
     SnowLumaEventContextWithQuote,
 } from '@snowluma/sdk'
 import { isMessageEvent, isNoticeEvent, isRequestEvent } from '@snowluma/sdk'
 import type { Logger } from '../logging/logger.js'
 import type { MessageSender } from '../messaging/sender.js'
+import { CommandParamsError } from '../plugin/command-params.js'
 import type { PluginGate } from '../plugin/gating.js'
 import type {
     CommandGroupRegistrar,
@@ -53,6 +55,8 @@ export interface RouterDeps {
     logger: Logger
 }
 
+type AnyCommandHandler = CommandHandler<OneBotMessageEvent, any[]>
+
 export interface RegisterCommandOptions {
     pluginId: string
     name: string
@@ -60,7 +64,8 @@ export interface RegisterCommandOptions {
     prefixes?: string[] | undefined
     permission?: Permission | undefined
     description?: string | undefined
-    handler: CommandHandler
+    params?: string | undefined
+    handler: AnyCommandHandler
 }
 
 export interface RegisterCommandGroupOptions {
@@ -70,7 +75,8 @@ export interface RegisterCommandGroupOptions {
     prefixes?: string[] | undefined
     permission?: Permission | undefined
     description?: string | undefined
-    handler?: CommandHandler | undefined
+    params?: string | undefined
+    handler?: AnyCommandHandler | undefined
 }
 
 export interface RegisterNoticeOptions extends NoticeOptions {
@@ -168,6 +174,35 @@ export class Router {
                         this.sender,
                         found.match
                     )
+                    let args: unknown[] = []
+
+                    if (found.registration.paramsParser) {
+                        try {
+                            const parsed =
+                                found.registration.paramsParser.parse(
+                                    found.match.rest
+                                )
+
+                            args = parsed.args
+
+                            if (parsed.ignored.length > 0) {
+                                this.logger.debug(
+                                    `ignored extra arguments for ${found.registration.name}`,
+                                    parsed.ignored.join(' ')
+                                )
+                            }
+                        } catch (error) {
+                            if (error instanceof CommandParamsError) {
+                                await commandContext.send(
+                                    `${error.message}\n用法：${found.match.prefix}${found.registration.name} ${error.usage}`,
+                                    { quote: false }
+                                )
+                                return
+                            }
+
+                            throw error
+                        }
+                    }
 
                     await this.safeRun(
                         found.registration.pluginId,
@@ -176,7 +211,8 @@ export class Router {
                             found.registration.handler(
                                 event,
                                 commandContext,
-                                found.match
+                                found.match,
+                                ...args
                             )
                     )
 
@@ -208,6 +244,7 @@ export class Router {
             ...(options.description !== undefined
                 ? { description: options.description }
                 : {}),
+            ...(options.params !== undefined ? { params: options.params } : {}),
             handler: options.handler,
         }
 
@@ -227,6 +264,7 @@ export class Router {
             ...(options.description !== undefined
                 ? { description: options.description }
                 : {}),
+            ...(options.params !== undefined ? { params: options.params } : {}),
             ...(options.handler !== undefined
                 ? { handler: options.handler }
                 : {}),

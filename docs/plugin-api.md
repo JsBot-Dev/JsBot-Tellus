@@ -187,7 +187,7 @@ ctx.core.restart()
 
 安装的插件与内置插件运行在同一个宿主进程中，可访问文件系统、网络和 `process.env`，属于完全可信代码，不是安全沙箱。
 
-自动重启会在同一个 Node.js 进程内重建 Kernel，不会清空 Node 的 ESM 模块缓存。安装包的入口文件会附加查询参数来绕过缓存，但入口相对导入的辅助模块仍可能复用旧代码；通过 `--plugin-dir` 加载的本地插件也不会被缓存刷新。更新多文件插件包后，请完整退出并重新启动进程。
+自动重启会在同一个 Node.js 进程内重建 Kernel，不会清空 Node 的 ESM 模块缓存。安装包的入口文件会附加查询参数来绕过缓存，但入口相对导入的辅助模块仍可能复用旧代码；通过 `plugins/` 加载的本地插件也不会被缓存刷新。更新多文件插件包后，请完整退出并重新启动进程。
 
 ## 命令
 
@@ -208,15 +208,72 @@ ctx.commands.register(
 )
 ```
 
-| 字段          | 默认值   | 说明                          |
-| ------------- | -------- | ----------------------------- |
-| `name`        | 必填     | 主命令名，匹配时大小写不敏感  |
-| `aliases`     | `[]`     | 别名                          |
-| `prefixes`    | `['/']`  | 前缀；空字符串表示无前缀      |
-| `permission`  | `'User'` | `User`、`Admin`、`SuperAdmin` |
-| `description` | 无       | `/help` 中展示                |
+| 字段          | 默认值   | 说明                                         |
+| ------------- | -------- | -------------------------------------------- |
+| `name`        | 必填     | 主命令名，匹配时大小写不敏感                 |
+| `aliases`     | `[]`     | 别名                                         |
+| `prefixes`    | `['/']`  | 前缀；空字符串表示无前缀                     |
+| `permission`  | `'User'` | `User`、`Admin`、`SuperAdmin`                |
+| `description` | 无       | `/help` 中展示                               |
+| `params`      | 无       | Koishi 风格参数声明；省略时 handler 行为不变 |
 
 `name` 和 `aliases` 的每一项只能是一个路径段；多级命令请使用 `commands.group()`。
+
+### 参数
+
+`params` 用字符串声明位置参数，解析结果从 handler 的第四个参数开始按位置传入：
+
+```ts
+ctx.commands.register(
+    {
+        name: 'ask',
+        description: '向模型提问',
+        params: '<question:string> [count:integer=1]',
+    },
+    async (_event, context, _match, question: string, count: number) => {
+        await context.send(`问题：${question}（${count} 次）`)
+    }
+)
+```
+
+声明语法：
+
+| 写法                 | 说明                                     |
+| -------------------- | ---------------------------------------- |
+| `<arg>`              | 必填字符串参数                           |
+| `[arg]`              | 可选字符串参数                           |
+| `<arg:type>`         | 指定类型的必填参数                       |
+| `[arg:type=default]` | 可选参数及默认值                         |
+| `<arg:text>`         | 文本参数，消费全部剩余输入，必须放在最后 |
+| `[...rest]`          | 变长参数，每个剩余 token 作为一个字符串  |
+
+内置类型：
+
+- `string`：默认类型，单个 token。
+- `text`：消费全部剩余输入，保留空格；usage 显示为 `<arg...>`。
+- `number`：有限数字，包括小数。
+- `integer`：整数。
+- `boolean`：`true/false`、`1/0`、`yes/no`、`y/n`、`on/off`，大小写不敏感。
+- `[...rest]`：把剩余 token 依次收集为字符串；只能放在最后，且没有必填形式。
+
+固定参数可以用双引号或单引号包裹，例如 `/ask "hello world" 2` 会把 `hello world` 作为一个 token；引号内的反斜杠用于转义。
+
+解析规则：
+
+- `match.args` 和 `match.rest` 保持原始内容，不会被参数解析结果替换。
+- 声明槽位填完后，多余 token 会被忽略并记录 debug 日志，不会报错。`text` 和 `rest` 会消费全部剩余输入，因此不存在多余 token。
+- 必填参数缺失、已声明槽位类型错误或引号未闭合时，Router 会自动回复错误和用法，handler 不会执行。
+- usage 会自动生成，并显示在 `/help` 和指令组根命令的用法提示中。
+- 必填参数不能出现在可选参数之后；参数名不能重复；`text` 和变长参数必须放在最后；必填参数不能声明默认值。
+- handler 的参数类型由你在函数上自行标注，`params` 只影响运行时解析，不做 TypeScript 类型级推导。
+
+参数错误示例：
+
+```text
+/ask hello abc
+-> 参数 count 需要是整数
+-> 用法：/ask <question> [count]
+```
 
 ### 指令组
 
@@ -247,9 +304,10 @@ ctx.commands.group(
             {
                 name: 'install',
                 description: '安装插件包',
+                params: '<spec:string>',
             },
-            async (_event, context, match) => {
-                await context.send(`安装：${match.rest}`)
+            async (_event, context, _match, spec: string) => {
+                await context.send(`安装：${spec}`)
             }
         )
 
@@ -266,8 +324,9 @@ ctx.commands.group(
 - 子命令自动拼接组路径，例如上面的 `plugin` + `install` 对应 `/plugin install`。
 - 子命令默认继承组的 `prefixes`、`permission`，也可以在子命令上覆盖。
 - 组别名和子命令别名会自动组合；组 `plugin` 别名 `p`、子命令 `install` 别名 `i` 时，`/p i` 也能命中。
-- 组根没有提供 `handler` 时，会自动注册根命令并生成用法提示，列出直接子命令和描述。
+- 组根没有提供 `handler` 时，会自动注册根命令并生成用法提示，列出直接子命令、参数用法和描述。
 - 组根提供了 `handler` 时，未命中子命令的输入（例如 `/plugin`、`/plugin help`、`/plugin unknown`）会进入该 handler。
+- 组根和子命令都可以声明 `params`；子命令的用法会显示在组根提示和 `/help` 中。例如组根声明 `params: '<target:string>'` 时，`/demo alice` 会把 `alice` 传给组根 handler。
 - `group()` 返回 disposer，会注销组根和所有子命令；组 setup 抛错或注册冲突时会自动回滚整组。
 - `/help` 中会显示完整路径，例如 `/plugin install`。
 
@@ -402,22 +461,26 @@ manifest: {
 
 `enabled` 等信封字段会被剥离；`limit` 会传给 `configSchema`。未知字段会报错，错误信息包含 `plugins.demo.limit` 这样的路径。
 
-## 外部插件
+## 本地插件
+
+完整的目录约定、创建步骤和本地调试流程见[插件开发指南](plugin-development.md)。
+
+本地插件固定放在 `plugins/<id>/dist`，应用启动时自动扫描，不需要路径参数：
 
 ```bash
 npm run build
-node dist/app.js --plugin-dir examples/plugins
+node dist/app.js
 ```
 
-`--plugin-dir` 可以重复，`BOT_PLUGIN_DIR` 使用逗号分隔多个目录。应用会跳过与内置插件同 ID 的外部插件。加载器会扫描目录下所有 `.js`、`.mjs`、`.cjs`、`.ts`、`.mts`、`.cts` 文件，识别：
+应用会跳过与内置插件同 ID 的本地插件。加载器会扫描每个插件 `dist` 目录下所有 `.js`、`.mjs`、`.cjs`、`.ts`、`.mts`、`.cts` 文件，识别：
 
 - `export default plugin`
 - `export const plugin = ...`
 - `export const plugins = [...]`
 
-没有导出插件定义的 helper 模块会被跳过；目录中没有任何有效插件时加载失败。插件定义必须包含可调用的 `configSchema.safeParse`，非法的 `dependencies` 类型也会被拒绝。
+没有导出插件定义的 helper 模块会被跳过；空目录不会报错，但目录中存在无法导入或无法识别的文件、且最终没有加载到任何有效插件时，启动失败。插件定义必须包含可调用的 `configSchema.safeParse`，非法的 `dependencies` 类型也会被拒绝。
 
-TypeScript 插件必须在生产运行前编译为 JavaScript。外部插件和内置插件共用同一个 `PluginContext` API。
+TypeScript 插件必须在生产运行前编译为 JavaScript。本地插件和内置插件共用同一个 `PluginContext` API。
 
 推荐把插件做成独立包，至少包含 `package.json`、`tsconfig.json` 和 `src/index.ts`。`package.json` 的入口指向构建后的 `dist/index.js`：
 
@@ -436,7 +499,7 @@ TypeScript 插件必须在生产运行前编译为 JavaScript。外部插件和�
 }
 ```
 
-`@jsbot-tellus/core` 只用于类型和 `definePlugin`，运行时由宿主提供。外部插件开发时通过 `npm install --save-dev @jsbot-tellus/core` 安装；在本仓库内联调也可以改用 `file:` 或 workspace 链接。发布到 npm 时不要把 `@jsbot-tellus/core` 写进 `dependencies` 或 `peerDependencies`。仅在本机使用的包可以加 `"private": true`。插件自己的第三方依赖放在 `dependencies`，npm 安装插件时会一并安装。
+`@jsbot-tellus/core` 只用于类型和 `definePlugin`。通过 `/plugin install` 安装时由宿主提供；从 `plugins/` 加载的本地插件需要在插件自己的 `node_modules` 中安装 core（`npm install` 会安装 `devDependencies`）。在本仓库内联调也可以改用 `file:` 或 workspace 链接。发布到 npm 时不要把 `@jsbot-tellus/core` 写进 `dependencies` 或 `peerDependencies`。仅在本机使用的包可以加 `"private": true`。插件自己的第三方依赖放在 `dependencies`，npm 安装插件时会一并安装。
 
 内置插件 `core`、`admin` 是 `src/plugins/` 下的普通源码。其他插件放在 `plugins/`，该目录整体被 `.gitignore` 排除。每个本地插件都是独立包，独立安装依赖：
 
@@ -445,24 +508,23 @@ npm install --prefix plugins/poke
 npm install --prefix plugins/llm
 npm run build:local
 
-node dist/app.js \
-    --plugin-dir plugins/poke/dist \
-    --plugin-dir plugins/llm/dist
+node dist/app.js
 ```
 
-示例见 [`examples/plugins/hello`](../examples/plugins/hello)。
+应用会自动扫描 `plugins/<id>/dist`；没有 `dist` 的目录会被跳过并记录警告。示例见 [`examples/plugins/hello`](../examples/plugins/hello)。
 
 ## 通过 npm 发布与安装
 
+打包结构、发布清单和本地开发流程见[插件开发指南](plugin-development.md)。
+
 发布到 npm registry 的插件包必须是可直接运行的构建产物，安装后不再执行编译。要求：
 
-- ESM 包（`"type": "module"`），发布 `dist/` 中的 JavaScript 和 `.d.ts`。
-- 通过 `exports["."]` 或 `main` 提供包根入口；安装器只解析根入口。
-- 根入口导出插件定义：`export default plugin`、`export const plugin = ...` 或 `export const plugins = [...]`。
-- `manifest.id` 必须匹配 `[a-z0-9][a-z0-9._-]*`，且不能与内置插件、`--plugin-dir` 插件或其它已安装插件重复。
+- ESM 包（`"type": "module"`），发布 `dist/` 中的 JavaScript 和 `.d.ts`；安装后从 `plugins/<目录>/dist` 加载，不再执行编译。
+- `dist/` 中导出的插件定义会被加载：`export default plugin`、`export const plugin = ...` 或 `export const plugins = [...]`。
+- `manifest.id` 必须匹配 `[a-z0-9][a-z0-9._-]*`，且不能与内置插件、`plugins/` 本地插件或其它已安装插件重复。
 - 插件之间的依赖写在 `manifest.dependencies`，依赖必须由同一个包导出，或已由其它已安装包提供。
 - 不要依赖源码仓库或相对的 `file:` 依赖；第三方运行时依赖写入 `dependencies`。
-- 不要把 `@jsbot-tellus/core` 写进 `dependencies` 或 `peerDependencies`。宿主会在安装目录创建 `node_modules/@jsbot-tellus/core` 链接，运行时直接解析到当前内核。
+- 不要把 `@jsbot-tellus/core` 写进 `dependencies` 或 `peerDependencies`。宿主会在 `plugins/<目录>/node_modules/@jsbot-tellus/core` 创建链接，运行时直接解析到当前内核。
 - 不要依赖 `postinstall` 构建。安装器默认使用 `--ignore-scripts`，只有 `installer.allowScripts=true` 才会执行 npm 脚本。
 
 发布后在聊天中安装：
@@ -475,7 +537,7 @@ node dist/app.js \
 /plugin remove @yourscope/plugin-demo
 ```
 
-安装、更新和卸载成功后会自动重启运行时并重新加载插件，进程不会退出。`/plugin` 的所有子命令（包括 `help` 和 `list`）都要求 SuperAdmin。安装器默认关闭；启用后只接受 npm registry 包，拒绝 git、file、URL、workspace、link 和版本范围。安装目录默认是 `<data-dir>/plugins`，配置见[插件安装器](configuration.md#插件安装器)。
+安装、更新和卸载成功后会自动重启运行时并重新加载插件，进程不会退出。`/plugin` 的所有子命令（包括 `help` 和 `list`）都要求 SuperAdmin。安装器默认关闭；启用后只接受 npm registry 包，拒绝 git、file、URL、workspace、link 和版本范围。包会直接安装到 `plugins/<插件id>/` 并从 `dist` 加载，配置见[插件安装器](configuration.md#插件安装器)。
 
 安装和更新会检查完整依赖图；自依赖、循环依赖和缺失依赖会被拒绝。卸载被其它包依赖的插件时默认失败，确认后可使用 `/plugin remove <目标> --force`。
 

@@ -135,6 +135,7 @@ describe('config', () => {
         for (const installer of [
             { timeoutMs: 0 },
             { registry: 'not-a-url' },
+            { dir: 'data/plugins' },
             { unknown: true },
         ]) {
             const filePath = await writeConfig({ installer })
