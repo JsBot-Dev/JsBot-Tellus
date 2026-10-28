@@ -1,6 +1,6 @@
 import { z } from 'zod'
 import { describe, expect, it, vi } from 'vitest'
-import type { SnowLumaEvent } from '@snowluma/sdk'
+import type { OneBotMessageEvent, SnowLumaEvent } from '@snowluma/sdk'
 import type { PluginEnvelope } from '../../src/core/config/schema.js'
 import { Router } from '../../src/core/dispatch/router.js'
 import { createMessageSender } from '../../src/core/messaging/sender.js'
@@ -151,6 +151,172 @@ describe('router', () => {
         )
     })
 
+    it('parses command params and ignores extra arguments', async () => {
+        const { router, dispatch, records } = harness()
+        const handler = vi.fn<
+            CommandHandler<OneBotMessageEvent, [string, number]>
+        >(async () => {})
+
+        router.registerCommand({
+            pluginId: 'test',
+            name: 'ask',
+            params: '<question:string> [count:number=1]',
+            handler,
+        })
+
+        const { context } = await dispatch(
+            groupMessage({
+                raw_message: '/ask hello 3 extra',
+                user_id: 30000,
+            })
+        )
+
+        expect(handler).toHaveBeenCalledTimes(1)
+
+        const call = handler.mock.calls[0]
+
+        expect(call?.[3]).toBe('hello')
+        expect(call?.[4]).toBe(3)
+        expect(call?.[2]).toEqual({
+            command: 'ask',
+            prefix: '/',
+            args: ['hello', '3', 'extra'],
+            rest: 'hello 3 extra',
+        })
+        expect(context.stopped).toBe(true)
+        expect(
+            records.some((record) =>
+                record.message.includes('ignored extra arguments')
+            )
+        ).toBe(true)
+    })
+
+    it('replies with usage when required params are missing', async () => {
+        const { router, dispatch, client } = harness()
+        const handler = vi.fn(async () => {})
+
+        router.registerCommand({
+            pluginId: 'test',
+            name: 'ask',
+            params: '<question:string> [count:number=1]',
+            handler,
+        })
+
+        const { context } = await dispatch(
+            groupMessage({ raw_message: '/ask', user_id: 30000 })
+        )
+
+        expect(handler).not.toHaveBeenCalled()
+        expect(context.stopped).toBe(true)
+        expect(client.sent[0]?.message).toBe(
+            '缺少参数：question\n用法：/ask <question> [count]'
+        )
+    })
+
+    it('replies with usage when a declared param has the wrong type', async () => {
+        const { router, dispatch, client } = harness()
+        const handler = vi.fn(async () => {})
+
+        router.registerCommand({
+            pluginId: 'test',
+            name: 'ask',
+            params: '<question:string> [count:number=1]',
+            handler,
+        })
+
+        await dispatch(
+            groupMessage({ raw_message: '/ask hello abc', user_id: 30000 })
+        )
+
+        expect(handler).not.toHaveBeenCalled()
+        expect(client.sent[0]?.message).toBe(
+            '参数 count 需要是数字\n用法：/ask <question> [count]'
+        )
+    })
+
+    it('parses params for group subcommands', async () => {
+        const { router, dispatch } = harness()
+        const handler = vi.fn<CommandHandler<OneBotMessageEvent, [string]>>(
+            async () => {}
+        )
+
+        router.registerCommandGroup(
+            {
+                pluginId: 'test',
+                name: 'demo',
+            },
+            (group) => {
+                group.register(
+                    {
+                        name: 'ask',
+                        params: '<question:text>',
+                    },
+                    handler
+                )
+            }
+        )
+
+        await dispatch(
+            groupMessage({
+                raw_message: '/demo ask hello world',
+                user_id: 30000,
+            })
+        )
+
+        expect(handler).toHaveBeenCalledTimes(1)
+        expect(handler.mock.calls[0]?.[3]).toBe('hello world')
+    })
+
+    it('parses params for group roots', async () => {
+        const { router, dispatch, client } = harness()
+        const handler = vi.fn<CommandHandler<OneBotMessageEvent, [string]>>(
+            async () => {}
+        )
+
+        router.registerCommandGroup(
+            {
+                pluginId: 'test',
+                name: 'demo',
+                params: '<target:string>',
+                handler,
+            },
+            (group) => {
+                group.register({ name: 'child' }, async () => {})
+            }
+        )
+
+        await dispatch(
+            groupMessage({ raw_message: '/demo alice', user_id: 30000 })
+        )
+
+        expect(handler).toHaveBeenCalledTimes(1)
+        expect(handler.mock.calls[0]?.[3]).toBe('alice')
+
+        await dispatch(groupMessage({ raw_message: '/demo', user_id: 30000 }))
+
+        expect(client.sent.at(-1)?.message).toBe(
+            '缺少参数：target\n用法：/demo <target>'
+        )
+    })
+
+    it('leaves handlers without params unchanged', async () => {
+        const { router, dispatch } = harness()
+        const handler = vi.fn(async () => {})
+
+        router.registerCommand({
+            pluginId: 'test',
+            name: 'plain',
+            handler,
+        })
+
+        await dispatch(
+            groupMessage({ raw_message: '/plain a b', user_id: 30000 })
+        )
+
+        expect(handler).toHaveBeenCalledTimes(1)
+        expect(handler.mock.calls[0]).toHaveLength(3)
+    })
+
     it('refuses commands above the user role', async () => {
         const { router, dispatch, client } = harness()
         const handler = vi.fn(async () => {})
@@ -159,6 +325,7 @@ describe('router', () => {
             pluginId: 'test',
             name: 'admin',
             permission: 'Admin',
+            params: '<value:string>',
             handler,
         })
 

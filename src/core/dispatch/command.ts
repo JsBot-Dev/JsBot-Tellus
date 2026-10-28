@@ -1,10 +1,19 @@
+import type { OneBotMessageEvent } from '@snowluma/sdk'
+import {
+    compileCommandParams,
+    type CompiledCommandParams,
+} from '../plugin/command-params.js'
 import type {
+    CommandGroupOptions,
     CommandGroupRegistrar,
     CommandHandler,
     CommandInfo,
     CommandMatch,
+    CommandOptions,
 } from '../plugin/types.js'
 import type { Permission } from '../security/permission.js'
+
+type AnyCommandHandler = CommandHandler<OneBotMessageEvent, any[]>
 
 export interface CommandRegistration {
     pluginId: string
@@ -13,7 +22,10 @@ export interface CommandRegistration {
     prefixes: string[]
     permission: Permission
     description?: string | undefined
-    handler: CommandHandler
+    params?: string | undefined
+    paramsParser?: CompiledCommandParams | undefined
+    usage?: string | undefined
+    handler: AnyCommandHandler
 }
 
 export interface CommandGroupRegistration {
@@ -23,7 +35,8 @@ export interface CommandGroupRegistration {
     prefixes: string[]
     permission: Permission
     description?: string | undefined
-    handler?: CommandHandler | undefined
+    params?: string | undefined
+    handler?: AnyCommandHandler | undefined
 }
 
 export interface RegisteredCommand {
@@ -34,6 +47,7 @@ export interface RegisteredCommand {
 interface GroupChild {
     name: string
     description?: string | undefined
+    usage?: string | undefined
 }
 
 interface GroupScope {
@@ -109,7 +123,7 @@ function composedBases(
     return bases
 }
 
-function createGroupUsageHandler(children: GroupChild[]): CommandHandler {
+function createGroupUsageHandler(children: GroupChild[]): AnyCommandHandler {
     return async (_event, context, match) => {
         const root = `${match.prefix}${match.command}`
         const names = children.map((child) => child.name)
@@ -120,7 +134,8 @@ function createGroupUsageHandler(children: GroupChild[]): CommandHandler {
         ]
 
         for (const child of children) {
-            const command = `${root} ${child.name}`
+            const usage = child.usage !== undefined ? ` ${child.usage}` : ''
+            const command = `${root} ${child.name}${usage}`
 
             lines.push(
                 child.description !== undefined
@@ -145,11 +160,11 @@ export class CommandRegistry {
                 normalizeSegment('command alias', alias)
             )
         ).filter((alias) => alias.toLowerCase() !== name.toLowerCase())
-        const normalized: CommandRegistration = {
+        const normalized = this.withParams({
             ...registration,
             name,
             aliases,
-        }
+        })
 
         return this.insert(normalized, [name, ...aliases])
     }
@@ -178,6 +193,7 @@ export class CommandRegistry {
                 prefixes,
                 registration.permission,
                 registration.description,
+                registration.params,
                 registration.handler,
                 children
             )
@@ -232,6 +248,9 @@ export class CommandRegistry {
                 permission: registration.permission,
                 ...(registration.description !== undefined
                     ? { description: registration.description }
+                    : {}),
+                ...(registration.usage !== undefined
+                    ? { usage: registration.usage }
                     : {}),
                 pluginId: registration.pluginId,
             }))
@@ -291,6 +310,18 @@ export class CommandRegistry {
         }
 
         return null
+    }
+
+    private withParams(registration: CommandRegistration): CommandRegistration {
+        if (registration.params === undefined) return registration
+
+        const compiled = compileCommandParams(registration.params)
+
+        return {
+            ...registration,
+            paramsParser: compiled,
+            usage: compiled.usage,
+        }
     }
 
     private insert(
@@ -401,7 +432,10 @@ export class CommandRegistry {
         }
 
         const registrar: CommandGroupRegistrar = {
-            register: (options, handler) => {
+            register: <TArgs extends unknown[] = []>(
+                options: CommandOptions,
+                handler: CommandHandler<OneBotMessageEvent, TArgs>
+            ) => {
                 const childBases = composedBases(
                     bases,
                     options.name,
@@ -414,7 +448,7 @@ export class CommandRegistry {
                     throw new Error('command name must not be empty')
                 }
 
-                const registration: CommandRegistration = {
+                const registration = this.withParams({
                     pluginId,
                     name,
                     aliases: childBases.slice(1),
@@ -423,13 +457,19 @@ export class CommandRegistry {
                     ...(options.description !== undefined
                         ? { description: options.description }
                         : {}),
+                    ...(options.params !== undefined
+                        ? { params: options.params }
+                        : {}),
                     handler,
-                }
+                })
                 const dispose = this.insert(registration, childBases)
                 const record: GroupChild = {
                     name: options.name.trim(),
                     ...(options.description !== undefined
                         ? { description: options.description }
+                        : {}),
+                    ...(registration.usage !== undefined
+                        ? { usage: registration.usage }
                         : {}),
                 }
 
@@ -444,7 +484,10 @@ export class CommandRegistry {
                 })
             },
 
-            group: (options, nestedSetup) => {
+            group: <TArgs extends unknown[] = []>(
+                options: CommandGroupOptions<TArgs>,
+                nestedSetup: (group: CommandGroupRegistrar) => void
+            ) => {
                 const nestedBases = composedBases(
                     bases,
                     options.name,
@@ -471,6 +514,7 @@ export class CommandRegistry {
                         nestedPrefixes,
                         nestedPermission,
                         options.description,
+                        options.params,
                         options.handler,
                         nestedChildren
                     )
@@ -485,6 +529,11 @@ export class CommandRegistry {
                     name: options.name.trim(),
                     ...(options.description !== undefined
                         ? { description: options.description }
+                        : {}),
+                    ...(options.params !== undefined
+                        ? {
+                              usage: compileCommandParams(options.params).usage,
+                          }
                         : {}),
                 }
 
@@ -509,7 +558,8 @@ export class CommandRegistry {
         prefixes: string[],
         permission: Permission,
         description: string | undefined,
-        handler: CommandHandler | undefined,
+        params: string | undefined,
+        handler: AnyCommandHandler | undefined,
         children: GroupChild[]
     ): () => void {
         const name = bases[0]
@@ -518,15 +568,16 @@ export class CommandRegistry {
             throw new Error('group name must not be empty')
         }
 
-        const registration: CommandRegistration = {
+        const registration = this.withParams({
             pluginId,
             name,
             aliases: bases.slice(1),
             prefixes,
             permission,
             ...(description !== undefined ? { description } : {}),
+            ...(params !== undefined ? { params } : {}),
             handler: handler ?? createGroupUsageHandler(children),
-        }
+        })
 
         return this.insert(registration, bases)
     }

@@ -73,7 +73,50 @@ npm 插件通常在独立仓库中开发，发布构建后的 `dist/`。安装�
 
 ## 从零创建本地插件
 
-下面以 `plugins/my-plugin/` 为例。
+### 快速生成
+
+在仓库根目录执行：
+
+```bash
+npm run plugin:gen -- my-plugin
+```
+
+也可以不带参数运行 `npm run plugin:gen`，在终端中交互输入插件 id。
+
+生成结果是 `plugins/my-plugin/`，包含：
+
+```text
+plugins/my-plugin/
+  package.json
+  tsconfig.json
+  README.md
+  src/index.ts
+```
+
+可选参数：
+
+```bash
+npm run plugin:gen -- my-plugin --name @yourscope/plugin-my-plugin
+npm run plugin:gen -- my-plugin --description "My plugin"
+npm run plugin:gen -- my-plugin --no-install
+```
+
+生成器默认会执行 `npm install`。如果使用 `--no-install` 或安装失败，可以手动补装：
+
+```bash
+npm install --prefix plugins/my-plugin
+```
+
+然后构建并启动：
+
+```bash
+npm run build --prefix plugins/my-plugin
+node dist/app.js
+```
+
+如果目标目录已经存在，命令会拒绝覆盖。
+
+下面以手动创建 `plugins/my-plugin/` 为例。
 
 ### 1. 创建 package.json
 
@@ -157,9 +200,10 @@ export default definePlugin({
                 name: 'hello',
                 permission: 'User',
                 description: '发送一条问候',
+                params: '[name:string="世界"]',
             },
-            async (_event, context) => {
-                await context.send(ctx.config.reply)
+            async (_event, context, _match, name: string) => {
+                await context.send(`${name}：${ctx.config.reply}`)
             }
         )
     },
@@ -170,6 +214,7 @@ export default definePlugin({
 
 - `definePlugin` 只提供类型推导，不会产生全局副作用。
 - `setup()` 只注册命令、事件和中间件；定时器、连接等运行时资源放在 `start()`，并在 `stop()` 中清理。
+- 命令可以用 `params` 声明位置参数；解析结果从 handler 第四个参数开始传入，用法会自动出现在 `/help` 和指令组提示中。详见[插件 API 的参数章节](plugin-api.md#参数)。
 - 多级命令（例如 `/plugin install`）使用 `ctx.commands.group()`，不要直接注册带空格的命令名。详见[插件 API 的命令章节](plugin-api.md#命令)。
 - 修改命令、事件或配置后，完整重启进程最可靠；自动重启不会清空 ESM 模块缓存。
 

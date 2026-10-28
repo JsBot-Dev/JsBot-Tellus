@@ -43,6 +43,10 @@ export const corePlugin = definePlugin({
                         ctx.core.roles.can(role, command.permission)
                     )
                     .map((command) => {
+                        const usage =
+                            command.usage !== undefined
+                                ? ` ${command.usage}`
+                                : ''
                         const aliases =
                             command.aliases.length > 0
                                 ? ` (${command.aliases
@@ -53,7 +57,7 @@ export const corePlugin = definePlugin({
                             ? ` - ${command.description}`
                             : ''
 
-                        return `/${command.name}${aliases}${description}`
+                        return `/${command.name}${usage}${aliases}${description}`
                     })
 
                 await context.send(`可用命令：\n${commands.join('\n')}`)

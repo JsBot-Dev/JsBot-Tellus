@@ -28,6 +28,7 @@ export interface CommandInfo {
     aliases: string[]
     permission: Permission
     description?: string | undefined
+    usage?: string | undefined
     pluginId: string
 }
 
@@ -44,10 +45,12 @@ export interface EventContext<TEvent extends SnowLumaEvent = SnowLumaEvent> {
 
 export type CommandHandler<
     TEvent extends OneBotMessageEvent = OneBotMessageEvent,
+    TArgs extends unknown[] = [],
 > = (
     event: TEvent,
     context: EventContext<TEvent>,
-    match: CommandMatch
+    match: CommandMatch,
+    ...args: TArgs
 ) => void | Promise<void>
 
 export type MessageHandler = (
@@ -77,16 +80,22 @@ export interface CommandOptions {
     prefixes?: string[] | undefined
     permission?: Permission | undefined
     description?: string | undefined
+    params?: string | undefined
 }
 
-export interface CommandGroupOptions extends CommandOptions {
-    handler?: CommandHandler | undefined
+export interface CommandGroupOptions<
+    TArgs extends unknown[] = [],
+> extends CommandOptions {
+    handler?: CommandHandler<OneBotMessageEvent, TArgs> | undefined
 }
 
 export interface CommandGroupRegistrar {
-    register(options: CommandOptions, handler: CommandHandler): () => void
-    group(
-        options: CommandGroupOptions,
+    register<TArgs extends unknown[] = []>(
+        options: CommandOptions,
+        handler: CommandHandler<OneBotMessageEvent, TArgs>
+    ): () => void
+    group<TArgs extends unknown[] = []>(
+        options: CommandGroupOptions<TArgs>,
         setup: (group: CommandGroupRegistrar) => void
     ): () => void
 }

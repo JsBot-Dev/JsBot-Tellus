@@ -134,6 +134,7 @@ npm run smoke         # node dist/app.js --help
 
 npm run check:local   # 检查 plugins（需要先安装本地依赖）
 npm run build:local   # 构建 plugins
+npm run plugin:gen -- my-plugin  # 生成并安装 plugins/my-plugin 模板依赖
 ```
 
 ## 发布

@@ -208,15 +208,72 @@ ctx.commands.register(
 )
 ```
 
-| 字段          | 默认值   | 说明                          |
-| ------------- | -------- | ----------------------------- |
-| `name`        | 必填     | 主命令名，匹配时大小写不敏感  |
-| `aliases`     | `[]`     | 别名                          |
-| `prefixes`    | `['/']`  | 前缀；空字符串表示无前缀      |
-| `permission`  | `'User'` | `User`、`Admin`、`SuperAdmin` |
-| `description` | 无       | `/help` 中展示                |
+| 字段          | 默认值   | 说明                                         |
+| ------------- | -------- | -------------------------------------------- |
+| `name`        | 必填     | 主命令名，匹配时大小写不敏感                 |
+| `aliases`     | `[]`     | 别名                                         |
+| `prefixes`    | `['/']`  | 前缀；空字符串表示无前缀                     |
+| `permission`  | `'User'` | `User`、`Admin`、`SuperAdmin`                |
+| `description` | 无       | `/help` 中展示                               |
+| `params`      | 无       | Koishi 风格参数声明；省略时 handler 行为不变 |
 
 `name` 和 `aliases` 的每一项只能是一个路径段；多级命令请使用 `commands.group()`。
+
+### 参数
+
+`params` 用字符串声明位置参数，解析结果从 handler 的第四个参数开始按位置传入：
+
+```ts
+ctx.commands.register(
+    {
+        name: 'ask',
+        description: '向模型提问',
+        params: '<question:string> [count:integer=1]',
+    },
+    async (_event, context, _match, question: string, count: number) => {
+        await context.send(`问题：${question}（${count} 次）`)
+    }
+)
+```
+
+声明语法：
+
+| 写法                 | 说明                                     |
+| -------------------- | ---------------------------------------- |
+| `<arg>`              | 必填字符串参数                           |
+| `[arg]`              | 可选字符串参数                           |
+| `<arg:type>`         | 指定类型的必填参数                       |
+| `[arg:type=default]` | 可选参数及默认值                         |
+| `<arg:text>`         | 文本参数，消费全部剩余输入，必须放在最后 |
+| `[...rest]`          | 变长参数，每个剩余 token 作为一个字符串  |
+
+内置类型：
+
+- `string`：默认类型，单个 token。
+- `text`：消费全部剩余输入，保留空格；usage 显示为 `<arg...>`。
+- `number`：有限数字，包括小数。
+- `integer`：整数。
+- `boolean`：`true/false`、`1/0`、`yes/no`、`y/n`、`on/off`，大小写不敏感。
+- `[...rest]`：把剩余 token 依次收集为字符串；只能放在最后，且没有必填形式。
+
+固定参数可以用双引号或单引号包裹，例如 `/ask "hello world" 2` 会把 `hello world` 作为一个 token；引号内的反斜杠用于转义。
+
+解析规则：
+
+- `match.args` 和 `match.rest` 保持原始内容，不会被参数解析结果替换。
+- 声明槽位填完后，多余 token 会被忽略并记录 debug 日志，不会报错。`text` 和 `rest` 会消费全部剩余输入，因此不存在多余 token。
+- 必填参数缺失、已声明槽位类型错误或引号未闭合时，Router 会自动回复错误和用法，handler 不会执行。
+- usage 会自动生成，并显示在 `/help` 和指令组根命令的用法提示中。
+- 必填参数不能出现在可选参数之后；参数名不能重复；`text` 和变长参数必须放在最后；必填参数不能声明默认值。
+- handler 的参数类型由你在函数上自行标注，`params` 只影响运行时解析，不做 TypeScript 类型级推导。
+
+参数错误示例：
+
+```text
+/ask hello abc
+-> 参数 count 需要是整数
+-> 用法：/ask <question> [count]
+```
 
 ### 指令组
 
@@ -247,9 +304,10 @@ ctx.commands.group(
             {
                 name: 'install',
                 description: '安装插件包',
+                params: '<spec:string>',
             },
-            async (_event, context, match) => {
-                await context.send(`安装：${match.rest}`)
+            async (_event, context, _match, spec: string) => {
+                await context.send(`安装：${spec}`)
             }
         )
 
@@ -266,8 +324,9 @@ ctx.commands.group(
 - 子命令自动拼接组路径，例如上面的 `plugin` + `install` 对应 `/plugin install`。
 - 子命令默认继承组的 `prefixes`、`permission`，也可以在子命令上覆盖。
 - 组别名和子命令别名会自动组合；组 `plugin` 别名 `p`、子命令 `install` 别名 `i` 时，`/p i` 也能命中。
-- 组根没有提供 `handler` 时，会自动注册根命令并生成用法提示，列出直接子命令和描述。
+- 组根没有提供 `handler` 时，会自动注册根命令并生成用法提示，列出直接子命令、参数用法和描述。
 - 组根提供了 `handler` 时，未命中子命令的输入（例如 `/plugin`、`/plugin help`、`/plugin unknown`）会进入该 handler。
+- 组根和子命令都可以声明 `params`；子命令的用法会显示在组根提示和 `/help` 中。例如组根声明 `params: '<target:string>'` 时，`/demo alice` 会把 `alice` 传给组根 handler。
 - `group()` 返回 disposer，会注销组根和所有子命令；组 setup 抛错或注册冲突时会自动回滚整组。
 - `/help` 中会显示完整路径，例如 `/plugin install`。
 

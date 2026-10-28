@@ -5,5 +5,5 @@
             "@jsbot-tellus/core": ["./src/core/index.ts"]
         }
     },
-    "include": ["src", "tests"]
+    "include": ["src", "tests", "scripts"]
 }
