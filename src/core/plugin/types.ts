@@ -13,6 +13,7 @@ import type { SendOptions } from '../messaging/sender.js'
 import type { PluginKV } from '../plugin/kv.js'
 import type { Permission } from '../security/permission.js'
 import type { SessionStore } from '../storage/session.js'
+import type { CommandParamArgs } from './command-params.js'
 
 export type EventType = 'message' | 'notice' | 'request' | 'meta'
 
@@ -74,28 +75,33 @@ export type PluginMiddleware = (
     next: () => Promise<void>
 ) => void | Promise<void>
 
-export interface CommandOptions {
+export interface CommandOptions<Declaration extends string = string> {
     name: string
     aliases?: string[] | undefined
     prefixes?: string[] | undefined
     permission?: Permission | undefined
     description?: string | undefined
-    params?: string | undefined
+    params?: Declaration | undefined
 }
 
 export interface CommandGroupOptions<
-    TArgs extends unknown[] = [],
-> extends CommandOptions {
-    handler?: CommandHandler<OneBotMessageEvent, TArgs> | undefined
+    Declaration extends string = string,
+> extends CommandOptions<Declaration> {
+    handler?:
+        | CommandHandler<OneBotMessageEvent, CommandParamArgs<Declaration>>
+        | undefined
 }
 
 export interface CommandGroupRegistrar {
-    register<TArgs extends unknown[] = []>(
-        options: CommandOptions,
-        handler: CommandHandler<OneBotMessageEvent, TArgs>
+    register<Declaration extends string = string>(
+        options: CommandOptions<Declaration>,
+        handler: CommandHandler<
+            OneBotMessageEvent,
+            CommandParamArgs<Declaration>
+        >
     ): () => void
-    group<TArgs extends unknown[] = []>(
-        options: CommandGroupOptions<TArgs>,
+    group<Declaration extends string = string>(
+        options: CommandGroupOptions<Declaration>,
         setup: (group: CommandGroupRegistrar) => void
     ): () => void
 }

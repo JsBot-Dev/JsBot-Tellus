@@ -1,6 +1,7 @@
 import type { OneBotMessageEvent } from '@snowluma/sdk'
 import {
     compileCommandParams,
+    type CommandParamArgs,
     type CompiledCommandParams,
 } from '../plugin/command-params.js'
 import type {
@@ -432,9 +433,12 @@ export class CommandRegistry {
         }
 
         const registrar: CommandGroupRegistrar = {
-            register: <TArgs extends unknown[] = []>(
-                options: CommandOptions,
-                handler: CommandHandler<OneBotMessageEvent, TArgs>
+            register: <Declaration extends string = string>(
+                options: CommandOptions<Declaration>,
+                handler: CommandHandler<
+                    OneBotMessageEvent,
+                    CommandParamArgs<Declaration>
+                >
             ) => {
                 const childBases = composedBases(
                     bases,
@@ -484,8 +488,8 @@ export class CommandRegistry {
                 })
             },
 
-            group: <TArgs extends unknown[] = []>(
-                options: CommandGroupOptions<TArgs>,
+            group: <Declaration extends string = string>(
+                options: CommandGroupOptions<Declaration>,
                 nestedSetup: (group: CommandGroupRegistrar) => void
             ) => {
                 const nestedBases = composedBases(
