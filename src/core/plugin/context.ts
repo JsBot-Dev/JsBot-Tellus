@@ -4,6 +4,7 @@ import type { Router } from '../dispatch/router.js'
 import type { TaskQueue } from '../dispatch/task-queue.js'
 import type { Logger } from '../logging/logger.js'
 import type { SessionStore } from '../storage/session.js'
+import type { CommandParamArgs } from './command-params.js'
 import type { PluginKV } from './kv.js'
 import type {
     CommandGroupOptions,
@@ -43,9 +44,12 @@ export function createPluginContext<TConfig>(
         core: deps.core,
 
         commands: {
-            register<TArgs extends unknown[] = []>(
-                options: CommandOptions,
-                handler: CommandHandler<OneBotMessageEvent, TArgs>
+            register<Declaration extends string = string>(
+                options: CommandOptions<Declaration>,
+                handler: CommandHandler<
+                    OneBotMessageEvent,
+                    CommandParamArgs<Declaration>
+                >
             ) {
                 return deps.router.registerCommand({
                     pluginId: id,
@@ -68,8 +72,8 @@ export function createPluginContext<TConfig>(
                     handler,
                 })
             },
-            group<TArgs extends unknown[] = []>(
-                options: CommandGroupOptions<TArgs>,
+            group<Declaration extends string = string>(
+                options: CommandGroupOptions<Declaration>,
                 setup: (group: CommandGroupRegistrar) => void
             ) {
                 return deps.router.registerCommandGroup(

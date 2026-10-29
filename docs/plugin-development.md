@@ -202,7 +202,7 @@ export default definePlugin({
                 description: '发送一条问候',
                 params: '[name:string="世界"]',
             },
-            async (_event, context, _match, name: string) => {
+            async (_event, context, _match, name) => {
                 await context.send(`${name}：${ctx.config.reply}`)
             }
         )

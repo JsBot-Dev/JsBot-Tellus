@@ -9,6 +9,7 @@ export type {
 } from './config/schema.js'
 export type { TaskQueue } from './dispatch/task-queue.js'
 export type { Logger, LogLevel } from './logging/logger.js'
+export type { CommandParamArgs } from './plugin/command-params.js'
 export { splitReply } from './messaging/render.js'
 export type { MessageSender, SendOptions } from './messaging/sender.js'
 export { PluginConfigError } from './plugin/host.js'

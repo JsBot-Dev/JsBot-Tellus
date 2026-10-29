@@ -230,7 +230,8 @@ ctx.commands.register(
         description: '向模型提问',
         params: '<question:string> [count:integer=1]',
     },
-    async (_event, context, _match, question: string, count: number) => {
+    async (_event, context, _match, question, count) => {
+        // question: string, count: number
         await context.send(`问题：${question}（${count} 次）`)
     }
 )
@@ -265,7 +266,11 @@ ctx.commands.register(
 - 必填参数缺失、已声明槽位类型错误或引号未闭合时，Router 会自动回复错误和用法，handler 不会执行。
 - usage 会自动生成，并显示在 `/help` 和指令组根命令的用法提示中。
 - 必填参数不能出现在可选参数之后；参数名不能重复；`text` 和变长参数必须放在最后；必填参数不能声明默认值。
-- handler 的参数类型由你在函数上自行标注，`params` 只影响运行时解析，不做 TypeScript 类型级推导。
+- 当 `params` 是字符串字面量时，handler 从第四个参数开始的位置参数类型会自动推导。例如 `<question:string> [count:integer=1]` 会推导为 `(question: string, count: number)`，`[name:string]` 会推导为 `string | undefined`，`[...rest]` 会推导为 `...string[]`。
+- 需要在类型位置复用推导结果时，可以使用导出的 `CommandParamArgs<'<question:string>'>`。
+- 也可以继续手写 handler 参数注解；注解与声明不一致时会在编译期报错。
+- 自动推导只对字面量生效：运行时拼接的字符串，或显式声明为 `string` 的变量会回退为 `any[]`。需要保留字面量类型时，使用 `const` 变量或 `as const`。
+- 类型层解析覆盖上面的声明语法；如果默认值包含 `]` 等会干扰声明边界的字符，可能回退为 `any[]`，但不影响运行时解析。非法声明仍然在注册时抛错，而不是变成类型错误。
 
 参数错误示例：
 
