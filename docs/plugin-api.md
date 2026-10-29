@@ -256,6 +256,7 @@ ctx.commands.register(
 - `number`：有限数字，包括小数。
 - `integer`：整数。
 - `boolean`：`true/false`、`1/0`、`yes/no`、`y/n`、`on/off`，大小写不敏感。
+- `at`：@ 提及或 QQ 号，解析为数字。支持 `[CQ:at,qq=123456]`（可带 `name` 等附加参数）和纯数字 `123456`；`@全体成员` 和普通文本会报类型错误，且不能声明默认值。
 - `[...rest]`：把剩余 token 依次收集为字符串；只能放在最后，且没有必填形式。
 
 固定参数可以用双引号或单引号包裹，例如 `/ask "hello world" 2` 会把 `hello world` 作为一个 token；引号内的反斜杠用于转义。

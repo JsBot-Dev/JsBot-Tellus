@@ -106,6 +106,55 @@ describe('command params', () => {
         })
     })
 
+    it('parses at arguments from CQ codes or QQ numbers', () => {
+        const params = compileCommandParams('<user:at> <time:integer>')
+
+        expect(params.usage).toBe('<user> <time>')
+        expect(params.parse('[CQ:at,qq=123456] 60')).toEqual({
+            args: [123456, 60],
+            ignored: [],
+        })
+        expect(params.parse('123456 60')).toEqual({
+            args: [123456, 60],
+            ignored: [],
+        })
+        expect(params.parse('[CQ:at,qq=123456,name=Alice Smith] 60')).toEqual({
+            args: [123456, 60],
+            ignored: [],
+        })
+    })
+
+    it('rejects invalid at arguments', () => {
+        const params = compileCommandParams('<user:at>')
+
+        expect(() => params.parse('[CQ:at,qq=all]')).toThrowError(
+            new CommandParamsError(
+                '参数 user 需要 @ 一个用户或填写 QQ 号',
+                '<user>'
+            )
+        )
+
+        expect(() => params.parse('alice')).toThrowError(
+            new CommandParamsError(
+                '参数 user 需要 @ 一个用户或填写 QQ 号',
+                '<user>'
+            )
+        )
+    })
+
+    it('accepts optional at arguments', () => {
+        const params = compileCommandParams('[user:at]')
+
+        expect(params.parse('')).toEqual({
+            args: [],
+            ignored: [],
+        })
+        expect(params.parse('[CQ:at,qq=123456]')).toEqual({
+            args: [123456],
+            ignored: [],
+        })
+    })
+
     it('reports missing and invalid arguments with usage', () => {
         const params = compileCommandParams(
             '<question:string> [count:number=1]'
@@ -166,6 +215,9 @@ describe('command params', () => {
         )
         expect(() => compileCommandParams('[arg:boolean=maybe]')).toThrow(
             /默认值不是布尔值/
+        )
+        expect(() => compileCommandParams('[arg:at=123456]')).toThrow(
+            /不支持默认值/
         )
     })
 })

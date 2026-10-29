@@ -191,6 +191,31 @@ describe('router', () => {
         ).toBe(true)
     })
 
+    it('parses at params from raw messages', async () => {
+        const { router, dispatch } = harness()
+        const handler = vi.fn<
+            CommandHandler<OneBotMessageEvent, [number, number]>
+        >(async () => {})
+
+        router.registerCommand({
+            pluginId: 'test',
+            name: 'ban',
+            params: '<user:at> <duration:integer>',
+            handler,
+        })
+
+        await dispatch(
+            groupMessage({
+                raw_message: '/ban [CQ:at,qq=123456] 60',
+                user_id: 30000,
+            })
+        )
+
+        expect(handler).toHaveBeenCalledTimes(1)
+        expect(handler.mock.calls[0]?.[3]).toBe(123456)
+        expect(handler.mock.calls[0]?.[4]).toBe(60)
+    })
+
     it('replies with usage when required params are missing', async () => {
         const { router, dispatch, client } = harness()
         const handler = vi.fn(async () => {})
