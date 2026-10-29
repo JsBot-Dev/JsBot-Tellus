@@ -87,6 +87,48 @@ describe('core plugin', () => {
         await app.stop()
     })
 
+    it('filters help by group gating', async () => {
+        const app = await createTestApp({
+            plugins: [corePlugin, adminPlugin],
+            roles: {
+                superadmin: [10000],
+                admin: [],
+            },
+            pluginConfigs: {
+                admin: {
+                    groups: { allow: [654321] },
+                },
+            },
+        })
+
+        const blocked = await app.dispatch(
+            groupMessage({
+                raw_message: '/help',
+                group_id: 123456,
+                user_id: 10000,
+            })
+        )
+        const blockedText = messageText(app, blocked)
+
+        expect(blockedText).toContain('/help')
+        expect(blockedText).not.toContain('/utter')
+        expect(blockedText).not.toContain('/plugin')
+
+        const allowed = await app.dispatch(
+            groupMessage({
+                raw_message: '/help',
+                group_id: 654321,
+                user_id: 10000,
+            })
+        )
+        const allowedText = messageText(app, allowed)
+
+        expect(allowedText).toContain('/utter')
+        expect(allowedText).toContain('/plugin')
+
+        await app.stop()
+    })
+
     it('shows command params in help', async () => {
         const askPlugin = definePlugin({
             manifest: {
