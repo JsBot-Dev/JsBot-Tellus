@@ -59,6 +59,8 @@
         "dev": "tsx watch src/app.ts",
         "smoke": "node dist/app.js --help",
         "format": "prettier --write .",
+        "format:plugin": "prettier --write plugins --ignore-path ''",
+        "format:plugin:check": "prettier --check plugins --ignore-path ''",
         "format:check": "prettier --check ."
     },
     "dependencies": {
