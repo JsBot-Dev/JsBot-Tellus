@@ -8,7 +8,7 @@
 | 数据目录 | `--data-dir`  | `BOT_DATA_DIR`  | `./data`            |
 | 日志级别 | `--log-level` | `BOT_LOG_LEVEL` | `info`              |
 
-本地插件目录固定为 `./plugins`，不提供 CLI 或环境变量覆盖；每个插件从 `./plugins/<id>/dist` 加载，相对路径按 `process.cwd()` 解析。
+本地插件目录固定为 `./plugins`，不提供 CLI 或环境变量覆盖；每个插件从 `./plugins/<id>/dist` 加载，缺失时会在启动阶段尝试自动构建，相对路径按 `process.cwd()` 解析。
 
 ## 完整示例
 
@@ -151,7 +151,7 @@ npm run build
 node dist/app.js
 ```
 
-没有 `dist` 的插件目录会被跳过并记录警告。通过 `/plugin install` 安装的包会直接出现在 `plugins/<插件id>/`，与手动放在 `plugins/` 的本地插件没有区别。安装状态、registry 和允许列表见[插件安装器](#插件安装器)。
+没有 `dist` 的本地插件如果带有 `build` 脚本且依赖已安装，启动时会先自动执行 `npm run build` 再加载；没有 `build` 脚本、缺少 `node_modules` 或构建失败时会记录警告并跳过。通过 `/plugin install` 安装的包会直接出现在 `plugins/<插件id>/`，与手动放在 `plugins/` 的本地插件没有区别；安装器管理的包应自带 `dist`，加载器不会为它们自动构建。安装状态、registry 和允许列表见[插件安装器](#插件安装器)。
 
 插件自己的配置字段由 `manifest.configSchema` 校验。例如一个 `demo` 插件：
 
@@ -179,7 +179,7 @@ npm run build:local
 npm run dev
 ```
 
-本地插件从 `plugins/<id>/dist` 自动加载；应用会跳过与内置插件同 ID 的本地插件。
+本地插件从 `plugins/<id>/dist` 自动加载；缺少 `dist` 时会先尝试构建。应用会跳过与内置插件同 ID 的本地插件。
 
 ## 错误处理
 

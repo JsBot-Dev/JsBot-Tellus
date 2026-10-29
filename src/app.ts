@@ -33,7 +33,7 @@ Options:
 
 Config precedence: CLI > environment > ./bot.config.json.
 Data precedence: CLI > environment > ./data.
-Local plugins: ./${LOCAL_PLUGIN_DIR}/<id>/dist.
+Local plugins: ./${LOCAL_PLUGIN_DIR}/<id>/dist (auto-built when missing).
 `
 
 function pick(value: unknown): string | undefined {
@@ -103,7 +103,9 @@ async function loadRuntimeSpec(
 
     logger.info('loading plugins from', pluginDir)
 
-    const localPlugins = await loadLocalPlugins(pluginDir, logger)
+    const localPlugins = await loadLocalPlugins(pluginDir, logger, {
+        buildTimeoutMs: config.installer.timeoutMs,
+    })
 
     if (localPlugins.length > 0) {
         logger.info(`loaded ${localPlugins.length} plugin(s) from ${pluginDir}`)
