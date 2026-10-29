@@ -68,6 +68,17 @@ function checkRegisterInference(): void {
 
     commands.register(
         {
+            name: 'at',
+            params: '<user:at> [other:at]',
+        },
+        async (_event, _context, _match, user, other) => {
+            expectTypeOf(user).toEqualTypeOf<number>()
+            expectTypeOf(other).toEqualTypeOf<number | undefined>()
+        }
+    )
+
+    commands.register(
+        {
             name: 'plain',
         },
         async (_event, _context, _match) => {}
@@ -126,6 +137,10 @@ describe('command param type inference', () => {
         expectTypeOf<
             CommandParamArgs<'<amount:number> <enabled:boolean>'>
         >().toEqualTypeOf<[number, boolean]>()
+
+        expectTypeOf<CommandParamArgs<'<user:at> [other:at]'>>().toEqualTypeOf<
+            [number, number | undefined]
+        >()
 
         expectTypeOf<
             CommandParamArgs<'[name:string="hello world"]'>

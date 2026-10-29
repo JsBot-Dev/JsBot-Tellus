@@ -1,5 +1,7 @@
+import { parseSegments } from '@snowluma/sdk'
+
 export type CommandParamType =
-    'string' | 'text' | 'number' | 'integer' | 'boolean'
+    'string' | 'text' | 'number' | 'integer' | 'boolean' | 'at'
 
 export interface ParsedCommandParams {
     args: unknown[]
@@ -48,6 +50,7 @@ function parseType(value: string): CommandParamType {
         case 'number':
         case 'integer':
         case 'boolean':
+        case 'at':
             return value
         default:
             throw declarationError(`未知的参数类型 "${value}"`)
@@ -177,6 +180,35 @@ function parseBoolean(value: string): boolean | null {
     return null
 }
 
+function parseAt(value: string, name: string, usage: string): number {
+    const raw = value.trim()
+    const segments = parseSegments(raw)
+    const segment = segments[0]
+
+    if (segments.length === 1 && segment?.type === 'at') {
+        const qq = segment.data.qq
+
+        if (qq !== 'all') {
+            const parsed = Number(qq)
+
+            if (Number.isSafeInteger(parsed) && parsed > 0) {
+                return parsed
+            }
+        }
+    } else if (/^\d+$/.test(raw)) {
+        const parsed = Number(raw)
+
+        if (Number.isSafeInteger(parsed) && parsed > 0) {
+            return parsed
+        }
+    }
+
+    throw new CommandParamsError(
+        `参数 ${name} 需要 @ 一个用户或填写 QQ 号`,
+        usage
+    )
+}
+
 function parseDefaultValue(
     type: CommandParamType,
     raw: string,
@@ -215,6 +247,8 @@ function parseDefaultValue(
 
             return boolean
         }
+        case 'at':
+            throw declarationError(`参数 ${name} 不支持默认值`)
     }
 }
 
@@ -405,6 +439,16 @@ function tokenizeInput(input: string, usage: string): InputToken[] {
 
             if (/\s/.test(current)) break
 
+            if (current === '[' && input.startsWith('[CQ:', index)) {
+                const close = input.indexOf(']', index + 4)
+
+                if (close >= 0) {
+                    value += input.slice(index, close + 1)
+                    index = close + 1
+                    continue
+                }
+            }
+
             if (current === '"' || current === "'") {
                 quote = current
                 index += 1
@@ -480,6 +524,8 @@ function parseValue(spec: ParamSpec, raw: string, usage: string): unknown {
 
             return value
         }
+        case 'at':
+            return parseAt(raw, spec.name, usage)
     }
 }
 
@@ -607,7 +653,7 @@ type Trim<Source extends string> = TrimLeft<TrimRight<Source>>
 type ParamValue<Type extends string> =
     Trim<Type> extends 'string' | 'text'
         ? string
-        : Trim<Type> extends 'number' | 'integer'
+        : Trim<Type> extends 'number' | 'integer' | 'at'
           ? number
           : Trim<Type> extends 'boolean'
             ? boolean
