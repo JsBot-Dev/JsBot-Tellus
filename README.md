@@ -51,17 +51,17 @@ npm run dev
 
 ## 内置命令
 
-| 命令              | 权限       | 作用               |
-| ----------------- | ---------- | ------------------ |
-| `/help`、`/h`     | User       | 按权限列出可用命令 |
-| `/status`、`/s`   | User       | 运行时长和插件状态 |
-| `/role`           | User       | 显示当前用户角色   |
-| `/utter <文本>`   | Admin      | 向当前会话发送文本 |
-| `/utter raw <CQ>` | SuperAdmin | 发送原始 CQ 消息   |
-| `/plugin list`    | SuperAdmin | 列出已安装插件包   |
-| `/plugin install` | SuperAdmin | 安装 npm 插件包    |
-| `/plugin remove`  | SuperAdmin | 卸载插件包         |
-| `/plugin update`  | SuperAdmin | 更新插件包         |
+| 命令              | 权限       | 作用                             |
+| ----------------- | ---------- | -------------------------------- |
+| `/help`、`/h`     | User       | 按权限和当前会话启用状态列出命令 |
+| `/status`、`/s`   | User       | 运行时长和插件状态               |
+| `/role`           | User       | 显示当前用户角色                 |
+| `/utter <文本>`   | Admin      | 向当前会话发送文本               |
+| `/utter raw <CQ>` | SuperAdmin | 发送原始 CQ 消息                 |
+| `/plugin list`    | SuperAdmin | 列出已安装插件包                 |
+| `/plugin install` | SuperAdmin | 安装 npm 插件包                  |
+| `/plugin remove`  | SuperAdmin | 卸载插件包                       |
+| `/plugin update`  | SuperAdmin | 更新插件包                       |
 
 `/plugin` 的所有子命令（包括 `help` 和 `list`）都要求 SuperAdmin。`/utter.raw` 已迁移为 `/utter raw` 子命令。
 

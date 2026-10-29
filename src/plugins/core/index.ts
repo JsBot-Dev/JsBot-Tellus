@@ -38,7 +38,7 @@ export const corePlugin = definePlugin({
             async (event, context) => {
                 const role = ctx.core.roles.roleOf(event.user_id)
                 const commands = ctx.core.commands
-                    .list()
+                    .list(event)
                     .filter((command) =>
                         ctx.core.roles.can(role, command.permission)
                     )

@@ -78,7 +78,14 @@ export class Kernel {
                 can: (actual, required) => roles.can(actual, required),
             },
             commands: {
-                list: () => this.router.listCommands(),
+                list: (event) =>
+                    event === undefined
+                        ? this.router.listCommands()
+                        : this.router
+                              .listCommands()
+                              .filter((command) =>
+                                  gate.isEnabled(command.pluginId, event)
+                              ),
             },
             plugins: {
                 list: () => host.listStatus(),

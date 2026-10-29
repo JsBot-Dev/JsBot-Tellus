@@ -184,7 +184,7 @@ export interface CoreServices {
         can(actual: Permission, required: Permission): boolean
     }
     commands: {
-        list(): ReadonlyArray<CommandInfo>
+        list(event?: SnowLumaEvent): ReadonlyArray<CommandInfo>
     }
     plugins: PluginStatus
     installer: PluginInstaller

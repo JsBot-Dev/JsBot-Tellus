@@ -176,6 +176,7 @@ const result = await ctx.api.call('get_group_list')
 const role = ctx.core.roles.roleOf(userId)
 const allowed = ctx.core.roles.can(role, 'Admin')
 const commands = ctx.core.commands.list()
+const visibleCommands = ctx.core.commands.list(event)
 const plugins = ctx.core.plugins.list()
 const uptime = ctx.core.uptime()
 
@@ -183,7 +184,7 @@ const installed = await ctx.core.installer.list()
 ctx.core.restart()
 ```
 
-核心服务由内核注入，适合帮助、状态类插件。`ctx.core.installer` 额外提供 `install` / `remove` / `update` / `list`；它不会检查调用者角色，权限判断由调用方负责（`admin` 的 `/plugin` 命令要求 SuperAdmin）。安装器默认关闭，必须在配置中显式启用。`ctx.core.restart()` 请求应用重建运行时并重新加载插件；第三方插件不应把这些方法暴露给普通用户。
+核心服务由内核注入，适合帮助、状态类插件。`ctx.core.commands.list(event)` 会按当前会话的 `enabled`、`groups`、`private` gating 过滤命令；不传 `event` 时返回全部命令。`ctx.core.installer` 额外提供 `install` / `remove` / `update` / `list`；它不会检查调用者角色，权限判断由调用方负责（`admin` 的 `/plugin` 命令要求 SuperAdmin）。安装器默认关闭，必须在配置中显式启用。`ctx.core.restart()` 请求应用重建运行时并重新加载插件；第三方插件不应把这些方法暴露给普通用户。
 
 安装的插件与内置插件运行在同一个宿主进程中，可访问文件系统、网络和 `process.env`，属于完全可信代码，不是安全沙箱。
 
@@ -431,6 +432,7 @@ await context.send('自动转义 CQ 码', { autoEscape: true })
 - `plugins.<id>.enabled` 控制整体启用。
 - `plugins.<id>.groups.allow` / `deny` 只作用于群事件，二者不能同时非空。
 - `plugins.<id>.private` 控制私聊，默认 `true`。
+- `/help` 只列出当前会话中启用的插件命令；群 gating 或 `private: false` 会隐藏对应命令。
 
 ## 配置校验
 
