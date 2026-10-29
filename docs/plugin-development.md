@@ -6,11 +6,11 @@ API 细节（`PluginContext`、命令、事件、中间件、KV、Session 等）
 
 ## 先选插件类型
 
-| 类型     | 推荐位置            | 是否进入本仓库 | 加载方式                           | 适用场景                     |
-| -------- | ------------------- | -------------- | ---------------------------------- | ---------------------------- |
-| 内置插件 | `src/plugins/<id>/` | 是             | 注册到 `src/plugins/index.ts`      | 随内核发布的官方功能         |
-| 本地插件 | `plugins/<id>/`     | 否             | 启动时自动扫描 `plugins/<id>/dist` | 个人使用、内部功能、开发调试 |
-| npm 插件 | 独立仓库或独立包    | 独立管理       | `/plugin install <包名>[@版本]`    | 发布给其他用户安装           |
+| 类型     | 推荐位置            | 是否进入本仓库 | 加载方式                                               | 适用场景                     |
+| -------- | ------------------- | -------------- | ------------------------------------------------------ | ---------------------------- |
+| 内置插件 | `src/plugins/<id>/` | 是             | 注册到 `src/plugins/index.ts`                          | 随内核发布的官方功能         |
+| 本地插件 | `plugins/<id>/`     | 否             | 启动时自动扫描 `plugins/<id>/dist`，缺失时尝试自动构建 | 个人使用、内部功能、开发调试 |
+| npm 插件 | 独立仓库或独立包    | 独立管理       | `/plugin install <包名>[@版本]`                        | 发布给其他用户安装           |
 
 位置约定：
 
@@ -39,7 +39,7 @@ plugins/my-plugin/
 
 - `src/index.ts` 是开发入口。
 - `dist/index.js` 是运行时入口。
-- 构建产物固定放在 `plugins/<id>/dist`，启动时自动扫描；不要指向或加载 `src/`。
+- 构建产物固定放在 `plugins/<id>/dist`，启动时自动扫描；缺少 `dist` 且 `package.json` 中存在 `build` 脚本时会先自动构建，不要指向或加载 `src/`。
 - 每个本地插件都是独立包，有自己的 `package.json`、lockfile 和 `node_modules`。
 
 ### 内置插件
@@ -107,11 +107,16 @@ npm run plugin:gen -- my-plugin --no-install
 npm install --prefix plugins/my-plugin
 ```
 
-然后构建并启动：
+然后启动：
+
+```bash
+node dist/app.js
+```
+
+启动时如果插件还没有 `dist`，应用会自动执行 `npm run build --prefix plugins/my-plugin`；前提是已经安装依赖。也可以手动提前构建：
 
 ```bash
 npm run build --prefix plugins/my-plugin
-node dist/app.js
 ```
 
 如果目标目录已经存在，命令会拒绝覆盖。
@@ -218,13 +223,14 @@ export default definePlugin({
 - 多级命令（例如 `/plugin install`）使用 `ctx.commands.group()`，不要直接注册带空格的命令名。详见[插件 API 的命令章节](plugin-api.md#命令)。
 - 修改命令、事件或配置后，完整重启进程最可靠；自动重启不会清空 ESM 模块缓存。
 
-### 4. 安装依赖并构建
+### 4. 安装依赖
 
 ```bash
 npm install --prefix plugins/my-plugin
 npm run build
-npm run build --prefix plugins/my-plugin
 ```
+
+根目录的 `npm run build` 构建内核。插件自身的构建在启动时缺少 `dist` 会自动执行；需要提前校验时也可以手动运行 `npm run build --prefix plugins/my-plugin`。
 
 根目录的 `npm run build:local` / `npm run check:local` 目前只覆盖 `plugins/poke` 和 `plugins/llm`。新增插件请使用 `npm run build --prefix plugins/<id>` 和 `npm run check --prefix plugins/<id>`，或者把新目录加入根 `package.json` 的对应脚本。
 
@@ -258,7 +264,7 @@ node dist/app.js
 npm run dev
 ```
 
-不需要额外参数；多个本地插件按 `plugins/<id>/dist` 并存。没有 `dist` 的目录会被跳过并记录警告。
+不需要额外参数；多个本地插件按 `plugins/<id>/dist` 并存。没有 `dist` 的本地插件如果带有 `build` 脚本且 `node_modules` 存在，会先自动执行 `npm run build` 再加载；没有 `build` 脚本、缺少依赖或构建失败时会记录警告并跳过。
 
 ### 6. 配置插件
 
@@ -289,24 +295,28 @@ npm run dev
     - `export const plugins = [...]`
 - 没有导出插件定义的 helper 模块会被跳过。
 - 生产环境应加载编译后的 JavaScript；TypeScript 源码必须先构建，或者在使用 `tsx` 的开发环境中运行。
+- `dist` 缺失时，如果插件目录中有 `package.json`、`package.json` 声明了 `scripts.build`，并且 `node_modules` 存在，加载器会执行 `npm run build` 后再加载；构建失败或构建后仍无 `dist` 时只跳过该插件。
+- 通过 `/plugin install` 安装的包由安装器管理，缺少 `dist` 时不会自动构建，而是直接告警跳过。
 - 空目录不会报错；如果目录中存在无法导入或无法识别的文件，并且最终没有加载到任何有效插件，启动失败。只要至少有一个有效插件，其他无法识别的文件会记录警告并跳过。
 - 本地插件和在线安装的插件都从 `plugins/<目录>/dist` 自动加载，没有单独的安装目录。
 - 同一个 ID 同时来自内置插件和 `plugins/` 中的多个目录时，只有最先加载的那个生效。
 
 ## 调试与常见问题
 
-| 现象                                                 | 可能原因                                             | 处理                                                                       |
-| ---------------------------------------------------- | ---------------------------------------------------- | -------------------------------------------------------------------------- |
-| `skipping local plugin ... dist directory not found` | 插件目录没有构建产物                                 | 执行 `npm run build --prefix plugins/<id>`                                 |
-| `failed to import ...`                               | TypeScript 未编译、入口有运行时错误                  | 先构建；查看日志中的具体导入错误                                           |
-| `dist` 目录没有有效插件                              | 没有导出 `default` / `plugin` / `plugins`            | 检查入口导出和 `dist` 中的构建输出                                         |
-| `skipping ... plugin id already loaded`              | 插件 ID 重复                                         | 修改 `manifest.id`，或移除重复的插件目录                                   |
-| `unknown plugin id`                                  | 配置里写了未加载的插件 ID                            | 启用插件、修正 ID，或删除 `plugins.<id>` 配置                              |
-| 命令没有响应                                         | 插件未启用、权限不足、群组 gating、命令前缀不匹配    | 检查 `plugins.<id>.enabled`、角色、群组配置和命令前缀                      |
-| 修改代码后行为没变                                   | ESM 模块缓存、自动重启未刷新本地插件                 | 完整退出并重新启动进程                                                     |
-| `Cannot find module '@jsbot-tellus/core'`            | 没有安装 devDependency，或 `file:` 依赖尚未构建      | 在插件目录执行 `npm install`；使用 `file:` 时先构建根项目                  |
-| `/plugin install` 拒绝包                             | 使用了路径、`file:`、git/url、范围版本或未启用安装器 | 改用 npm 包名 + 精确版本或 dist-tag；确认 `installer.enabled` 和 allowlist |
-| 安装完成但提示网络错误                               | 安装后的通知发送失败，不代表安装失败                 | 用 `/plugin list` 确认；必要时手动重启进程                                 |
+| 现象                                                 | 可能原因                                             | 处理                                                                                                             |
+| ---------------------------------------------------- | ---------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
+| `skipping local plugin ... dist directory not found` | 没有 `build` 脚本、缺少 `node_modules`，或构建失败   | 执行 `npm install --prefix plugins/<id>`，检查 `scripts.build`，或手动执行 `npm run build --prefix plugins/<id>` |
+| `failed to build local plugin ...`                   | `build` 脚本执行失败或超时                           | 查看 npm 输出和插件源码，修复后重启                                                                              |
+| `build finished but dist directory not found`        | `build` 脚本没有把产物输出到插件的 `dist` 目录       | 检查 `tsconfig.json` 的 `outDir` 和 `scripts.build`                                                              |
+| `failed to import ...`                               | TypeScript 未编译、入口有运行时错误                  | 先构建；查看日志中的具体导入错误                                                                                 |
+| `dist` 目录没有有效插件                              | 没有导出 `default` / `plugin` / `plugins`            | 检查入口导出和 `dist` 中的构建输出                                                                               |
+| `skipping ... plugin id already loaded`              | 插件 ID 重复                                         | 修改 `manifest.id`，或移除重复的插件目录                                                                         |
+| `unknown plugin id`                                  | 配置里写了未加载的插件 ID                            | 启用插件、修正 ID，或删除 `plugins.<id>` 配置                                                                    |
+| 命令没有响应                                         | 插件未启用、权限不足、群组 gating、命令前缀不匹配    | 检查 `plugins.<id>.enabled`、角色、群组配置和命令前缀                                                            |
+| 修改代码后行为没变                                   | ESM 模块缓存、自动重启未刷新本地插件                 | 完整退出并重新启动进程                                                                                           |
+| `Cannot find module '@jsbot-tellus/core'`            | 没有安装 devDependency，或 `file:` 依赖尚未构建      | 在插件目录执行 `npm install`；使用 `file:` 时先构建根项目                                                        |
+| `/plugin install` 拒绝包                             | 使用了路径、`file:`、git/url、范围版本或未启用安装器 | 改用 npm 包名 + 精确版本或 dist-tag；确认 `installer.enabled` 和 allowlist                                       |
+| 安装完成但提示网络错误                               | 安装后的通知发送失败，不代表安装失败                 | 用 `/plugin list` 确认；必要时手动重启进程                                                                       |
 
 注意：安装器在安装或更新成功后会请求重建运行时，但安装后的通知发送失败不会回滚安装。遇到“网络连接异常”时优先检查 `/plugin list` 和 `plugins/.jsbot-installed.json`。
 

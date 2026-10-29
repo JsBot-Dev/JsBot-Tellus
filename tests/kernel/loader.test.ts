@@ -6,6 +6,10 @@ import {
     loadLocalPlugins,
     loadPluginsFromDirectory,
 } from '../../src/core/plugin/loader.js'
+import type {
+    NpmRunner,
+    ProcessOptions,
+} from '../../src/core/plugin/npm-runner.js'
 import { pluginEnvelopeSchema } from '../../src/core/config/schema.js'
 import { corePlugin } from '../../src/plugins/core/index.js'
 import { groupMessage } from '../helpers/events.js'
@@ -19,6 +23,97 @@ async function temporaryDirectory(): Promise<string> {
     temporaryDirectories.push(directory)
 
     return directory
+}
+
+function pluginSource(id: string): string {
+    return [
+        "import { z } from 'zod'",
+        'export default {',
+        `    manifest: { id: '${id}', version: '1.0.0', configSchema: z.object({}) },`,
+        '    setup() {},',
+        '}',
+    ].join('\n')
+}
+
+interface BuildCall {
+    args: string[]
+    options: ProcessOptions
+}
+
+function createBuildRunner(onBuild: () => void | Promise<void>): {
+    runner: NpmRunner
+    calls: BuildCall[]
+} {
+    const calls: BuildCall[] = []
+    const runner: NpmRunner = {
+        async run(args, options) {
+            calls.push({ args, options })
+            await onBuild()
+            return { stdout: '', stderr: '' }
+        },
+    }
+
+    return { runner, calls }
+}
+
+interface LocalPluginFixtureOptions {
+    build?: string | undefined
+    manifest?: unknown | undefined
+    nodeModules?: boolean | undefined
+}
+
+async function createPluginFixture(
+    root: string,
+    id: string,
+    options: LocalPluginFixtureOptions = {}
+): Promise<string> {
+    const directory = join(root, id)
+
+    await mkdir(directory, { recursive: true })
+
+    if (options.nodeModules !== false) {
+        await mkdir(join(directory, 'node_modules'), { recursive: true })
+    }
+
+    const manifest =
+        options.manifest ??
+        (options.build === undefined
+            ? {}
+            : { scripts: { build: options.build } })
+
+    await writeFile(
+        join(directory, 'package.json'),
+        `${JSON.stringify(manifest, null, 4)}\n`,
+        'utf8'
+    )
+
+    return directory
+}
+
+function createLoaderLogger(): {
+    warnings: string[]
+    errors: string[]
+    infos: string[]
+    logger: {
+        warn(message: string): void
+        error(message: string): void
+        info(message: string): void
+    }
+} {
+    const warnings: string[] = []
+    const errors: string[] = []
+    const infos: string[] = []
+
+    return {
+        warnings,
+        errors,
+        infos,
+        logger: {
+            warn: (message) => warnings.push(message),
+            error: (message) => errors.push(message),
+            info: (message) => infos.push(message),
+        },
+    }
 }
 
 afterEach(async () => {
@@ -189,20 +284,181 @@ describe('local plugin loader', () => {
         expect(plugins.map((plugin) => plugin.manifest.id)).toEqual(['demo'])
     })
 
-    it('skips plugin directories without dist', async () => {
+    it('builds a local plugin without dist', async () => {
         const root = await temporaryDirectory()
-        const warnings: string[] = []
+        const directory = await createPluginFixture(root, 'demo', {
+            build: 'tsc -p tsconfig.json',
+        })
+        const { runner, calls } = createBuildRunner(async () => {
+            await mkdir(join(directory, 'dist'), { recursive: true })
+            await writeFile(
+                join(directory, 'dist', 'index.mjs'),
+                pluginSource('demo'),
+                'utf8'
+            )
+        })
+        const { logger, infos } = createLoaderLogger()
+
+        const plugins = await loadLocalPlugins(root, logger, {
+            runner,
+            buildTimeoutMs: 1_234,
+        })
+
+        expect(plugins.map((plugin) => plugin.manifest.id)).toEqual(['demo'])
+        expect(calls).toHaveLength(1)
+        expect(calls[0]?.args).toEqual(['run', 'build'])
+        expect(calls[0]?.options).toMatchObject({
+            cwd: directory,
+            timeoutMs: 1_234,
+        })
+        expect(infos).toEqual([
+            'building local plugin demo: dist directory not found',
+            'built local plugin demo',
+        ])
+    })
+
+    it('skips plugin directories without dist and build script', async () => {
+        const root = await temporaryDirectory()
+        const { logger, warnings } = createLoaderLogger()
 
         await mkdir(join(root, 'unbuilt'), { recursive: true })
 
-        const plugins = await loadLocalPlugins(root, {
-            warn: (message) => warnings.push(message),
-            error: () => {},
-        })
+        const plugins = await loadLocalPlugins(root, logger)
 
         expect(plugins).toEqual([])
         expect(warnings[0]).toContain('dist directory not found')
+        expect(warnings[0]).toContain('no build script')
     })
+
+    it('skips builds when node_modules is missing', async () => {
+        const root = await temporaryDirectory()
+        const { logger, warnings } = createLoaderLogger()
+        const { runner, calls } = createBuildRunner(() => {})
+
+        await createPluginFixture(root, 'demo', {
+            build: 'tsc -p tsconfig.json',
+            nodeModules: false,
+        })
+
+        const plugins = await loadLocalPlugins(root, logger, { runner })
+
+        expect(plugins).toEqual([])
+        expect(calls).toHaveLength(0)
+        expect(warnings[0]).toContain('node_modules is missing')
+        expect(warnings[0]).toContain('npm install --prefix')
+    })
+
+    it('skips a plugin when its build fails', async () => {
+        const root = await temporaryDirectory()
+        const { logger, warnings, errors } = createLoaderLogger()
+        const { runner, calls } = createBuildRunner(() => {
+            throw new Error('boom')
+        })
+
+        await createPluginFixture(root, 'demo', {
+            build: 'tsc -p tsconfig.json',
+        })
+
+        const plugins = await loadLocalPlugins(root, logger, { runner })
+
+        expect(plugins).toEqual([])
+        expect(calls).toHaveLength(1)
+        expect(errors[0]).toContain('failed to build local plugin demo')
+        expect(warnings).toContain('skipping local plugin demo: build failed')
+    })
+
+    it('does not build installer-managed plugins', async () => {
+        const root = await temporaryDirectory()
+        const { logger, warnings } = createLoaderLogger()
+        const { runner, calls } = createBuildRunner(() => {})
+
+        await createPluginFixture(root, 'demo', {
+            build: 'tsc -p tsconfig.json',
+        })
+        await writeFile(
+            join(root, '.jsbot-installed.json'),
+            `${JSON.stringify(
+                {
+                    version: 2,
+                    packages: {
+                        'demo-package': {
+                            spec: 'demo-package',
+                            version: '1.0.0',
+                            pluginIds: ['demo'],
+                            dependencies: { demo: [] },
+                            installedAt: '2026-01-02T03:04:05.000Z',
+                            dir: 'demo',
+                        },
+                    },
+                },
+                null,
+                4
+            )}\n`,
+            'utf8'
+        )
+
+        const plugins = await loadLocalPlugins(root, logger, { runner })
+
+        expect(plugins).toEqual([])
+        expect(calls).toHaveLength(0)
+        expect(warnings[0]).toContain(
+            'installed package is expected to include dist'
+        )
+    })
+
+    it('disables auto-build when install state is unreadable', async () => {
+        const root = await temporaryDirectory()
+        const { logger, warnings } = createLoaderLogger()
+        const { runner, calls } = createBuildRunner(() => {})
+
+        await createPluginFixture(root, 'demo', {
+            build: 'tsc -p tsconfig.json',
+        })
+        await writeFile(
+            join(root, '.jsbot-installed.json'),
+            '{ not valid json',
+            'utf8'
+        )
+
+        const plugins = await loadLocalPlugins(root, logger, { runner })
+
+        expect(plugins).toEqual([])
+        expect(calls).toHaveLength(0)
+        expect(warnings[0]).toContain(
+            'automatic local plugin build is disabled'
+        )
+    })
+
+    it('builds a local plugin with npm before loading', async () => {
+        const root = await temporaryDirectory()
+        const directory = join(root, 'built')
+
+        await mkdir(join(directory, 'node_modules'), { recursive: true })
+        await writeFile(
+            join(directory, 'package.json'),
+            `${JSON.stringify(
+                { scripts: { build: 'node build.mjs' } },
+                null,
+                4
+            )}\n`,
+            'utf8'
+        )
+        await writeFile(
+            join(directory, 'build.mjs'),
+            [
+                "import { mkdir, writeFile } from 'node:fs/promises'",
+                "await mkdir('dist', { recursive: true })",
+                `await writeFile('dist/index.mjs', ${JSON.stringify(
+                    pluginSource('built')
+                )})`,
+            ].join('\n'),
+            'utf8'
+        )
+
+        const plugins = await loadLocalPlugins(root)
+
+        expect(plugins.map((plugin) => plugin.manifest.id)).toEqual(['built'])
+    }, 15_000)
 
     it('returns an empty list when the root does not exist', async () => {
         const root = join(tmpdir(), 'jsbot-missing-local-plugin-directory')

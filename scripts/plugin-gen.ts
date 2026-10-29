@@ -135,10 +135,9 @@ ${description}
 
 \`\`\`bash
 npm install --prefix ${PLUGIN_ROOT}/${id}
-npm run build --prefix ${PLUGIN_ROOT}/${id}
 \`\`\`
 
-启动根项目后，应用会自动从 \`${PLUGIN_ROOT}/${id}/dist\` 加载本插件。
+启动根项目后，应用会自动从 \`${PLUGIN_ROOT}/${id}/dist\` 加载本插件；如果此时还没有 \`dist\`，应用会先自动执行一次构建。
 
 ## 配置
 
@@ -387,7 +386,7 @@ async function main(): Promise<void> {
             ...(values['no-install']
                 ? [`  npm install --prefix ${relativeDirectory}`]
                 : []),
-            `  npm run build --prefix ${relativeDirectory}`,
+            `  npm run build --prefix ${relativeDirectory}  # 可选，启动时也会自动构建`,
             '  node dist/app.js',
             '',
             `插件命令: /${result.id}`,

@@ -511,7 +511,7 @@ npm run build:local
 node dist/app.js
 ```
 
-应用会自动扫描 `plugins/<id>/dist`；没有 `dist` 的目录会被跳过并记录警告。示例见 [`examples/plugins/hello`](../examples/plugins/hello)。
+应用会自动扫描 `plugins/<id>/dist`；没有 `dist` 的本地插件如果带有 `build` 脚本且依赖已安装，会先自动构建再加载，构建失败则记录警告并跳过。示例见 [`examples/plugins/hello`](../examples/plugins/hello)。
 
 ## 通过 npm 发布与安装
 

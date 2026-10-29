@@ -16,7 +16,7 @@ src/core/*     -X-> src/plugins/*
 - 插件只能通过 `PluginContext`、`EventContext` 和 `BotApi` 使用能力。
 - `core` 不 import 任何插件；`core`、`admin` 在 `src/plugins/index.ts` 显式注册。
 - 内置插件是普通源码，随内核一起编译；没有独立依赖，不单独建包。
-- 本地插件由 `src/app.ts` 在启动前扫描 `plugins/<id>/dist` 并追加到内置插件之后。
+- 本地插件由 `src/app.ts` 在启动前扫描 `plugins/<id>/dist` 并追加到内置插件之后；缺少 `dist` 时加载器会尝试执行插件的 `build` 脚本。
 - 本地插件放在不跟踪的 `plugins/`，每个插件是独立包，构建后自动加载。
 
 ## 运行时主链路
@@ -58,7 +58,7 @@ src/
       host.ts             插件排序、配置校验、setup/start/stop
       gating.ts           enabled/private/groups
       kv.ts               SQLite KV
-      loader.ts           本地插件目录加载
+      loader.ts           本地插件目录加载（缺 dist 时自动构建）
     security/             角色、权限、拒绝提示
     messaging/            reply/forward 发送和回复分段
     storage/              SQLite 和 Session
@@ -131,7 +131,7 @@ npm run build:local
 node dist/app.js
 ```
 
-应用会固定扫描 `plugins/<id>/dist`，并跳过与内置插件同 ID 的本地插件，避免重复注册。没有 `dist` 的插件目录会被跳过并记录警告。
+应用会固定扫描 `plugins/<id>/dist`，并跳过与内置插件同 ID 的本地插件，避免重复注册。没有 `dist` 的本地插件如果带有 `build` 脚本且依赖已安装，会先自动构建再加载；没有 `build` 脚本、缺少 `node_modules` 或构建失败时会记录警告并跳过。
 
 ## 在线安装插件
 
