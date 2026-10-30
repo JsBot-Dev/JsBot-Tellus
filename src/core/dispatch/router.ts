@@ -195,7 +195,8 @@ export class Router {
                         try {
                             const parsed =
                                 found.registration.paramsParser.parse(
-                                    found.match.rest
+                                    found.match.rest,
+                                    event
                                 )
 
                             args = parsed.args

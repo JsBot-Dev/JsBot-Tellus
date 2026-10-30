@@ -3,6 +3,7 @@ import {
     CommandParamsError,
     compileCommandParams,
 } from '../../src/core/plugin/command-params.js'
+import { groupMessage } from '../helpers/events.js'
 
 describe('command params', () => {
     it('parses required and optional arguments', () => {
@@ -106,6 +107,70 @@ describe('command params', () => {
         })
     })
 
+    it('parses time durations as seconds', () => {
+        const params = compileCommandParams('<time:time> [fallback:time=1m]')
+
+        expect(params.usage).toBe('<time> [fallback]')
+        expect(params.parse('60')).toEqual({
+            args: [60, 60],
+            ignored: [],
+        })
+        expect(params.parse('10s')).toEqual({
+            args: [10, 60],
+            ignored: [],
+        })
+        expect(params.parse('5m')).toEqual({
+            args: [300, 60],
+            ignored: [],
+        })
+        expect(params.parse('1.5h')).toEqual({
+            args: [5400, 60],
+            ignored: [],
+        })
+        expect(params.parse('1h30m')).toEqual({
+            args: [5400, 60],
+            ignored: [],
+        })
+        expect(params.parse('2d')).toEqual({
+            args: [172800, 60],
+            ignored: [],
+        })
+        expect(params.parse('1w')).toEqual({
+            args: [604800, 60],
+            ignored: [],
+        })
+        expect(params.parse('10分钟')).toEqual({
+            args: [600, 60],
+            ignored: [],
+        })
+        expect(params.parse('1小时30分钟')).toEqual({
+            args: [5400, 60],
+            ignored: [],
+        })
+    })
+
+    it('uses time defaults', () => {
+        const params = compileCommandParams('[delay:time=30s]')
+
+        expect(params.parse('')).toEqual({
+            args: [30],
+            ignored: [],
+        })
+    })
+
+    it('rejects invalid time arguments', () => {
+        const params = compileCommandParams('<time:time>')
+
+        for (const value of ['abc', '-1', '1x', '1h30', '0.1s']) {
+            expect(() => params.parse(value)).toThrowError(
+                new CommandParamsError(
+                    '参数 time 需要是时间，例如 10s、5m、1h30m',
+                    '<time>'
+                )
+            )
+        }
+    })
+
     it('parses at arguments from CQ codes or QQ numbers', () => {
         const params = compileCommandParams('<user:at> <time:integer>')
 
@@ -150,6 +215,72 @@ describe('command params', () => {
             ignored: [],
         })
         expect(params.parse('[CQ:at,qq=123456]')).toEqual({
+            args: [123456],
+            ignored: [],
+        })
+    })
+
+    it('reads reply arguments from the quoted message', () => {
+        const params = compileCommandParams('<message:reply> <reason:string>')
+
+        expect(params.usage).toBe('<message> <reason>')
+        expect(
+            params.parse(
+                'spam',
+                groupMessage({
+                    message: [{ type: 'reply', data: { id: '123456' } }],
+                })
+            )
+        ).toEqual({
+            args: [123456, 'spam'],
+            ignored: [],
+        })
+
+        const single = compileCommandParams('<message:reply>')
+
+        expect(
+            single.parse('', groupMessage({ message: '[CQ:reply,id=654321]' }))
+        ).toEqual({
+            args: [654321],
+            ignored: [],
+        })
+        expect(
+            single.parse(
+                '',
+                groupMessage({
+                    message: [],
+                    raw_message: '[CQ:reply,id=777] /recall',
+                })
+            )
+        ).toEqual({
+            args: [777],
+            ignored: [],
+        })
+    })
+
+    it('rejects missing reply arguments', () => {
+        const params = compileCommandParams('<message:reply>')
+
+        expect(() => params.parse('')).toThrowError(
+            new CommandParamsError('参数 message 需要引用一条消息', '<message>')
+        )
+    })
+
+    it('accepts optional reply arguments', () => {
+        const params = compileCommandParams('[message:reply]')
+
+        expect(params.parse('')).toEqual({
+            args: [],
+            ignored: [],
+        })
+        expect(
+            params.parse(
+                '',
+                groupMessage({
+                    message: [{ type: 'reply', data: { id: 123456 } }],
+                })
+            )
+        ).toEqual({
             args: [123456],
             ignored: [],
         })
@@ -218,6 +349,12 @@ describe('command params', () => {
         )
         expect(() => compileCommandParams('[arg:at=123456]')).toThrow(
             /不支持默认值/
+        )
+        expect(() => compileCommandParams('[arg:reply=123456]')).toThrow(
+            /不支持默认值/
+        )
+        expect(() => compileCommandParams('[arg:time=abc]')).toThrow(
+            /默认值不是时间/
         )
     })
 })

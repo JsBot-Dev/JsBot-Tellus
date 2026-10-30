@@ -1,7 +1,14 @@
-import { parseSegments } from '@snowluma/sdk'
+import { parseSegments, type OneBotMessageEvent } from '@snowluma/sdk'
 
 export type CommandParamType =
-    'string' | 'text' | 'number' | 'integer' | 'boolean' | 'at'
+    | 'string'
+    | 'text'
+    | 'number'
+    | 'integer'
+    | 'boolean'
+    | 'at'
+    | 'reply'
+    | 'time'
 
 export interface ParsedCommandParams {
     args: unknown[]
@@ -10,7 +17,7 @@ export interface ParsedCommandParams {
 
 export interface CompiledCommandParams {
     usage: string
-    parse(input: string): ParsedCommandParams
+    parse(input: string, event?: OneBotMessageEvent): ParsedCommandParams
 }
 
 export class CommandParamsError extends Error {
@@ -51,6 +58,8 @@ function parseType(value: string): CommandParamType {
         case 'integer':
         case 'boolean':
         case 'at':
+        case 'reply':
+        case 'time':
             return value
         default:
             throw declarationError(`未知的参数类型 "${value}"`)
@@ -209,6 +218,127 @@ function parseAt(value: string, name: string, usage: string): number {
     )
 }
 
+const TIME_UNITS: Record<string, number> = {
+    s: 1,
+    秒: 1,
+    m: 60,
+    分: 60,
+    分钟: 60,
+    h: 3600,
+    时: 3600,
+    小时: 3600,
+    d: 86400,
+    天: 86400,
+    w: 604800,
+    周: 604800,
+}
+
+const TIME_PART = /^(\d+(?:\.\d+)?)(分钟|小时|秒|分|时|天|周|[smhdw])/i
+
+function parseTimeValue(value: string): number | null {
+    const raw = value.trim()
+
+    if (/^\d+$/.test(raw)) {
+        const seconds = Number(raw)
+
+        return Number.isSafeInteger(seconds) ? seconds : null
+    }
+
+    let index = 0
+    let total = 0
+    let parsed = false
+
+    while (index < raw.length) {
+        const match = TIME_PART.exec(raw.slice(index))
+
+        if (!match) return null
+
+        const unit = TIME_UNITS[match[2]?.toLowerCase() ?? '']
+        const amount = Number(match[1])
+
+        if (unit === undefined) return null
+
+        total += amount * unit
+        index += match[0].length
+        parsed = true
+    }
+
+    if (!parsed || !Number.isSafeInteger(total) || total < 0) {
+        return null
+    }
+
+    return total
+}
+
+function parseTime(value: string, name: string, usage: string): number {
+    const seconds = parseTimeValue(value)
+
+    if (seconds === null) {
+        throw new CommandParamsError(
+            `参数 ${name} 需要是时间，例如 10s、5m、1h30m`,
+            usage
+        )
+    }
+
+    return seconds
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+    return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
+function toMessageId(value: unknown): number | undefined {
+    const raw = typeof value === 'string' ? value.trim() : value
+
+    if (typeof raw !== 'number' && typeof raw !== 'string') {
+        return undefined
+    }
+
+    const parsed =
+        typeof raw === 'string'
+            ? /^-?\d+$/.test(raw)
+                ? Number(raw)
+                : Number.NaN
+            : raw
+
+    return Number.isSafeInteger(parsed) && parsed !== 0 ? parsed : undefined
+}
+
+function replyIdIn(segments: readonly unknown[]): number | undefined {
+    for (const segment of segments) {
+        if (!isRecord(segment) || segment.type !== 'reply') continue
+
+        const data = isRecord(segment.data) ? segment.data : undefined
+        const id = toMessageId(data?.id)
+
+        if (id !== undefined) return id
+    }
+
+    return undefined
+}
+
+function quoteIdOf(event: OneBotMessageEvent | undefined): number | undefined {
+    if (!event) return undefined
+
+    const message = event.message
+
+    if (typeof message === 'string') {
+        const id = replyIdIn(parseSegments(message))
+
+        if (id !== undefined) return id
+    } else if (Array.isArray(message)) {
+        const id = replyIdIn(message)
+
+        if (id !== undefined) return id
+    } else if (isRecord(message)) {
+        const id = replyIdIn([message])
+
+        if (id !== undefined) return id
+    }
+
+    return replyIdIn(parseSegments(event.raw_message))
+}
+
 function parseDefaultValue(
     type: CommandParamType,
     raw: string,
@@ -248,7 +378,17 @@ function parseDefaultValue(
             return boolean
         }
         case 'at':
+        case 'reply':
             throw declarationError(`参数 ${name} 不支持默认值`)
+        case 'time': {
+            const seconds = parseTimeValue(value)
+
+            if (seconds === null) {
+                throw declarationError(`参数 ${name} 的默认值不是时间`)
+            }
+
+            return seconds
+        }
     }
 }
 
@@ -526,19 +666,37 @@ function parseValue(spec: ParamSpec, raw: string, usage: string): unknown {
         }
         case 'at':
             return parseAt(raw, spec.name, usage)
+        case 'time':
+            return parseTime(raw, spec.name, usage)
     }
 }
 
 function parseInput(
     specs: ParamSpec[],
     input: string,
-    usage: string
+    usage: string,
+    quoteId: number | undefined
 ): ParsedCommandParams {
     const tokens = tokenizeInput(input, usage)
     const args: unknown[] = []
     let index = 0
 
     for (const spec of specs) {
+        if (spec.type === 'reply') {
+            if (quoteId !== undefined) {
+                args.push(quoteId)
+            } else if (spec.required) {
+                throw new CommandParamsError(
+                    `参数 ${spec.name} 需要引用一条消息`,
+                    usage
+                )
+            } else {
+                args.push(undefined)
+            }
+
+            continue
+        }
+
         if (spec.rest) {
             for (
                 let tokenIndex = index;
@@ -634,8 +792,8 @@ export function compileCommandParams(
 
     return {
         usage,
-        parse(input: string): ParsedCommandParams {
-            return parseInput(specs, input, usage)
+        parse(input: string, event?: OneBotMessageEvent): ParsedCommandParams {
+            return parseInput(specs, input, usage, quoteIdOf(event))
         },
     }
 }
@@ -653,7 +811,7 @@ type Trim<Source extends string> = TrimLeft<TrimRight<Source>>
 type ParamValue<Type extends string> =
     Trim<Type> extends 'string' | 'text'
         ? string
-        : Trim<Type> extends 'number' | 'integer' | 'at'
+        : Trim<Type> extends 'number' | 'integer' | 'at' | 'reply' | 'time'
           ? number
           : Trim<Type> extends 'boolean'
             ? boolean
