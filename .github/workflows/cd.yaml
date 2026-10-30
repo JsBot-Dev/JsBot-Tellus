@@ -39,6 +39,12 @@ jobs:
             - name: Install dependencies
               run: npm ci
 
+            # 必须先 build：publish 的 prepublishOnly（check + test）里
+            # 含 webui-csp 测试，它从 dist/webui 读取内联 bootstrap 计算
+            # CSP——和 ci.yaml「Test 排在 Build 之后」是同一个约束。
+            - name: Build
+              run: npm run build
+
             - name: Publish to npm
               run: |
                   version="$(node -p "require('./package.json').version")"
