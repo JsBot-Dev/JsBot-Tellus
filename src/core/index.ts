@@ -6,6 +6,7 @@ export type {
     PluginEnvelope,
     PluginGroups,
     RolesConfig,
+    WebUiConfig,
 } from './config/schema.js'
 export type { TaskQueue } from './dispatch/task-queue.js'
 export type { Logger, LogLevel } from './logging/logger.js'
@@ -50,8 +51,10 @@ export type {
 } from './plugin/types.js'
 export type { Permission } from './security/permission.js'
 export type {
+    SessionListOptions,
     SessionMessage,
     SessionRole,
     SessionState,
     SessionStore,
+    SessionSummary,
 } from './storage/session.js'

@@ -1,0 +1,788 @@
+/* ---------------------------------------------------------------------------
+ * Design tokens — modeled on the SnowLuma WebUI language:
+ * a sky-blue accent on cool, barely-tinted neutral surfaces; soft two-part
+ * card shadows in light, near-flat surfaces with an inset top highlight in
+ * dark; a 12px radius scale shared by everything.
+ * ------------------------------------------------------------------------- */
+:root {
+    --app-radius: 0.75rem;
+
+    /* Light surfaces (oklch on a 240-250 cool hue arc) */
+    --app-bg: oklch(99% 0.004 240);
+    --app-panel: oklch(100% 0 0);
+    --app-panel-2: oklch(96% 0.012 240);
+    --app-field: oklch(96% 0.012 240);
+    --app-text: oklch(20% 0.03 250);
+    --app-muted: oklch(50% 0.02 250);
+    --app-border: oklch(92% 0.01 240);
+    --app-border-strong: oklch(86% 0.014 240);
+    --app-field-border: oklch(90% 0.012 240);
+    --app-field-border-hover: oklch(80% 0.016 240);
+
+    /* Sky-500 accent */
+    --app-accent: oklch(68.5% 0.155 230);
+    --app-accent-fg: oklch(99% 0.005 240);
+    --app-accent-soft: oklch(94% 0.03 230);
+    --app-accent-ring: oklch(68.5% 0.155 230 / 0.3);
+
+    --app-ok: oklch(70% 0.15 160);
+    --app-warn: oklch(78% 0.16 80);
+    --app-danger: oklch(60% 0.22 27);
+    --app-violet: oklch(52% 0.13 295);
+    --app-log-info: oklch(50% 0.155 230);
+    --app-log-success: oklch(50% 0.15 160);
+    --app-log-warn: oklch(52% 0.16 80);
+    --app-log-error: oklch(55% 0.22 27);
+
+    --app-side-bg: oklch(94% 0.008 240);
+    --app-side-border: oklch(92% 0.01 240);
+    --app-nav-hover: oklch(94% 0.03 230);
+    --app-dot-off: oklch(80% 0.012 240);
+    --app-glass: oklch(100% 0 0 / 0.82);
+
+    /* Cards: short shadow separates the edge; the long faint shadow gives
+       elevation without a floating-modal look. */
+    --card-shadow:
+        0 1px 2px oklch(20% 0.03 250 / 0.05),
+        0 12px 32px -22px oklch(20% 0.03 250 / 0.28);
+    --app-pop-shadow:
+        0 1px 2px oklch(20% 0.03 250 / 0.06),
+        0 16px 36px -18px oklch(20% 0.03 250 / 0.5);
+
+    /* Element Plus alignment */
+    --el-color-primary: var(--app-accent);
+    --el-color-primary-light-2: color-mix(
+        in srgb,
+        var(--app-accent) 85%,
+        var(--app-panel)
+    );
+    --el-color-primary-light-3: color-mix(
+        in srgb,
+        var(--app-accent) 72%,
+        var(--app-panel)
+    );
+    --el-color-primary-light-5: color-mix(
+        in srgb,
+        var(--app-accent) 50%,
+        var(--app-panel)
+    );
+    --el-color-primary-light-7: color-mix(
+        in srgb,
+        var(--app-accent) 30%,
+        var(--app-panel)
+    );
+    --el-color-primary-light-8: color-mix(
+        in srgb,
+        var(--app-accent) 20%,
+        var(--app-panel)
+    );
+    --el-color-primary-light-9: color-mix(
+        in srgb,
+        var(--app-accent) 12%,
+        var(--app-panel)
+    );
+    --el-color-primary-dark-2: color-mix(in srgb, var(--app-accent) 85%, black);
+    --el-border-color: var(--app-border);
+    --el-border-color-lighter: color-mix(
+        in srgb,
+        var(--app-border) 78%,
+        transparent
+    );
+    --el-border-color-extra-light: var(--app-panel-2);
+    --el-fill-color-blank: var(--app-panel);
+    --el-text-color-primary: var(--app-text);
+    --el-text-color-regular: var(--app-text);
+    --el-text-color-secondary: var(--app-muted);
+    --el-text-color-placeholder: var(--app-muted);
+    --el-bg-color-overlay: var(--app-panel);
+    --el-color-danger: var(--app-danger);
+}
+
+html.dark {
+    --app-bg: oklch(16% 0.02 250);
+    --app-panel: oklch(20% 0.025 250);
+    --app-panel-2: oklch(24% 0.02 250);
+    --app-field: oklch(19% 0.015 250);
+    --app-text: oklch(96% 0.01 240);
+    --app-muted: oklch(68% 0.02 240);
+    --app-border: oklch(28% 0.02 250);
+    --app-border-strong: oklch(34% 0.022 250);
+    --app-field-border: oklch(26% 0.02 250);
+    --app-field-border-hover: oklch(36% 0.022 250);
+
+    /* Sky-400 accent on dark */
+    --app-accent: oklch(75% 0.14 230);
+    --app-accent-fg: oklch(15% 0.02 250);
+    --app-accent-soft: oklch(28% 0.05 230);
+    --app-accent-ring: oklch(75% 0.14 230 / 0.28);
+
+    --app-ok: oklch(72% 0.15 160);
+    --app-warn: oklch(80% 0.16 80);
+    --app-danger: oklch(62% 0.2 27);
+    --app-violet: oklch(74% 0.11 295);
+    --app-log-info: oklch(75% 0.14 230);
+    --app-log-success: oklch(72% 0.15 160);
+    --app-log-warn: oklch(80% 0.16 80);
+    --app-log-error: oklch(62% 0.2 27);
+
+    --app-side-bg: oklch(12% 0.018 250);
+    --app-side-border: oklch(26% 0.02 250);
+    --app-nav-hover: oklch(28% 0.05 230);
+    --app-dot-off: oklch(40% 0.015 250);
+    --app-glass: oklch(20% 0.025 250 / 0.82);
+
+    --card-shadow:
+        0 1px 2px oklch(0% 0 0 / 0.36), 0 16px 38px -24px oklch(0% 0 0 / 0.72),
+        inset 0 1px oklch(100% 0 0 / 0.025);
+    --app-pop-shadow:
+        0 1px 2px oklch(0% 0 0 / 0.4), 0 16px 40px -18px oklch(0% 0 0 / 0.75);
+
+    /* Element dark alignment */
+    --el-bg-color: var(--app-panel);
+    --el-bg-color-overlay: oklch(22% 0.024 250);
+    --el-bg-color-page: var(--app-bg);
+    --el-fill-color: var(--app-panel-2);
+    --el-fill-color-light: oklch(26% 0.02 250);
+    --el-fill-color-lighter: oklch(28% 0.02 250);
+    --el-fill-color-blank: var(--app-panel);
+    --el-text-color-primary: var(--app-text);
+    --el-text-color-regular: var(--app-text);
+    --el-text-color-secondary: var(--app-muted);
+    --el-text-color-placeholder: color-mix(
+        in oklab,
+        var(--app-muted) 72%,
+        transparent
+    );
+    --el-border-color: var(--app-border);
+    --el-border-color-lighter: color-mix(
+        in srgb,
+        var(--app-border) 78%,
+        transparent
+    );
+    --el-border-color-extra-light: color-mix(
+        in srgb,
+        var(--app-border) 62%,
+        transparent
+    );
+}
+
+html,
+body,
+#app {
+    height: 100%;
+    margin: 0;
+    padding: 0;
+}
+
+html {
+    color-scheme: light;
+}
+
+html.dark {
+    color-scheme: dark;
+}
+
+body {
+    font-family:
+        -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue',
+        'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
+    background: var(--app-bg);
+    color: var(--app-text);
+    font-variant-numeric: tabular-nums;
+    -webkit-font-smoothing: antialiased;
+    transition: background 0.2s ease;
+}
+
+*,
+*::before,
+*::after {
+    box-sizing: border-box;
+}
+
+/* ---------------------------------------------------------------------------
+ * Appearance switches (driven by data-* attributes on <html>, see
+ * appearance.ts; the index.html bootstrap applies the same attributes for
+ * the first paint).
+ * ------------------------------------------------------------------------- */
+
+/* Dark intensity: "black" pushes the dark palette toward true black for
+   OLED screens. Only meaningful in dark mode. */
+html.dark[data-dark-intensity='black'] {
+    --app-bg: oklch(0% 0 0);
+    --app-panel: oklch(13% 0.008 250);
+    --app-panel-2: oklch(17% 0.012 250);
+    --app-field: oklch(15% 0.01 250);
+    --app-side-bg: oklch(5% 0.006 250);
+    --app-side-border: oklch(20% 0.012 250);
+    --app-border: oklch(22% 0.012 250);
+    --app-border-strong: oklch(28% 0.012 250);
+}
+
+/* Sidebar style: how distinct the sidebar surface is from the main canvas
+   ("follow" is the default and needs no attribute). */
+html[data-sidebar-style='panel'] {
+    --app-side-bg: color-mix(
+        in oklab,
+        var(--app-panel) 90%,
+        var(--app-accent) 4%
+    );
+}
+
+html[data-sidebar-style='accent'] {
+    --app-side-bg: color-mix(
+        in oklab,
+        var(--app-bg) 76%,
+        var(--app-accent) 24%
+    );
+    --app-side-border: color-mix(
+        in oklab,
+        var(--app-border) 60%,
+        var(--app-accent) 40%
+    );
+}
+
+/* High contrast: strengthen borders for legibility. */
+html[data-contrast='high'] {
+    --app-border: color-mix(in oklab, var(--app-text) 55%, var(--app-border));
+    --app-border-strong: color-mix(
+        in oklab,
+        var(--app-text) 62%,
+        var(--app-border-strong)
+    );
+    --app-field-border: color-mix(
+        in oklab,
+        var(--app-text) 45%,
+        var(--app-field-border)
+    );
+    --app-muted: color-mix(in oklab, var(--app-text) 78%, var(--app-muted));
+}
+
+/* Density: compact tightens the global rhythm a touch. Uses rem so it keeps
+   tracking the UI-scale root font-size. */
+html[data-density='compact'] body {
+    font-size: 0.84rem;
+    line-height: 1.45;
+}
+
+/* Reduce motion: collapse non-essential CSS transitions/animations. The
+   view-transition reveal has its own narrower guard above. */
+html[data-reduce-motion='1'] *,
+html[data-reduce-motion='1'] *::before,
+html[data-reduce-motion='1'] *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+}
+
+/* 关闭全部动效: harder than reduce — animations are removed outright. */
+html[data-no-motion='1'] *:not(.is-loading .el-icon),
+html[data-no-motion='1'] *::before,
+html[data-no-motion='1'] *::after {
+    animation: none !important;
+}
+
+/* Press feedback (subtle scale on buttons), never essential motion. */
+.el-button:not(.is-disabled):active {
+    scale: 0.97;
+}
+
+html[data-no-motion='1'] .el-button:active,
+html[data-reduce-motion='1'] .el-button:active {
+    scale: 1;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .el-button:active {
+        scale: 1 !important;
+    }
+}
+
+/* Adaptive cursor arming: only once the component mounted and approved the
+   environment. A JS failure can never strand the page without a pointer
+   because the attribute only exists while the component is alive. */
+html[data-cursor-system='custom'][data-cursor-armed='1'],
+html[data-cursor-system='custom'][data-cursor-armed='1'] *,
+html[data-cursor-system='custom'][data-cursor-armed='1'] *::before,
+html[data-cursor-system='custom'][data-cursor-armed='1'] *::after {
+    cursor: none !important;
+}
+
+html,
+body,
+#app {
+    height: 100%;
+    margin: 0;
+    padding: 0;
+}
+
+/* Scrollbars — foreground-mixed thumb like the SnowLuma shell */
+::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+}
+
+::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+    border: 2px solid transparent;
+    border-radius: 999px;
+    background-clip: content-box;
+    background-color: color-mix(in oklab, var(--app-text) 22%, transparent);
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background-color: color-mix(in oklab, var(--app-text) 38%, transparent);
+    background-clip: content-box;
+}
+
+::-webkit-scrollbar-corner {
+    background: transparent;
+}
+
+::selection {
+    background-color: color-mix(in oklab, var(--app-accent) 28%, transparent);
+    color: var(--app-text);
+}
+
+/* Theme reveal — circular wipe from the toggle button via the View
+   Transitions API (unsupported browsers just swap instantly). */
+::view-transition-old(root),
+::view-transition-new(root) {
+    animation: none;
+    mix-blend-mode: normal;
+}
+
+::view-transition-old(root) {
+    z-index: 0;
+}
+
+::view-transition-new(root) {
+    z-index: 1;
+    animation: theme-reveal 0.45s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes theme-reveal {
+    from {
+        clip-path: circle(0px at var(--vt-x, 50%) var(--vt-y, 50%));
+    }
+
+    to {
+        clip-path: circle(
+            var(--vt-r, 150%) at var(--vt-x, 50%) var(--vt-y, 50%)
+        );
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    ::view-transition-old(root),
+    ::view-transition-new(root) {
+        animation: none !important;
+    }
+}
+
+/* Login decorative wavy line field */
+.login-waves {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    color: color-mix(in oklab, var(--app-accent) 26%, transparent);
+}
+
+.login-waves path {
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 1px;
+}
+
+/* ---------------------------------------------------------------------------
+ * Buttons
+ * ------------------------------------------------------------------------- */
+.el-button {
+    border-radius: calc(var(--app-radius) - 2px);
+    transition:
+        background 0.15s ease,
+        border-color 0.15s ease,
+        color 0.15s ease,
+        box-shadow 0.15s ease;
+}
+
+/* Solid accent button (shadcn-style), no gradient */
+.el-button--primary {
+    border: none;
+    color: var(--app-accent-fg);
+    background: var(--app-accent);
+}
+
+.el-button--primary:not(.is-disabled):hover,
+.el-button--primary:not(.is-disabled):focus {
+    color: var(--app-accent-fg);
+    background: color-mix(in oklab, var(--app-accent) 88%, white);
+}
+
+.el-button--primary.is-disabled {
+    opacity: 0.5;
+}
+
+/* ---------------------------------------------------------------------------
+ * Inputs — fully custom field look (filled, ring focus)
+ * ------------------------------------------------------------------------- */
+.el-input__wrapper,
+.el-textarea__inner,
+.el-select__wrapper,
+.el-date-editor.el-input__wrapper {
+    background: var(--app-field);
+    border-radius: calc(var(--app-radius) - 2px);
+    box-shadow: 0 0 0 1px var(--app-field-border) inset;
+    transition:
+        box-shadow 0.16s ease,
+        background 0.16s ease;
+}
+
+.el-input__wrapper:hover,
+.el-textarea__inner:hover,
+.el-select__wrapper:hover {
+    box-shadow: 0 0 0 1px var(--app-field-border-hover) inset;
+}
+
+.el-input__wrapper.is-focus,
+.el-textarea__inner:focus,
+.el-select__wrapper.is-focused {
+    background: var(--app-field);
+    box-shadow:
+        0 0 0 1px var(--app-accent) inset,
+        0 0 0 3.5px var(--app-accent-ring);
+}
+
+.el-input__inner {
+    color: var(--app-text);
+    caret-color: var(--app-accent);
+}
+
+.el-textarea__inner {
+    color: var(--app-text);
+    padding: 10px 12px;
+    line-height: 1.6;
+}
+
+.el-input__inner::placeholder,
+.el-textarea__inner::placeholder {
+    color: var(--app-muted);
+    opacity: 0.75;
+}
+
+/* Compact number controls keep the ring but lose the double border */
+.el-input-number .el-input__wrapper {
+    box-shadow: 0 0 0 1px var(--app-field-border) inset;
+}
+
+/* Larger touch targets: default 32px is too small for an admin panel. */
+.el-input:not(.el-input--small):not(.el-input--large).el-input {
+    --el-input-height: 38px;
+}
+
+.el-input--large.el-input {
+    --el-input-height: 44px;
+}
+
+.el-input--small.el-input {
+    --el-input-height: 28px;
+}
+
+.el-select:not(.el-select--small):not(.el-select--large) .el-select__wrapper {
+    min-height: 38px;
+    padding: 3px 12px;
+}
+
+.el-select--large .el-select__wrapper {
+    min-height: 44px;
+}
+
+.el-select--small .el-select__wrapper {
+    min-height: 28px;
+}
+
+.el-textarea__inner {
+    min-height: 44px;
+}
+
+.el-input-number:not(.el-input-number--small) {
+    width: 180px;
+}
+
+/* Textarea count badge */
+.el-input .el-count,
+.el-textarea .el-input__count {
+    background: transparent;
+    color: var(--app-muted);
+}
+
+/* ---------------------------------------------------------------------------
+ * Overlays — select dropdown / popovers
+ * ------------------------------------------------------------------------- */
+.el-select__popper.el-popper,
+.el-popper.el-select__popper {
+    border: 1px solid color-mix(in oklab, var(--app-border) 74%, transparent);
+    border-radius: var(--app-radius);
+    background: var(--el-bg-color-overlay);
+    box-shadow: var(--app-pop-shadow);
+    outline: none;
+}
+
+.el-select__popper .el-popper__arrow,
+.el-popper .el-popper__arrow {
+    display: none;
+}
+
+.el-select-dropdown__item {
+    margin: 2px 6px 2px;
+    padding: 0 0.625rem;
+    height: 32px;
+    border-radius: 7px;
+    color: var(--app-text);
+    font-size: 0.8125rem;
+    line-height: 2rem;
+}
+
+.el-select-dropdown__item.is-hovering {
+    color: var(--app-text);
+    background: color-mix(
+        in oklab,
+        var(--app-accent) 12%,
+        var(--app-accent-soft)
+    );
+}
+
+.el-select-dropdown__item.is-selected,
+.el-select-dropdown__item.is-hovering.is-selected {
+    color: var(--app-accent);
+    font-weight: 500;
+}
+
+/* Dropdown menus share the global context-menu language: tight 5px padding,
+   32px rows, 7px item radii, brand-tinted hover. */
+.el-dropdown__popper.el-popper {
+    padding: 5px;
+    border: 1px solid color-mix(in oklab, var(--app-border) 74%, transparent);
+    border-radius: calc(var(--app-radius) + 2px);
+    background: var(--el-bg-color-overlay);
+    box-shadow: var(--app-pop-shadow);
+    outline: none;
+}
+
+.el-dropdown-menu {
+    padding: 0;
+    background: transparent;
+}
+
+.el-dropdown-menu__item {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    height: 32px;
+    padding: 0 0.625rem;
+    border-radius: 7px;
+    color: var(--app-text);
+    font-size: 0.8125rem;
+    font-weight: 500;
+    outline: none;
+}
+
+.el-dropdown-menu__item:not(.is-disabled):hover,
+.el-dropdown-menu__item:not(.is-disabled):focus {
+    color: var(--app-text);
+    background: color-mix(
+        in oklab,
+        var(--app-accent) 12%,
+        var(--app-accent-soft)
+    );
+}
+
+/* ---------------------------------------------------------------------------
+ * Cards
+ * ------------------------------------------------------------------------- */
+.el-card {
+    --el-card-padding: 18px;
+    border: 1px solid var(--app-border);
+    border-radius: calc(var(--app-radius) + 4px);
+    background: var(--app-panel);
+    box-shadow: var(--card-shadow);
+    transition: border-color 0.15s ease;
+}
+
+.el-card:hover {
+    border-color: var(--app-border-strong);
+}
+
+.el-card__header {
+    padding: 13px 18px;
+    font-weight: 600;
+    font-size: 13.5px;
+    letter-spacing: 0.01em;
+    background: transparent;
+    border-bottom: 1px solid var(--app-border);
+    border-top-left-radius: calc(var(--app-radius) + 3px);
+    border-top-right-radius: calc(var(--app-radius) + 3px);
+}
+
+.card-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
+/* ---------------------------------------------------------------------------
+ * Tags
+ * ------------------------------------------------------------------------- */
+.el-tag {
+    border-radius: 999px;
+    font-weight: 500;
+}
+
+/* Tags — level hues follow the log-color tokens so pills match log text */
+.el-tag {
+    border-radius: 999px;
+    font-weight: 500;
+}
+
+.el-tag--success {
+    --el-tag-bg-color: color-mix(
+        in oklab,
+        var(--app-log-success) 11%,
+        transparent
+    );
+    --el-tag-border-color: color-mix(
+        in oklab,
+        var(--app-log-success) 30%,
+        transparent
+    );
+    --el-tag-text-color: var(--app-log-success);
+}
+
+.el-tag--danger {
+    --el-tag-bg-color: color-mix(
+        in oklab,
+        var(--app-log-error) 10%,
+        transparent
+    );
+    --el-tag-border-color: color-mix(
+        in oklab,
+        var(--app-log-error) 30%,
+        transparent
+    );
+    --el-tag-text-color: var(--app-log-error);
+}
+
+.el-tag--warning {
+    --el-tag-bg-color: color-mix(
+        in oklab,
+        var(--app-log-warn) 11%,
+        transparent
+    );
+    --el-tag-border-color: color-mix(
+        in oklab,
+        var(--app-log-warn) 30%,
+        transparent
+    );
+    --el-tag-text-color: var(--app-log-warn);
+}
+
+.el-tag--info {
+    --el-tag-bg-color: color-mix(in oklab, var(--app-muted) 12%, transparent);
+    --el-tag-border-color: color-mix(
+        in oklab,
+        var(--app-muted) 26%,
+        transparent
+    );
+    --el-tag-text-color: var(--app-muted);
+}
+
+/* ---------------------------------------------------------------------------
+ * Tables
+ * ------------------------------------------------------------------------- */
+.el-table {
+    --el-table-bg-color: transparent;
+    --el-table-tr-bg-color: transparent;
+    --el-table-header-bg-color: transparent;
+    --el-table-header-text-color: var(--app-muted);
+    --el-table-row-hover-bg-color: color-mix(
+        in oklab,
+        var(--app-accent) 8%,
+        transparent
+    );
+    --el-table-border-color: var(--app-border);
+    --el-table-text-color: var(--app-text);
+}
+
+.el-table th.el-table__cell {
+    font-size: 12px;
+    font-weight: 600;
+}
+
+html.dark .el-table,
+.el-table {
+    --el-table-expanded-cell-bg-color: transparent;
+}
+
+/* ---------------------------------------------------------------------------
+ * Overlays shared
+ * ------------------------------------------------------------------------- */
+.el-drawer,
+.el-dialog,
+.el-message-box {
+    border: 1px solid var(--app-border-strong);
+    border-radius: calc(var(--app-radius) + 2px);
+    background: var(--el-bg-color-overlay);
+}
+
+.el-drawer__header,
+.el-dialog__header {
+    font-weight: 600;
+    margin-bottom: 12px;
+}
+
+.el-pagination {
+    --el-pagination-bg-color: transparent;
+    --el-pagination-button-bg-color: var(--app-panel-2);
+}
+
+/* ---------------------------------------------------------------------------
+ * Routing / shared page helpers
+ * ------------------------------------------------------------------------- */
+.route-fade-enter-active,
+.route-fade-leave-active {
+    transition: opacity 0.16s ease;
+}
+
+.route-fade-enter-from,
+.route-fade-leave-to {
+    opacity: 0;
+}
+
+.page-block {
+    margin-bottom: 16px;
+}
+
+.page-sub {
+    margin: 8px 0 0;
+    color: var(--app-muted);
+    font-size: 0.6875rem;
+    line-height: 1rem;
+    letter-spacing: 0.01em;
+    word-break: break-all;
+}
+
+pre.code,
+pre.json {
+    padding: 12px 14px;
+    background: var(--app-bg);
+    border: 1px solid var(--app-border);
+    border-radius: calc(var(--app-radius) - 2px);
+    white-space: pre-wrap;
+    font-size: 12px;
+    line-height: 1.65;
+    color: var(--app-text);
+    font-family: 'SF Mono', ui-monospace, Menlo, Consolas, monospace;
+}

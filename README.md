@@ -49,6 +49,24 @@ npm run dev
 
 默认配置路径是 `./bot.config.json`，默认数据目录是 `./data`。从旧版升级前请先备份并移走旧配置和数据库，见[迁移与回滚](docs/migration.md)。
 
+## WebUI（可选）
+
+在 `bot.config.json` 中启用管理后台：
+
+```json
+{
+    "webui": {
+        "enabled": true,
+        "host": "127.0.0.1",
+        "port": 8787,
+        "username": "admin",
+        "password": "至少 8 位"
+    }
+}
+```
+
+然后运行 `npm run build && npm start`，访问 `http://127.0.0.1:8787`。WebUI 默认关闭，提供运行状态、会话、插件、配置、KV、日志、事件和原始 OneBot action 管理。登录后拥有完整管理权限，默认只监听本机；远程访问请使用 HTTPS 反向代理。详见 [WebUI 文档](docs/webui.md)。
+
 ## 内置命令
 
 | 命令              | 权限       | 作用                             |
@@ -144,6 +162,7 @@ npm run plugin:gen -- my-plugin  # 生成并安装 plugins/my-plugin 模板依�
 ## 文档
 
 - [架构](docs/architecture.md)
+- [WebUI](docs/webui.md)
 - [插件开发](docs/plugin-development.md)
 - [插件 API](docs/plugin-api.md)
 - [配置](docs/configuration.md)

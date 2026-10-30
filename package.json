@@ -1,6 +1,6 @@
 {
     "name": "@jsbot-tellus/core",
-    "version": "2.3.0",
+    "version": "2.4.0",
     "engines": {
         "node": "^24.22.1 || >=26.12.1"
     },
@@ -47,12 +47,15 @@
         "test": "vitest run",
         "check": "tsc --noEmit",
         "clean": "node -e \"require('node:fs').rmSync('dist', { recursive: true, force: true })\"",
-        "build": "npm run clean && tsc -p tsconfig.build.json && node -e \"require('node:fs').chmodSync('dist/app.js', 0o755)\"",
+        "build": "npm run clean && npm run build:webui && tsc -p tsconfig.build.json && node -e \"require('node:fs').chmodSync('dist/app.js', 0o755)\"",
         "prepack": "npm run build",
         "prepublishOnly": "npm run check && npm test",
         "build:local": "npm run build --prefix plugins/poke && npm run build --prefix plugins/llm",
         "check:local": "npm run check --prefix plugins/poke && npm run check --prefix plugins/llm",
         "plugin:gen": "tsx scripts/plugin-gen.ts",
+        "dev:webui": "vite --config webui/vite.config.ts",
+        "check:webui": "node scripts/webui-check.cjs",
+        "build:webui": "vite build --config webui/vite.config.ts",
         "start": "node dist/app.js",
         "start:build": "npm run build && node dist/app.js",
         "start:source": "tsx src/app.ts",
@@ -69,10 +72,18 @@
         "zod": "^4.6.7"
     },
     "devDependencies": {
+        "@element-plus/icons-vue": "^2.3.2",
         "@types/node": "^24.6.4",
+        "@vitejs/plugin-vue": "^6.0.10",
+        "element-plus": "^2.14.7",
         "prettier": "^3.9.10",
         "tsx": "^4.23.15",
         "typescript": "^7.0.2",
-        "vitest": "^5.0.4"
+        "typescript5": "npm:typescript@5.9.3",
+        "vite": "^8.3.5",
+        "vitest": "^5.0.4",
+        "vue": "^3.5.44",
+        "vue-router": "^5.4.0",
+        "vue-tsc": "^3.3.13"
     }
 }

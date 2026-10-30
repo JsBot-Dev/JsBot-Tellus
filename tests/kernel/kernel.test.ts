@@ -17,6 +17,13 @@ const config: AppConfig = {
         charThreshold: 50,
         lineThreshold: 3,
     },
+    webui: {
+        enabled: false,
+        host: '127.0.0.1',
+        port: 8787,
+        sessionTtlHours: 12,
+        trustProxy: false,
+    },
     plugins: {},
     installer: {
         enabled: true,

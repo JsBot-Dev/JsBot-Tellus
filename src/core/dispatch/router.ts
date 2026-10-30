@@ -53,6 +53,7 @@ export interface RouterDeps {
     roles: RoleService
     gate: PluginGate
     logger: Logger
+    onEvent?: ((event: SnowLumaEvent) => void) | undefined
 }
 
 type AnyCommandHandler = CommandHandler<OneBotMessageEvent, any[]>
@@ -106,12 +107,14 @@ export class Router {
     private readonly handlers = new HandlerRegistry()
     private readonly middlewares = new MiddlewareRegistry()
     private readonly active = new Set<Promise<void>>()
+    private readonly onEvent: ((event: SnowLumaEvent) => void) | undefined
 
     constructor(deps: RouterDeps) {
         this.sender = deps.sender
         this.roles = deps.roles
         this.gate = deps.gate
         this.logger = deps.logger.child('router')
+        this.onEvent = deps.onEvent
         this.refuser = new PermissionRefuser(deps.sender, this.logger)
     }
 
@@ -122,6 +125,8 @@ export class Router {
     ) => {
         if (!this.accepting) return
 
+        this.emitEvent(event)
+
         const run = this.handleEvent(event, sdkContext, next)
         this.active.add(run)
 
@@ -129,6 +134,16 @@ export class Router {
             await run
         } finally {
             this.active.delete(run)
+        }
+    }
+
+    private emitEvent(event: SnowLumaEvent): void {
+        if (!this.onEvent) return
+
+        try {
+            this.onEvent(event)
+        } catch (error) {
+            this.logger.error('event tap failed', error)
         }
     }
 

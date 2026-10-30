@@ -34,7 +34,7 @@ export interface Logger {
     child(scope: string): Logger
 }
 
-function formatValue(value: unknown): string {
+export function formatValue(value: unknown): string {
     if (value instanceof Error) {
         return value.stack ?? `${value.name}: ${value.message}`
     }
@@ -49,7 +49,7 @@ function formatValue(value: unknown): string {
     }
 }
 
-const defaultSink: LogSink = (record) => {
+export const defaultLogSink: LogSink = (record) => {
     const time = record.time.toISOString()
     const scope = record.scope ? ` [${record.scope}]` : ''
     const args =
@@ -92,10 +92,14 @@ export function parseLogLevel(
     return normalized
 }
 
+export function logLevelWeight(level: LogLevel): number {
+    return LEVEL_WEIGHT[level]
+}
+
 export function createLogger(options: LoggerOptions = {}): Logger {
     const threshold = options.level ?? 'info'
     const scope = options.scope ?? 'bot'
-    const sink = options.sink ?? defaultSink
+    const sink = options.sink ?? defaultLogSink
 
     const emit = (level: LogLevel, message: string, args: unknown[]): void => {
         if (LEVEL_WEIGHT[level] < LEVEL_WEIGHT[threshold]) return

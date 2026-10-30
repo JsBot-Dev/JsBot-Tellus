@@ -1,6 +1,9 @@
 #!/usr/bin/env node
-import { resolve } from 'node:path'
+import type { SnowLumaEvent } from '@snowluma/sdk'
+import { existsSync, readFileSync } from 'node:fs'
+import { dirname, join, resolve } from 'node:path'
 import { parseArgs } from 'node:util'
+import { fileURLToPath } from 'node:url'
 import { createBotClient } from './core/client.js'
 import type { AppConfig } from './core/config/schema.js'
 import {
@@ -10,15 +13,25 @@ import {
     resolveDataDir,
 } from './core/config/loader.js'
 import { Kernel } from './core/kernel.js'
+import { ConfigStore } from './core/web/config-store.js'
+import { EventFeed } from './core/web/event-feed.js'
+import { LogBuffer } from './core/logging/log-buffer.js'
 import {
     createLogger,
+    defaultLogSink,
     parseLogLevel,
+    type LogSink,
     type Logger,
 } from './core/logging/logger.js'
 import { NpmPluginInstaller } from './core/plugin/installer.js'
 import { loadLocalPlugins } from './core/plugin/loader.js'
-import type { AnyPluginDefinition } from './core/plugin/types.js'
-import { openDatabase } from './core/storage/database.js'
+import type {
+    AnyPluginDefinition,
+    PluginInstaller,
+} from './core/plugin/types.js'
+import { openDatabase, type Database } from './core/storage/database.js'
+import { WebUiServer } from './core/web/server.js'
+import type { WebUiAddress, WebUiDeps } from './core/web/types.js'
 import { builtinPlugins } from './plugins/index.js'
 
 const LOCAL_PLUGIN_DIR = 'plugins'
@@ -89,6 +102,13 @@ interface RuntimeSpec {
 interface Runtime {
     spec: RuntimeSpec
     kernel: Kernel
+    database: Database
+    installer: PluginInstaller
+}
+
+interface StaticBinding {
+    host: string
+    port: number
 }
 
 async function loadRuntimeSpec(
@@ -130,7 +150,8 @@ async function loadRuntimeSpec(
 function createRuntime(
     spec: RuntimeSpec,
     settings: RuntimeSettings,
-    onRestart: () => void
+    onRestart: () => void,
+    onEvent: (event: SnowLumaEvent) => void
 ): Runtime {
     const { logger } = settings
     const installer = new NpmPluginInstaller({
@@ -158,9 +179,51 @@ function createRuntime(
         plugins: spec.plugins,
         installer,
         onRestart,
+        onEvent,
     })
 
-    return { spec, kernel }
+    return { spec, kernel, database, installer }
+}
+
+function describeError(error: unknown): string {
+    if (error instanceof Error) {
+        return error.stack ?? `${error.name}: ${error.message}`
+    }
+
+    return String(error)
+}
+
+function credentialSignature(config: AppConfig): string {
+    const webui = config.webui
+
+    return [webui.username ?? '', webui.password ?? ''].join(':')
+}
+
+function resolveStaticDir(): string | null {
+    const scriptDir = dirname(fileURLToPath(import.meta.url))
+    const candidates = [
+        join(scriptDir, 'webui'),
+        resolve(process.cwd(), 'dist/webui'),
+    ]
+
+    for (const candidate of candidates) {
+        if (existsSync(join(candidate, 'index.html'))) return candidate
+    }
+
+    return null
+}
+
+function readVersion(): string {
+    try {
+        const pkgPath = new URL('../package.json', import.meta.url)
+        const pkg = JSON.parse(readFileSync(pkgPath, 'utf8')) as {
+            version?: string
+        }
+
+        return pkg.version ?? 'unknown'
+    } catch {
+        return 'unknown'
+    }
 }
 
 async function main(): Promise<void> {
@@ -179,11 +242,22 @@ async function main(): Promise<void> {
         return
     }
 
+    const logs = new LogBuffer()
+    const events = new EventFeed()
+    const tapEvents = (event: SnowLumaEvent): void => {
+        events.add(event)
+    }
+    const sink: LogSink = (record) => {
+        defaultLogSink(record)
+        logs.push(record)
+    }
+
     const logger = createLogger({
         level: parseLogLevel(
             pick(values['log-level']) ?? process.env.BOT_LOG_LEVEL
         ),
         scope: 'app',
+        sink,
     })
 
     const configPath = resolveConfigPath({
@@ -202,31 +276,113 @@ async function main(): Promise<void> {
         dataDir,
     }
 
+    // Config file errors remain fatal: there is nothing the WebUI can restore
+    // from when the config cannot even be parsed.
+    const initialSpec = await loadRuntimeSpec(settings)
+
     let runtime: Runtime | null = null
+    let currentConfig: AppConfig = initialSpec.config
+    let generation = 0
+    let startupError: string | null = null
     let shuttingDown = false
     let restarting = false
     let restartPending = false
     let restartTimer: NodeJS.Timeout | null = null
+    let restartTail: Promise<boolean> = Promise.resolve(true)
+    let exclusiveTail: Promise<unknown> = Promise.resolve()
+    let boundWebUi: StaticBinding | null = null
+    let credentials = credentialSignature(initialSpec.config)
 
-    const shutdown = async (signal: string, exitCode = 0): Promise<void> => {
-        if (shuttingDown) return
+    const restartDrainTimeout = (previous: Runtime | null): number => {
+        const installTimeout =
+            previous?.spec.config.installer.timeoutMs ?? 5_000
 
-        shuttingDown = true
+        return Math.max(installTimeout, 5_000) * 2 + 5_000
+    }
 
-        if (restartTimer !== null) {
-            clearTimeout(restartTimer)
-            restartTimer = null
-        }
+    const restartRuntimeOnce = async (): Promise<boolean> => {
+        if (shuttingDown) return false
 
-        logger.info(`received ${signal}, shutting down`)
+        restarting = true
+        restartPending = false
+
+        const previous = runtime
+
+        logger.info('restarting runtime')
 
         try {
-            await runtime?.kernel.stop()
-            process.exit(exitCode)
+            previous?.kernel.pause()
+
+            const drainTimeout = restartDrainTimeout(previous)
+
+            if (previous !== null) {
+                const drained = await previous.kernel.drain(drainTimeout)
+
+                if (!drained) {
+                    logger.warn('runtime restart drain timed out, cancelling')
+                }
+
+                restartPending = false
+
+                if (shuttingDown) return false
+
+                await previous.kernel.stop()
+            }
+
+            if (shuttingDown) return false
+
+            const spec = await loadRuntimeSpec(settings)
+
+            currentConfig = spec.config
+
+            const next = createRuntime(
+                spec,
+                settings,
+                requestRestart,
+                tapEvents
+            )
+
+            runtime = next
+            await next.kernel.start()
+
+            generation += 1
+            startupError = null
+
+            const signature = credentialSignature(currentConfig)
+
+            if (signature !== credentials) {
+                credentials = signature
+                server.invalidateSessions()
+            }
+
+            logger.info('runtime restarted')
+
+            return true
         } catch (error) {
-            logger.error('shutdown failed', error)
-            process.exit(1)
+            runtime = null
+            startupError = describeError(error)
+            logger.error('runtime restart failed', error)
+
+            return false
+        } finally {
+            restarting = false
+
+            if (restartPending && !shuttingDown) {
+                restartPending = false
+                requestRestart()
+            }
         }
+    }
+
+    const restartRuntime = (): Promise<boolean> => {
+        const run = restartTail.then(restartRuntimeOnce, restartRuntimeOnce)
+
+        restartTail = run.then(
+            () => true,
+            () => false
+        )
+
+        return run
     }
 
     const requestRestart = (): void => {
@@ -245,119 +401,94 @@ async function main(): Promise<void> {
         }, 250)
     }
 
-    const restartDrainTimeout = (previous: Runtime | null): number => {
-        const installTimeout =
-            previous?.spec.config.installer.timeoutMs ?? 5_000
+    const store = new ConfigStore({
+        configPath,
+        getPlugins: () => runtime?.spec.plugins ?? [],
+        restart: () => restartRuntime(),
+    })
 
-        return Math.max(installTimeout, 5_000) * 2 + 5_000
+    const deps: WebUiDeps = {
+        logger: logger.child('webui'),
+        paths: {
+            configPath,
+            dataDir,
+            pluginDir: initialSpec.pluginDir,
+            staticDir: resolveStaticDir(),
+        },
+        version: readVersion(),
+        logs,
+        events,
+        getWebUiConfig: () => currentConfig.webui,
+        readConfig: () => store.read(),
+        validateConfig: (value) => store.validate(value),
+        applyConfig: (value, baseHash) => store.apply(value, baseHash),
+        restart: () => restartRuntime(),
+        requestRestart,
+        pause: () => runtime?.kernel.pause(),
+        resume: () => runtime?.kernel.resume(),
+        getListening: () => server.address,
+        invalidateSessions: () => server.invalidateSessions(),
+        runExclusive: async <T>(task: () => Promise<T>): Promise<T> => {
+            const run = exclusiveTail.then(task, task)
+
+            exclusiveTail = run.then(
+                () => undefined,
+                () => undefined
+            )
+
+            return run
+        },
+        getRuntime: () =>
+            runtime === null
+                ? null
+                : {
+                      generation,
+                      config: runtime.spec.config,
+                      kernel: runtime.kernel,
+                      api: runtime.kernel.api,
+                      database: runtime.database,
+                      installer: runtime.installer,
+                      plugins: runtime.spec.plugins,
+                  },
+        isRestarting: () => restarting,
+        getStartupError: () => startupError,
+        getRequiresProcessRestart: () => {
+            const webui = currentConfig.webui
+
+            if (boundWebUi === null) return webui.enabled
+
+            if (!webui.enabled) return true
+
+            return (
+                webui.host !== boundWebUi.host || webui.port !== boundWebUi.port
+            )
+        },
     }
 
-    const restartRuntime = async (): Promise<void> => {
-        if (shuttingDown || restarting) return
+    const server = new WebUiServer({
+        config: initialSpec.config.webui,
+        deps,
+    })
 
-        restarting = true
-        restartPending = false
+    const shutdown = async (signal: string, exitCode = 0): Promise<void> => {
+        if (shuttingDown) return
 
-        const previous = runtime
-        let stopped = false
-        let restarted = false
+        shuttingDown = true
 
-        logger.info('restarting runtime')
+        if (restartTimer !== null) {
+            clearTimeout(restartTimer)
+            restartTimer = null
+        }
+
+        logger.info(`received ${signal}, shutting down`)
 
         try {
-            // Stop accepting new events so no command can start another install
-            // while the replacement runtime is being prepared.
-            previous?.kernel.pause()
-
-            const drainTimeout = restartDrainTimeout(previous)
-            const drained =
-                previous === null
-                    ? true
-                    : await previous.kernel.drain(drainTimeout)
-
-            // Restart requests raised by drained tasks are covered by the spec
-            // loaded below; requests that arrive later are preserved.
-            restartPending = false
-
-            if (shuttingDown) return
-
-            let spec: RuntimeSpec
-
-            if (drained) {
-                spec = await loadRuntimeSpec(settings)
-
-                if (shuttingDown) return
-
-                await previous?.kernel.stop()
-                stopped = true
-            } else {
-                logger.warn(
-                    'runtime restart drain timed out, cancelling pending tasks'
-                )
-
-                await previous?.kernel.stop()
-                stopped = true
-
-                // Kernel.stop() aborts pending tasks. Wait for their rollback
-                // to finish before the replacement runtime touches the same
-                // install directory.
-                const settled =
-                    previous === null
-                        ? true
-                        : await previous.kernel.drain(drainTimeout)
-
-                if (!settled) {
-                    logger.warn(
-                        'cancelled tasks are still running after restart drain'
-                    )
-                }
-
-                if (shuttingDown) return
-
-                spec = await loadRuntimeSpec(settings)
-            }
-
-            if (shuttingDown) return
-
-            runtime = createRuntime(spec, settings, requestRestart)
-            await runtime.kernel.start()
-            restarted = true
-            logger.info('runtime restarted')
+            await runtime?.kernel.stop()
+            await server.stop()
+            process.exit(exitCode)
         } catch (error) {
-            logger.error('runtime restart failed', error)
-
-            if (!stopped) {
-                previous?.kernel.resume()
-                return
-            }
-
-            if (previous !== null) {
-                try {
-                    await runtime?.kernel.stop()
-                    runtime = createRuntime(
-                        previous.spec,
-                        settings,
-                        requestRestart
-                    )
-                    await runtime.kernel.start()
-                    logger.warn('restored previous runtime')
-                    return
-                } catch (fallbackError) {
-                    logger.error(
-                        'failed to restore previous runtime',
-                        fallbackError
-                    )
-                }
-            }
-
-            await shutdown('restart failure', 1)
-        } finally {
-            restarting = false
-
-            if (restarted && restartPending && !shuttingDown) {
-                restartPending = false
-                requestRestart()
-            }
+            logger.error('shutdown failed', error)
+            process.exit(1)
         }
     }
 
@@ -369,9 +500,46 @@ async function main(): Promise<void> {
         void shutdown('SIGTERM')
     })
 
-    const spec = await loadRuntimeSpec(settings)
-    runtime = createRuntime(spec, settings, requestRestart)
-    await runtime.kernel.start()
+    // Start the WebUI before the kernel so it stays online when startup fails.
+    if (initialSpec.config.webui.enabled) {
+        const address: WebUiAddress | null = await server.start(
+            initialSpec.config.webui
+        )
+
+        if (address !== null) {
+            boundWebUi = {
+                host: address.host,
+                port: address.port,
+            }
+        }
+    }
+
+    try {
+        runtime = createRuntime(
+            initialSpec,
+            settings,
+            requestRestart,
+            tapEvents
+        )
+        await runtime.kernel.start()
+
+        generation = 1
+        startupError = null
+        credentials = credentialSignature(currentConfig)
+        logger.info('runtime started')
+    } catch (error) {
+        runtime = null
+        startupError = describeError(error)
+        logger.error('runtime startup failed', error)
+
+        if (boundWebUi === null) {
+            await shutdown('startup failure', 1)
+        } else {
+            logger.info(
+                'webui stays online; fix the configuration on the config page and restart the runtime'
+            )
+        }
+    }
 }
 
 await main().catch((error: unknown) => {

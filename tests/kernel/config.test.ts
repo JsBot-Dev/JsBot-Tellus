@@ -44,6 +44,13 @@ describe('config', () => {
                 charThreshold: 50,
                 lineThreshold: 3,
             },
+            webui: {
+                enabled: false,
+                host: '127.0.0.1',
+                port: 8787,
+                sessionTtlHours: 12,
+                trustProxy: false,
+            },
             plugins: {},
             installer: {
                 enabled: false,
@@ -141,6 +148,53 @@ describe('config', () => {
             const filePath = await writeConfig({ installer })
 
             await expect(loadConfig(filePath)).rejects.toThrow(/installer/)
+        }
+    })
+
+    it('parses webui settings and requires credentials when enabled', async () => {
+        const disabled = await loadConfig(await writeConfig({}))
+        expect(disabled.webui).toEqual({
+            enabled: false,
+            host: '127.0.0.1',
+            port: 8787,
+            sessionTtlHours: 12,
+            trustProxy: false,
+        })
+
+        const enabledFile = await writeConfig({
+            webui: {
+                enabled: true,
+                username: 'admin',
+                password: 'secret-password',
+                port: 9000,
+            },
+        })
+        const enabled = await loadConfig(enabledFile)
+
+        expect(enabled.webui.enabled).toBe(true)
+        expect(enabled.webui.username).toBe('admin')
+        expect(enabled.webui.port).toBe(9000)
+
+        for (const webui of [
+            { enabled: true },
+            { enabled: true, username: 'admin' },
+            { enabled: true, username: 'admin', password: 'short' },
+            {
+                enabled: true,
+                username: 'admin',
+                password: 'long-enough',
+                port: 0,
+            },
+            {
+                enabled: true,
+                username: 'admin',
+                password: 'long-enough',
+                unknown: true,
+            },
+        ]) {
+            const filePath = await writeConfig({ webui })
+
+            await expect(loadConfig(filePath)).rejects.toThrow(/webui/)
         }
     })
 
