@@ -89,6 +89,12 @@ function uniqueStrings(values: string[]): string[] {
     return result
 }
 
+const LEADING_REPLY = /^(?:\[CQ:reply(?:,[^\]]*)?\]\s*)+/
+
+function stripLeadingReply(raw: string): string {
+    return raw.replace(LEADING_REPLY, '')
+}
+
 function groupBases(name: string, aliases: string[]): string[] {
     return uniqueStrings([
         normalizeSegment('group name', name),
@@ -258,7 +264,7 @@ export class CommandRegistry {
     }
 
     match(rawMessage: string): RegisteredCommand | null {
-        const raw = rawMessage.trim()
+        const raw = stripLeadingReply(rawMessage.trim()).trim()
 
         if (!raw) return null
 

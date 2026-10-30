@@ -216,6 +216,81 @@ describe('router', () => {
         expect(handler.mock.calls[0]?.[4]).toBe(60)
     })
 
+    it('parses time params as seconds', async () => {
+        const { router, dispatch } = harness()
+        const handler = vi.fn<
+            CommandHandler<OneBotMessageEvent, [number, number]>
+        >(async () => {})
+
+        router.registerCommand({
+            pluginId: 'test',
+            name: 'ban',
+            params: '<user:at> <duration:time>',
+            handler,
+        })
+
+        await dispatch(
+            groupMessage({
+                raw_message: '/ban [CQ:at,qq=123456] 5m',
+                user_id: 30000,
+            })
+        )
+
+        expect(handler).toHaveBeenCalledTimes(1)
+        expect(handler.mock.calls[0]?.[3]).toBe(123456)
+        expect(handler.mock.calls[0]?.[4]).toBe(300)
+    })
+
+    it('parses reply params from quoted messages', async () => {
+        const { router, dispatch } = harness()
+        const handler = vi.fn<CommandHandler<OneBotMessageEvent, [number]>>(
+            async () => {}
+        )
+
+        router.registerCommand({
+            pluginId: 'test',
+            name: 'recall',
+            params: '<message:reply>',
+            handler,
+        })
+
+        await dispatch(
+            groupMessage({
+                raw_message: '[CQ:reply,id=456] /recall',
+                message: [{ type: 'reply', data: { id: '456' } }],
+                user_id: 30000,
+            })
+        )
+
+        expect(handler).toHaveBeenCalledTimes(1)
+        expect(handler.mock.calls[0]?.[2]?.rest).toBe('')
+        expect(handler.mock.calls[0]?.[3]).toBe(456)
+    })
+
+    it('replies with usage when a reply param has no quote', async () => {
+        const { router, dispatch, client } = harness()
+        const handler = vi.fn(async () => {})
+
+        router.registerCommand({
+            pluginId: 'test',
+            name: 'recall',
+            params: '<message:reply>',
+            handler,
+        })
+
+        await dispatch(
+            groupMessage({
+                raw_message: '/recall',
+                user_id: 30000,
+            })
+        )
+
+        expect(handler).not.toHaveBeenCalled()
+        expect(client.sent[0]?.message).toBe(
+            '参数 message 需要引用一条消息\n用法：/recall <message>'
+        )
+    })
+
     it('replies with usage when required params are missing', async () => {
         const { router, dispatch, client } = harness()
         const handler = vi.fn(async () => {})

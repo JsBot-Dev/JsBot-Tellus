@@ -79,6 +79,28 @@ function checkRegisterInference(): void {
 
     commands.register(
         {
+            name: 'reply',
+            params: '<message:reply> [other:reply]',
+        },
+        async (_event, _context, _match, message, other) => {
+            expectTypeOf(message).toEqualTypeOf<number>()
+            expectTypeOf(other).toEqualTypeOf<number | undefined>()
+        }
+    )
+
+    commands.register(
+        {
+            name: 'time',
+            params: '<duration:time> [delay:time]',
+        },
+        async (_event, _context, _match, duration, delay) => {
+            expectTypeOf(duration).toEqualTypeOf<number>()
+            expectTypeOf(delay).toEqualTypeOf<number | undefined>()
+        }
+    )
+
+    commands.register(
+        {
             name: 'plain',
         },
         async (_event, _context, _match) => {}
@@ -141,6 +163,14 @@ describe('command param type inference', () => {
         expectTypeOf<CommandParamArgs<'<user:at> [other:at]'>>().toEqualTypeOf<
             [number, number | undefined]
         >()
+
+        expectTypeOf<
+            CommandParamArgs<'<message:reply> [other:reply]'>
+        >().toEqualTypeOf<[number, number | undefined]>()
+
+        expectTypeOf<
+            CommandParamArgs<'<duration:time> [delay:time]'>
+        >().toEqualTypeOf<[number, number | undefined]>()
 
         expectTypeOf<
             CommandParamArgs<'[name:string="hello world"]'>
