@@ -26,12 +26,36 @@ export interface SessionStore {
     clear(sessionId: string): Promise<void>
 }
 
+export interface SessionSummary {
+    sessionId: string
+    provider?: string | undefined
+    model?: string | undefined
+    persona?: string | undefined
+    messageCount: number
+    updatedAt: number
+}
+
+export interface SessionListOptions {
+    limit?: number | undefined
+    offset?: number | undefined
+    query?: string | undefined
+}
+
 interface SessionRow {
     session_id: string
     provider: string | null
     model: string | null
     persona: string | null
     messages: string
+    updated_at: number
+}
+
+interface SessionSummaryRow {
+    session_id: string
+    provider: string | null
+    model: string | null
+    persona: string | null
+    message_count: number
     updated_at: number
 }
 
@@ -77,6 +101,29 @@ function toState(row: SessionRow): SessionState {
         messages: parseMessages(row.session_id, row.messages),
         updatedAt: row.updated_at,
     }
+}
+
+function toSummary(row: SessionSummaryRow): SessionSummary {
+    return {
+        sessionId: row.session_id,
+        ...(row.provider !== null ? { provider: row.provider } : {}),
+        ...(row.model !== null ? { model: row.model } : {}),
+        ...(row.persona !== null ? { persona: row.persona } : {}),
+        messageCount: row.message_count,
+        updatedAt: row.updated_at,
+    }
+}
+
+function clampLimit(value: number | undefined, fallback: number): number {
+    if (value === undefined || !Number.isFinite(value)) return fallback
+
+    return Math.min(Math.max(Math.trunc(value), 1), 500)
+}
+
+function clampOffset(value: number | undefined): number {
+    if (value === undefined || !Number.isFinite(value)) return 0
+
+    return Math.max(Math.trunc(value), 0)
 }
 
 export class SqliteSessionStore implements SessionStore {
@@ -166,5 +213,53 @@ export class SqliteSessionStore implements SessionStore {
         this.database.connection
             .prepare('DELETE FROM sessions WHERE session_id = ?')
             .run(sessionId)
+    }
+
+    async list(options: SessionListOptions = {}): Promise<SessionSummary[]> {
+        const limit = clampLimit(options.limit, 50)
+        const offset = clampOffset(options.offset)
+        const query = options.query?.trim()
+
+        const rows = (query
+            ? this.database.connection
+                  .prepare(
+                      `SELECT session_id, provider, model, persona,
+                                  json_array_length(messages) AS message_count,
+                                  updated_at
+                           FROM sessions
+                           WHERE session_id LIKE ?
+                           ORDER BY updated_at DESC
+                           LIMIT ? OFFSET ?`
+                  )
+                  .all(`%${query}%`, limit, offset)
+            : this.database.connection
+                  .prepare(
+                      `SELECT session_id, provider, model, persona,
+                                  json_array_length(messages) AS message_count,
+                                  updated_at
+                           FROM sessions
+                           ORDER BY updated_at DESC
+                           LIMIT ? OFFSET ?`
+                  )
+                  .all(limit, offset)) as unknown as SessionSummaryRow[]
+
+        return rows.map(toSummary)
+    }
+
+    async count(query?: string): Promise<number> {
+        const value = query?.trim()
+        const row = (
+            value
+                ? this.database.connection
+                      .prepare(
+                          'SELECT COUNT(*) AS count FROM sessions WHERE session_id LIKE ?'
+                      )
+                      .get(`%${value}%`)
+                : this.database.connection
+                      .prepare('SELECT COUNT(*) AS count FROM sessions')
+                      .get()
+        ) as { count: number } | undefined
+
+        return row?.count ?? 0
     }
 }

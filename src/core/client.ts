@@ -19,6 +19,7 @@ export interface BotClientOptions {
 }
 
 export interface BotClient {
+    readonly isConnected: boolean
     use(middleware: EventMiddleware): () => void
     connect(): Promise<void>
     close(): void
@@ -74,6 +75,9 @@ export function createBotClient(options: BotClientOptions): BotClient {
     })
 
     return {
+        get isConnected() {
+            return client.isConnected
+        },
         use: (middleware) => client.use(middleware),
         connect: () => client.connect(),
         close: () => client.close(),

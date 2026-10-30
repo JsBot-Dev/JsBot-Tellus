@@ -1,6 +1,7 @@
+import type { SnowLumaEvent } from '@snowluma/sdk'
 import type { BotClient } from './client.js'
 import type { AppConfig } from './config/schema.js'
-import { createBotApi } from './api.js'
+import { createBotApi, type BotApi } from './api.js'
 import { Router } from './dispatch/router.js'
 import { PerKeyTaskQueue } from './dispatch/task-queue.js'
 import { Lifecycle, type LifecycleState } from './lifecycle/lifecycle.js'
@@ -28,10 +29,13 @@ export interface KernelOptions {
     plugins?: AnyPluginDefinition[] | undefined
     installer?: PluginInstaller | undefined
     onRestart?: (() => void) | undefined
+    onEvent?: ((event: SnowLumaEvent) => void) | undefined
     drainTimeoutMs?: number | undefined
 }
 
 export class Kernel {
+    readonly api: BotApi
+
     private readonly config: AppConfig
     private readonly client: BotClient
     private readonly logger: Logger
@@ -62,12 +66,16 @@ export class Kernel {
         const tasks = new PerKeyTaskQueue(options.logger)
         const api = createBotApi(options.client, sender)
 
+        this.api = api
         this.tasks = tasks
         this.router = new Router({
             sender,
             roles,
             gate,
             logger: options.logger,
+            ...(options.onEvent !== undefined
+                ? { onEvent: options.onEvent }
+                : {}),
         })
 
         let host: PluginHost
@@ -129,6 +137,22 @@ export class Kernel {
 
     get state(): LifecycleState {
         return this.lifecycle.state
+    }
+
+    get uptimeMs(): number {
+        return this.startedAt === null ? 0 : Date.now() - this.startedAt
+    }
+
+    get isConnected(): boolean {
+        return this.client.isConnected
+    }
+
+    listPlugins() {
+        return this.host.listStatus()
+    }
+
+    listCommands() {
+        return this.router.listCommands()
     }
 
     start(): Promise<void> {

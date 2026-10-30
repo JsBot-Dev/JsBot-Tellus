@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="zh-CN" class="dark">
+    <head>
+        <meta charset="UTF-8" />
+        <meta
+            name="viewport"
+            content="width=device-width, initial-scale=1.0, viewport-fit=cover"
+        />
+        <meta name="theme-color" content="#0a0f1a" />
+        <!-- WebUI is an admin surface; tell compliant crawlers to skip it. -->
+        <meta name="robots" content="noindex, nofollow, noarchive, nosnippet" />
+        <title>JsBot WebUI</title>
+        <!--
+            Pre-paint appearance bootstrap: applies the cached appearance to
+            <html> before the bundle mounts, so mode / dark intensity / density
+            / scale / radius never flash from the defaults. Defensive: never
+            breaks page load. CSP (script-src 'self' + its sha256 hash)
+            authorizes this exact block; the bundle re-applies authoritatively.
+        -->
+        <script>
+            ;(function () {
+                try {
+                    var raw = localStorage.getItem('jsbot-webui-appearance')
+                    var a = raw ? JSON.parse(raw) : {}
+                    if (!a || typeof a !== 'object') a = {}
+                    var root = document.documentElement
+                    var mode = a.mode
+                    var prefersDark =
+                        window.matchMedia &&
+                        window.matchMedia('(prefers-color-scheme: dark)')
+                            .matches
+                    var resolved =
+                        mode === 'light' || mode === 'dark'
+                            ? mode
+                            : prefersDark
+                              ? 'dark'
+                              : 'light'
+                    root.classList.remove('light', 'dark')
+                    root.classList.add(resolved)
+                    root.setAttribute('data-theme', resolved)
+                    root.style.colorScheme = resolved
+                    var themeMeta = document.querySelector(
+                        'meta[name="theme-color"]'
+                    )
+                    if (themeMeta)
+                        themeMeta.setAttribute(
+                            'content',
+                            resolved === 'dark' ? '#0a0f1a' : '#f4f7fb'
+                        )
+                    if (
+                        resolved === 'dark' &&
+                        (a.darkIntensity === 'black' ||
+                            a.darkIntensity === 'soft')
+                    ) {
+                        root.setAttribute(
+                            'data-dark-intensity',
+                            a.darkIntensity
+                        )
+                    }
+                    if (a.density === 'compact' || a.density === 'cozy')
+                        root.setAttribute('data-density', a.density)
+                    if (
+                        a.sidebarStyle === 'follow' ||
+                        a.sidebarStyle === 'panel' ||
+                        a.sidebarStyle === 'accent'
+                    ) {
+                        root.setAttribute('data-sidebar-style', a.sidebarStyle)
+                    }
+                    root.setAttribute(
+                        'data-contrast',
+                        a.highContrast ? 'high' : 'normal'
+                    )
+                    var systemReduce =
+                        window.matchMedia &&
+                        window.matchMedia('(prefers-reduced-motion: reduce)')
+                            .matches
+                    root.setAttribute(
+                        'data-reduce-motion',
+                        a.reduceMotion || systemReduce ? '1' : '0'
+                    )
+                    if (a.disableMotion)
+                        root.setAttribute('data-no-motion', '1')
+                    if (
+                        typeof a.radius === 'number' &&
+                        a.radius >= 0 &&
+                        a.radius <= 2
+                    ) {
+                        root.style.setProperty('--app-radius', a.radius + 'rem')
+                    }
+                    if (
+                        typeof a.uiScale === 'number' &&
+                        a.uiScale >= 0.5 &&
+                        a.uiScale <= 2
+                    ) {
+                        root.style.fontSize =
+                            Math.round(16 * a.uiScale * 100) / 100 + 'px'
+                    }
+                } catch (e) {
+                    /* ignore — fall back to the default theme */
+                }
+            })()
+        </script>
+    </head>
+    <body>
+        <div id="app"></div>
+        <script type="module" src="/src/main.ts"></script>
+    </body>
+</html>

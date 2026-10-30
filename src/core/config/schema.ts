@@ -55,12 +55,51 @@ export const installerConfigSchema = z
     })
     .strict()
 
+export const webuiConfigSchema = z
+    .object({
+        enabled: z.boolean().default(false),
+        host: z.string().trim().min(1).max(255).default('127.0.0.1'),
+        port: z.number().int().min(1).max(65535).default(8787),
+        username: z.string().trim().min(1).max(64).optional(),
+        password: z.string().min(8).max(256).optional(),
+        sessionTtlHours: z.number().int().min(1).max(720).default(12),
+        trustProxy: z.boolean().default(false),
+    })
+    .strict()
+    .superRefine((value, context) => {
+        if (!value.enabled) return
+
+        if (value.username === undefined) {
+            context.addIssue({
+                code: 'custom',
+                message: 'username is required when webui is enabled',
+                path: ['username'],
+            })
+        }
+
+        if (value.password === undefined) {
+            context.addIssue({
+                code: 'custom',
+                message: 'password is required when webui is enabled',
+                path: ['password'],
+            })
+        }
+    })
+    .default({
+        enabled: false,
+        host: '127.0.0.1',
+        port: 8787,
+        sessionTtlHours: 12,
+        trustProxy: false,
+    })
+
 export const appConfigSchema = z
     .object({
         url: z.url({ protocol: /^wss?$/ }).default('ws://127.0.0.1:3001/'),
         accessToken: z.string().min(1).optional(),
         roles: rolesConfigSchema,
         message: messageConfigSchema,
+        webui: webuiConfigSchema,
         plugins: z.record(z.string(), pluginEnvelopeSchema).default({}),
         installer: installerConfigSchema.default({
             enabled: false,
@@ -77,6 +116,7 @@ export type PluginEnvelope = z.infer<typeof pluginEnvelopeSchema>
 export type MessageConfig = z.infer<typeof messageConfigSchema>
 export type RolesConfig = z.infer<typeof rolesConfigSchema>
 export type InstallerConfig = z.infer<typeof installerConfigSchema>
+export type WebUiConfig = z.infer<typeof webuiConfigSchema>
 export type AppConfig = z.infer<typeof appConfigSchema>
 
 export function formatConfigIssues(error: z.ZodError, prefix?: string): string {

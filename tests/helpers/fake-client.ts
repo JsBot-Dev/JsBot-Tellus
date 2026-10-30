@@ -39,6 +39,10 @@ export class FakeClient implements BotClient {
     connectCalls = 0
     closeCalls = 0
 
+    get isConnected(): boolean {
+        return this.connected && !this.closed
+    }
+
     private readonly connectError: Error | undefined
     private readonly closeError: Error | undefined
 

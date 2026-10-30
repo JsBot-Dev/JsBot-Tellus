@@ -124,4 +124,45 @@ describe('session store', () => {
 
         database.close()
     })
+
+    it('lists sessions with message counts and pagination', async () => {
+        const database = openMemoryDatabase()
+        const sessions = new SqliteSessionStore(database)
+
+        await sessions.save({
+            sessionId: 'group:1',
+            messages: [
+                { role: 'user', content: '1', at: 1 },
+                { role: 'assistant', content: '2', at: 2 },
+            ],
+            updatedAt: 10,
+        })
+        await sessions.save({
+            sessionId: 'private:2',
+            provider: 'test',
+            model: 'model',
+            messages: [{ role: 'user', content: '3', at: 3 }],
+            updatedAt: 20,
+        })
+
+        const all = await sessions.list()
+
+        expect(all).toHaveLength(2)
+        expect(all[0]?.sessionId).toBe('private:2')
+        expect(all[0]?.messageCount).toBe(1)
+        expect(all[0]?.provider).toBe('test')
+        expect(all[1]?.messageCount).toBe(2)
+
+        const filtered = await sessions.list({ query: 'group' })
+
+        expect(filtered.map((item) => item.sessionId)).toEqual(['group:1'])
+
+        const page = await sessions.list({ limit: 1, offset: 1 })
+
+        expect(page.map((item) => item.sessionId)).toEqual(['group:1'])
+        expect(await sessions.count()).toBe(2)
+        expect(await sessions.count('private')).toBe(1)
+
+        database.close()
+    })
 })

@@ -29,14 +29,14 @@ jobs:
             - name: Format Check
               run: npm run format:check
 
+            - name: Build
+              run: npm run build
+
             - name: Dependencies Check
               run: npm audit --omit=dev --audit-level=high
 
             - name: Test
               run: npm test
-
-            - name: Build
-              run: npm run build
 
             - name: Smoke
               run: node dist/app.js --help

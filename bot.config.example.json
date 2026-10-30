@@ -9,6 +9,9 @@
         "charThreshold": 50,
         "lineThreshold": 3
     },
+    "webui": {
+        "enabled": false
+    },
     "installer": {
         "enabled": true,
         "registry": "https://registry.npmjs.org/",
