@@ -101,6 +101,18 @@ function checkRegisterInference(): void {
 
     commands.register(
         {
+            name: 'length',
+            params: '<message:text(2..10)> [name:string(..16)] [alias:string(2..4)=hi]',
+        },
+        async (_event, _context, _match, message, name, alias) => {
+            expectTypeOf(message).toEqualTypeOf<string>()
+            expectTypeOf(name).toEqualTypeOf<string | undefined>()
+            expectTypeOf(alias).toEqualTypeOf<string>()
+        }
+    )
+
+    commands.register(
+        {
             name: 'plain',
         },
         async (_event, _context, _match) => {}

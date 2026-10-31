@@ -4,7 +4,7 @@ import {
     type ParamSpec,
     type ParsedCommandParams,
 } from './types.js'
-import { parseAt, parseBoolean, parseTime } from './values.js'
+import { measureLength, parseAt, parseBoolean, parseTime } from './values.js'
 
 export function tokenizeInput(input: string, usage: string): InputToken[] {
     const tokens: InputToken[] = []
@@ -101,6 +101,36 @@ export function tokenizeInput(input: string, usage: string): InputToken[] {
     return tokens
 }
 
+function enforceLength(
+    spec: ParamSpec,
+    value: string,
+    usage: string
+): string {
+    const length = spec.length
+
+    if (length === undefined) {
+        return value
+    }
+
+    const measured = measureLength(value)
+
+    if (length.min !== undefined && measured < length.min) {
+        throw new CommandParamsError(
+            `参数 ${spec.name} 至少需要 ${length.min} 个字符`,
+            usage
+        )
+    }
+
+    if (length.max !== undefined && measured > length.max) {
+        throw new CommandParamsError(
+            `参数 ${spec.name} 不能超过 ${length.max} 个字符`,
+            usage
+        )
+    }
+
+    return value
+}
+
 export function parseValue(
     spec: ParamSpec,
     raw: string,
@@ -108,6 +138,7 @@ export function parseValue(
 ): unknown {
     switch (spec.type) {
         case 'string':
+            return enforceLength(spec, raw, usage)
         case 'text':
             return raw
         case 'number': {
@@ -218,7 +249,7 @@ export function parseInput(
             const value =
                 remaining === 1 ? token.value : input.slice(token.start).trim()
 
-            args.push(value)
+            args.push(enforceLength(spec, value, usage))
             index = tokens.length
             continue
         }

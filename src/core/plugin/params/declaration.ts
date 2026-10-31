@@ -1,11 +1,18 @@
 import {
     declarationError,
     type CommandParamType,
+    type ParamLength,
     type ParamSpec,
 } from './types.js'
-import { parseBoolean, parseTimeValue, unquote } from './values.js'
+import {
+    measureLength,
+    parseBoolean,
+    parseTimeValue,
+    unquote,
+} from './values.js'
 
 const NAME_PATTERN = /^[\p{L}_][\p{L}\p{N}_-]*$/u
+const LENGTH_PATTERN = /^(\d*)\.\.(\d*)$/
 
 export function parseType(value: string): CommandParamType {
     switch (value) {
@@ -20,6 +27,90 @@ export function parseType(value: string): CommandParamType {
             return value
         default:
             throw declarationError(`未知的参数类型 "${value}"`)
+    }
+}
+
+interface ParsedType {
+    type: CommandParamType
+    length?: ParamLength | undefined
+}
+
+function parseLengthNumber(raw: string, token: string): number {
+    const value = Number(raw)
+
+    if (!Number.isSafeInteger(value)) {
+        throw declarationError(`长度限制不是安全的整数：${token}`)
+    }
+
+    return value
+}
+
+function parseLength(raw: string, token: string): ParamLength {
+    const value = raw.trim()
+    const match = LENGTH_PATTERN.exec(value)
+
+    if (!match) {
+        throw declarationError(`非法的长度限制 "${raw}"：${token}`)
+    }
+
+    const minRaw = match[1] ?? ''
+    const maxRaw = match[2] ?? ''
+
+    if (minRaw === '' && maxRaw === '') {
+        throw declarationError(`长度限制不能为空：${token}`)
+    }
+
+    const min = minRaw === '' ? undefined : parseLengthNumber(minRaw, token)
+    const max = maxRaw === '' ? undefined : parseLengthNumber(maxRaw, token)
+
+    if (min !== undefined && max !== undefined && min > max) {
+        throw declarationError(`长度下限不能大于上限：${token}`)
+    }
+
+    return { min, max }
+}
+
+function parseTypeDeclaration(raw: string, token: string): ParsedType {
+    const value = raw.trim()
+    const open = value.indexOf('(')
+
+    if (open < 0) {
+        return { type: parseType(value) }
+    }
+
+    if (!value.endsWith(')')) {
+        throw declarationError(`非法的参数声明 "${token}"`)
+    }
+
+    const type = parseType(value.slice(0, open).trim())
+    const length = parseLength(value.slice(open + 1, -1), token)
+
+    if (type !== 'string' && type !== 'text') {
+        throw declarationError(`只有 string/text 参数支持长度限制：${token}`)
+    }
+
+    return { type, length }
+}
+
+function validateDefaultLength(
+    name: string,
+    value: string,
+    length: ParamLength | undefined
+): void {
+    if (length === undefined) return
+
+    const measured = measureLength(value)
+
+    if (length.min !== undefined && measured < length.min) {
+        throw declarationError(
+            `参数 ${name} 的默认值至少需要 ${length.min} 个字符`
+        )
+    }
+
+    if (length.max !== undefined && measured > length.max) {
+        throw declarationError(
+            `参数 ${name} 的默认值不能超过 ${length.max} 个字符`
+        )
     }
 }
 
@@ -120,7 +211,13 @@ export function parseToken(token: string): ParamSpec {
             throw declarationError('变长参数必须使用 [ ]')
         }
 
-        const name = validateName(inner.slice(3))
+        const rest = inner.slice(3)
+
+        if (rest.includes('(')) {
+            throw declarationError(`变长参数不支持长度限制：${token}`)
+        }
+
+        const name = validateName(rest)
 
         return {
             name,
@@ -140,20 +237,30 @@ export function parseToken(token: string): ParamSpec {
     const defaultRaw = equals >= 0 ? inner.slice(equals + 1).trim() : undefined
     const colon = head.indexOf(':')
     const name = validateName(colon >= 0 ? head.slice(0, colon) : head)
-    const type = parseType(colon >= 0 ? head.slice(colon + 1).trim() : 'string')
+    const { type, length } = parseTypeDeclaration(
+        colon >= 0 ? head.slice(colon + 1) : 'string',
+        token
+    )
 
     if (required && defaultRaw !== undefined) {
         throw declarationError(`必填参数不能有默认值：${token}`)
     }
 
     if (defaultRaw !== undefined) {
+        const defaultValue = parseDefaultValue(type, defaultRaw, name)
+
+        if (typeof defaultValue === 'string') {
+            validateDefaultLength(name, defaultValue, length)
+        }
+
         return {
             name,
             type,
             required,
             rest: false,
             hasDefault: true,
-            defaultValue: parseDefaultValue(type, defaultRaw, name),
+            defaultValue,
+            length,
         }
     }
 
@@ -163,6 +270,7 @@ export function parseToken(token: string): ParamSpec {
         required,
         rest: false,
         hasDefault: false,
+        length,
     }
 }
 
