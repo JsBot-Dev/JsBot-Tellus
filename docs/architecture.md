@@ -16,7 +16,7 @@ src/core/*     -X-> src/plugins/*
 - 插件只能通过 `PluginContext`、`EventContext` 和 `BotApi` 使用能力。
 - `core` 不 import 任何插件；`core`、`admin` 在 `src/plugins/index.ts` 显式注册。
 - 内置插件是普通源码，随内核一起编译；没有独立依赖，不单独建包。
-- 本地插件由 `src/app.ts` 在启动前扫描 `plugins/<id>/dist` 并追加到内置插件之后；缺少 `dist` 时加载器会尝试执行插件的 `build` 脚本。
+- 本地插件由 `src/app/runtime.ts` 在启动前扫描 `plugins/<id>/dist` 并追加到内置插件之后；缺少 `dist` 时加载器会尝试执行插件的 `build` 脚本。
 - 本地插件放在不跟踪的 `plugins/`，每个插件是独立包，构建后自动加载。
 
 ## 运行时主链路
@@ -41,17 +41,15 @@ SDK WebSocket
 ```text
 src/
   app.ts                  CLI 入口
+  app/
+    cli.ts                参数解析和 usage
+    runtime.ts            运行时构建、重启/关闭协调、WebUI deps
   core/
     kernel.ts             运行时组装和生命周期
     client.ts             BotClient 接口和 SDK adapter
     api.ts                BotApi
     config/               配置 schema 和加载
-    dispatch/
-      router.ts           唯一 SDK middleware
-      command.ts          命令索引、组注册、多级匹配和冲突检测
-      handler.ts          事件 handler 注册表
-      middleware.ts       插件中间件注册表
-      task-queue.ts       按 key 串行任务队列
+    dispatch/             router / command / handler / middleware / task-queue
     plugin/
       types.ts            插件契约和公共类型
       context.ts          PluginContext 工厂
@@ -59,17 +57,36 @@ src/
       gating.ts           enabled/private/groups
       kv.ts               SQLite KV
       loader.ts           本地插件目录加载（缺 dist 时自动构建）
+      command-params.ts   命令参数解析入口（barrel）
+      params/             声明、默认值/at/time、输入解析、类型级解析
+      install-dir.ts      安装状态/路径入口（barrel）
+      install/            状态读写、路径与 core link、校验脚本
+      installer.ts        插件包安装器
+      installer/          support / checks / warnings
+      install-validate.ts 子进程校验
+      npm-runner.ts       npm 调用封装
+      spec.ts             npm 包名/版本解析
     security/             角色、权限、拒绝提示
     messaging/            reply/forward 发送和回复分段
     storage/              SQLite 和 Session
     lifecycle/            启动/停止状态机
+    web/
+      server.ts           WebUiServer
+      server/             request / csp / security / sse / static / auth
+      api.ts              API 路由入口
+      routes/             status / sessions / plugins / config / kv / actions
+      auth.ts             AuthManager
+      config-store.ts     配置校验、应用与回滚
+      event-feed.ts       实时事件缓冲
+      http.ts             HTTP 辅助
+      types.ts            WebUI 类型
+      index.ts            WebUI 公共导出
   plugins/
     core/index.ts         /help、/status、/role
     admin/index.ts        /utter、/utter raw
     index.ts              内置插件清单
 plugins/                  本地插件根目录，整个目录不跟踪
-  poke/
-  llm/
+  <id>/
 ```
 
 ## 启动顺序
@@ -127,11 +144,11 @@ npm run smoke   # node dist/app.js --help
 ```bash
 npm install --prefix plugins/poke
 npm install --prefix plugins/llm
-npm run build:local
+npm run build:plugin
 node dist/app.js
 ```
 
-应用会固定扫描 `plugins/<id>/dist`，并跳过与内置插件同 ID 的本地插件，避免重复注册。没有 `dist` 的本地插件如果带有 `build` 脚本且依赖已安装，会先自动构建再加载；没有 `build` 脚本、缺少 `node_modules` 或构建失败时会记录警告并跳过。
+应用会固定扫描 `plugins/<id>/dist`，并跳过与内置插件同 ID 的本地插件，避免重复注册。没有 `dist` 的本地插件如果带有 `build` 脚本且依赖已安装，会先自动构建再加载；没有 `build` 脚本、缺少 `node_modules` 或构建失败时会记录警告并跳过。`npm run build:plugin` / `npm run check:plugin` 会自动发现 `plugins/*` 下的本地源码插件，新增插件不需要改根 `package.json`。
 
 ## 在线安装插件
 

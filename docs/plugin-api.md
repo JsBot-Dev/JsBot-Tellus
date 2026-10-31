@@ -516,7 +516,7 @@ TypeScript 插件必须在生产运行前编译为 JavaScript。本地插件和�
 ```bash
 npm install --prefix plugins/poke
 npm install --prefix plugins/llm
-npm run build:local
+npm run build:plugin
 
 node dist/app.js
 ```

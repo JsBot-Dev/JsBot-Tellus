@@ -101,7 +101,7 @@ src/plugins/
 ```bash
 npm install --prefix plugins/poke
 npm install --prefix plugins/llm
-npm run build:local
+npm run build:plugin
 
 node dist/app.js
 ```
@@ -144,14 +144,17 @@ jsbot [options]
 ## 开发与校验
 
 ```bash
-npm run check         # TypeScript 类型检查（NodeNext + strict）
+npm run check         # 内核 TypeScript 类型检查（NodeNext + strict）
+npm run check:webui   # WebUI 类型检查
+npm run check:all     # 内核 + WebUI + 本地插件
 npm test              # Vitest
+npm run test:watch    # Vitest watch 模式
 npm run format:check  # Prettier 检查
-npm run build         # 构建内核、内置插件和 CLI
+npm run build         # 构建内核、内置插件、WebUI 和 CLI
 npm run smoke         # node dist/app.js --help
 
-npm run check:local   # 检查 plugins（需要先安装本地依赖）
-npm run build:local   # 构建 plugins
+npm run check:plugin   # 自动检查 plugins 下的本地源码插件
+npm run build:plugin   # 自动构建 plugins 下的本地源码插件
 npm run plugin:gen -- my-plugin  # 生成并安装 plugins/my-plugin 模板依赖
 ```
 

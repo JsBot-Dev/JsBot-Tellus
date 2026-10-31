@@ -174,7 +174,7 @@ node dist/app.js
 ```bash
 npm install --prefix plugins/poke
 npm install --prefix plugins/llm
-npm run build:local
+npm run build:plugin
 
 npm run dev
 ```
