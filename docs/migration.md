@@ -7,7 +7,7 @@
 内置插件 `core`、`admin` 位于 `src/plugins/`，是普通源码。`poke`、`llm` 等其它插件放在 `plugins/`，该目录整体不进入 git，每个插件有自己的 `package.json`：
 
 - 安装本地依赖：`npm install --prefix plugins/poke`、`npm install --prefix plugins/llm`
-- 构建本地插件：`npm run build:local`
+- 构建本地插件：`npm run build:plugin`
 - 启动时加载：应用会自动扫描 `plugins/<id>/dist`，不需要路径参数
 
 应用会跳过与内置插件同 ID 的本地插件。没有加载的插件不能出现在 `plugins` 配置中，否则会因未知插件 ID 启动失败。
@@ -64,7 +64,7 @@
     npm run build
     npm install --prefix plugins/poke
     npm install --prefix plugins/llm
-    npm run build:local
+    npm run build:plugin
     node dist/app.js
     ```
 

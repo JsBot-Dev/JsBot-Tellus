@@ -1,4 +1,3 @@
-import { randomUUID } from 'node:crypto'
 import { cp, mkdir, rename, rm, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import type { InstallerConfig } from '../config/schema.js'
@@ -6,7 +5,6 @@ import type { Logger } from '../logging/logger.js'
 import {
     ensureCoreLink,
     ensureInstallRoot,
-    packageDirectoryName,
     pathExists,
     readInstallState,
     readJsonFile,
@@ -19,15 +17,32 @@ import {
 import {
     validateInstalledPackage,
     type PackageValidator,
-    type ValidatedPlugin,
 } from './install-validate.js'
-import { NpmCliRunner, type NpmRunner } from './npm-runner.js'
 import {
-    isPackageAllowed,
-    parsePackageSpec,
-    PackageSpecError,
-    type PackageSpec,
-} from './spec.js'
+    assertTargetAvailable,
+    checkPlugins,
+    resolveTarget,
+} from './installer/checks.js'
+import {
+    asInstallerError,
+    assertInstallerEnabled,
+    createTaskSerializer,
+    installDirectoryName,
+    InstallerError,
+    messageOf,
+    NPM_FLAGS,
+    parseInstallerSpec,
+    STAGING_MANIFEST,
+    temporaryPath,
+    type InstallerOptions,
+} from './installer/support.js'
+import {
+    configuredWarnings,
+    dependentWarnings,
+    removalWarnings,
+} from './installer/warnings.js'
+import { NpmCliRunner, type NpmRunner } from './npm-runner.js'
+import type { PackageSpec } from './spec.js'
 import type {
     InstalledPackageInfo,
     PluginInstallResult,
@@ -36,56 +51,8 @@ import type {
     PluginUpdateResult,
 } from './types.js'
 
-export class InstallerError extends Error {
-    constructor(message: string, options?: ErrorOptions) {
-        super(message, options)
-        this.name = 'InstallerError'
-    }
-}
-
-export interface InstallerOptions {
-    /** Plugins root. Installed packages are placed in subdirectories here. */
-    dir: string
-    config: InstallerConfig
-    logger: Logger
-    runner?: NpmRunner | undefined
-    validate?: PackageValidator | undefined
-    reservedIds?: (() => ReadonlySet<string>) | undefined
-    configuredPluginIds?: (() => ReadonlySet<string>) | undefined
-    now?: (() => Date) | undefined
-}
-
-const ID_PATTERN = /^[a-z0-9][a-z0-9._-]*$/i
-const NPM_FLAGS = ['--no-audit', '--no-fund', '--loglevel=error']
-const STAGING_MANIFEST = {
-    name: '@jsbot-tellus/plugin-staging',
-    private: true,
-    version: '0.0.0',
-    type: 'module',
-}
-
-function messageOf(error: unknown): string {
-    return error instanceof Error ? error.message : String(error)
-}
-
-function asInstallerError(error: unknown): InstallerError {
-    if (error instanceof InstallerError) return error
-
-    if (error instanceof PackageSpecError) {
-        return new InstallerError(error.message, { cause: error })
-    }
-
-    return new InstallerError(messageOf(error), { cause: error })
-}
-
-function installDirectoryName(
-    packageName: string,
-    pluginIds: readonly string[]
-): string {
-    const only = pluginIds.length === 1 ? pluginIds[0] : undefined
-
-    return only ?? packageDirectoryName(packageName)
-}
+export { createDisabledInstaller, InstallerError } from './installer/support.js'
+export type { InstallerOptions } from './installer/support.js'
 
 export class NpmPluginInstaller implements PluginInstaller {
     readonly enabled: boolean
@@ -98,7 +65,7 @@ export class NpmPluginInstaller implements PluginInstaller {
     private readonly reservedIds: () => ReadonlySet<string>
     private readonly configuredPluginIds: () => ReadonlySet<string>
     private readonly now: () => Date
-    private tail: Promise<unknown> = Promise.resolve()
+    private readonly serialize = createTaskSerializer()
 
     constructor(options: InstallerOptions) {
         this.dir = options.dir
@@ -147,8 +114,8 @@ export class NpmPluginInstaller implements PluginInstaller {
         signal?: AbortSignal | undefined
     ): Promise<PluginInstallResult> {
         try {
-            this.assertEnabled()
-            const parsed = this.parse(spec)
+            assertInstallerEnabled(this.enabled)
+            const parsed = parseInstallerSpec(spec, this.config.allowedPackages)
 
             return this.serialize(() => this.installSpec(parsed, signal))
         } catch (error) {
@@ -162,22 +129,27 @@ export class NpmPluginInstaller implements PluginInstaller {
         options?: { force?: boolean | undefined } | undefined
     ): Promise<PluginRemoveResult> {
         try {
-            this.assertEnabled()
+            assertInstallerEnabled(this.enabled)
         } catch (error) {
             return Promise.reject(asInstallerError(error))
         }
 
         return this.serialize(async () => {
             const state = await readInstallState(this.dir)
-            const name = this.resolveTarget(target, state)
+            const name = resolveTarget(target, state)
             const record = state.packages[name]
 
             if (!record) {
                 throw new InstallerError(`未找到已安装的插件包: ${name}`)
             }
 
-            const warnings = this.removalWarnings(name, record, state)
-            const dependents = this.dependentWarnings(name, record, state)
+            const warnings = removalWarnings(
+                name,
+                record,
+                state,
+                this.configuredPluginIds()
+            )
+            const dependents = dependentWarnings(name, record, state)
 
             if (dependents.length > 0 && options?.force !== true) {
                 throw new InstallerError(
@@ -190,7 +162,7 @@ export class NpmPluginInstaller implements PluginInstaller {
             }
 
             const destination = join(this.dir, record.dir)
-            const backup = this.temporaryPath('backup')
+            const backup = temporaryPath(this.dir, 'backup')
             const existed = await pathExists(destination)
 
             try {
@@ -243,7 +215,7 @@ export class NpmPluginInstaller implements PluginInstaller {
         signal?: AbortSignal | undefined
     ): Promise<PluginUpdateResult> {
         try {
-            this.assertEnabled()
+            assertInstallerEnabled(this.enabled)
         } catch (error) {
             return Promise.reject(asInstallerError(error))
         }
@@ -253,7 +225,7 @@ export class NpmPluginInstaller implements PluginInstaller {
             const names =
                 target === undefined || target.trim().length === 0
                     ? Object.keys(state.packages).sort()
-                    : [this.resolveTarget(target, state)]
+                    : [resolveTarget(target, state)]
 
             const updated: PluginInstallResult[] = []
             const failed: Array<{ packageName: string; message: string }> = []
@@ -265,7 +237,10 @@ export class NpmPluginInstaller implements PluginInstaller {
                 }
 
                 try {
-                    const parsed = this.parse(name)
+                    const parsed = parseInstallerSpec(
+                        name,
+                        this.config.allowedPackages
+                    )
 
                     updated.push(
                         await this.installSpec(
@@ -297,8 +272,8 @@ export class NpmPluginInstaller implements PluginInstaller {
 
         const state = await readInstallState(this.dir)
         const previous = state.packages[spec.name]
-        const staging = this.temporaryPath('staging')
-        const backup = this.temporaryPath('backup')
+        const staging = temporaryPath(this.dir, 'staging')
+        const backup = temporaryPath(this.dir, 'backup')
         let target: string | null = null
         let movedTarget = false
         let movedBackup = false
@@ -360,7 +335,7 @@ export class NpmPluginInstaller implements PluginInstaller {
                 script: join(this.dir, '.jsbot', VALIDATE_SCRIPT_FILE),
             })
 
-            this.checkPlugins(spec.name, validated, state)
+            checkPlugins(spec.name, validated, state, () => this.reservedIds())
 
             const version = await readPackageVersion(flat)
 
@@ -374,7 +349,7 @@ export class NpmPluginInstaller implements PluginInstaller {
 
             target = join(this.dir, directory)
 
-            await this.assertTargetAvailable(
+            await assertTargetAvailable(
                 state,
                 spec.name,
                 directory,
@@ -382,10 +357,11 @@ export class NpmPluginInstaller implements PluginInstaller {
                 previous
             )
 
-            const warnings = this.configuredWarnings(
+            const warnings = configuredWarnings(
                 (previous?.pluginIds ?? []).filter(
                     (id) => !pluginIds.includes(id)
-                )
+                ),
+                this.configuredPluginIds()
             )
 
             if (await pathExists(target)) {
@@ -466,230 +442,5 @@ export class NpmPluginInstaller implements PluginInstaller {
                 }
             )
         }
-    }
-
-    private async assertTargetAvailable(
-        state: InstallState,
-        packageName: string,
-        directory: string,
-        target: string,
-        previous: InstalledPackageRecord | undefined
-    ): Promise<void> {
-        for (const [name, record] of Object.entries(state.packages)) {
-            if (name === packageName) continue
-            if (record.dir !== directory) continue
-
-            throw new InstallerError(
-                `插件目录已被其它已安装包使用: ${record.dir}（${name}）`
-            )
-        }
-
-        if (previous !== undefined) return
-
-        if (await pathExists(target)) {
-            throw new InstallerError(
-                `安装目录已存在且不是由安装器管理: ${target}。请先移除该本地插件或为其改名。`
-            )
-        }
-    }
-
-    private checkPlugins(
-        packageName: string,
-        plugins: ValidatedPlugin[],
-        state: InstallState
-    ): void {
-        const ownIds = new Set(state.packages[packageName]?.pluginIds ?? [])
-        const ids = new Set<string>()
-        const taken = new Set<string>()
-
-        for (const id of this.reservedIds()) {
-            if (!ownIds.has(id)) taken.add(id)
-        }
-
-        for (const [name, record] of Object.entries(state.packages)) {
-            if (name === packageName) continue
-
-            for (const id of record.pluginIds) taken.add(id)
-        }
-
-        for (const plugin of plugins) {
-            if (!ID_PATTERN.test(plugin.id)) {
-                throw new InstallerError(`插件 id 无效: ${plugin.id}`)
-            }
-
-            if (ids.has(plugin.id)) {
-                throw new InstallerError(`插件 id 重复: ${plugin.id}`)
-            }
-
-            if (taken.has(plugin.id)) {
-                throw new InstallerError(
-                    `插件 id 已被占用: ${plugin.id}（内置插件或其他已安装包）`
-                )
-            }
-
-            ids.add(plugin.id)
-        }
-
-        const graph = new Map<string, string[]>()
-
-        for (const [name, record] of Object.entries(state.packages)) {
-            if (name === packageName) continue
-
-            for (const id of record.pluginIds) {
-                graph.set(id, record.dependencies[id] ?? [])
-            }
-        }
-
-        for (const plugin of plugins) {
-            graph.set(plugin.id, plugin.dependencies)
-        }
-
-        const reserved = this.reservedIds()
-        const available = new Set(graph.keys())
-
-        for (const id of reserved) {
-            if (!ownIds.has(id)) available.add(id)
-        }
-
-        for (const [id, dependencies] of graph) {
-            for (const dependency of dependencies) {
-                if (!available.has(dependency)) {
-                    throw new InstallerError(
-                        `插件 ${id} 依赖未加载的插件: ${dependency}`
-                    )
-                }
-            }
-        }
-
-        const visiting = new Set<string>()
-        const visited = new Set<string>()
-
-        const visit = (id: string): void => {
-            if (visited.has(id)) return
-
-            if (visiting.has(id)) {
-                throw new InstallerError(`插件依赖存在循环: ${id}`)
-            }
-
-            visiting.add(id)
-
-            for (const dependency of graph.get(id) ?? []) {
-                if (graph.has(dependency)) visit(dependency)
-            }
-
-            visiting.delete(id)
-            visited.add(id)
-        }
-
-        for (const id of graph.keys()) visit(id)
-    }
-
-    private resolveTarget(target: string, state: InstallState): string {
-        const value = target.trim()
-
-        if (value.length === 0) {
-            throw new InstallerError('请提供包名或插件 id')
-        }
-
-        if (state.packages[value] !== undefined) return value
-
-        for (const [name, record] of Object.entries(state.packages)) {
-            if (record.pluginIds.includes(value)) return name
-        }
-
-        throw new InstallerError(`未找到已安装的插件包: ${value}`)
-    }
-
-    private removalWarnings(
-        packageName: string,
-        record: InstalledPackageRecord | undefined,
-        state: InstallState
-    ): string[] {
-        return [
-            ...this.configuredWarnings(record?.pluginIds ?? []),
-            ...this.dependentWarnings(packageName, record, state),
-        ]
-    }
-
-    private configuredWarnings(pluginIds: readonly string[]): string[] {
-        const configured = this.configuredPluginIds()
-
-        return pluginIds
-            .filter((id) => configured.has(id))
-            .map(
-                (id) =>
-                    `配置里的 plugins.${id} 仍然存在，重启前请删除，否则会因未知插件 ID 启动失败`
-            )
-    }
-
-    private dependentWarnings(
-        packageName: string,
-        record: InstalledPackageRecord | undefined,
-        state: InstallState
-    ): string[] {
-        const removedIds = new Set(record?.pluginIds ?? [])
-        const warnings: string[] = []
-
-        for (const [name, other] of Object.entries(state.packages)) {
-            if (name === packageName) continue
-
-            for (const [pluginId, dependencies] of Object.entries(
-                other.dependencies
-            )) {
-                for (const dependency of dependencies) {
-                    if (!removedIds.has(dependency)) continue
-
-                    warnings.push(
-                        `插件包 ${name} 的插件 ${pluginId} 依赖已卸载的插件 ${dependency}`
-                    )
-                }
-            }
-        }
-
-        return warnings
-    }
-
-    private parse(spec: string): PackageSpec {
-        const parsed = parsePackageSpec(spec)
-
-        if (!isPackageAllowed(parsed.name, this.config.allowedPackages)) {
-            throw new InstallerError(`包不在允许列表: ${parsed.name}`)
-        }
-
-        return parsed
-    }
-
-    private temporaryPath(kind: 'staging' | 'backup'): string {
-        return join(this.dir, `.${kind}-${randomUUID()}`)
-    }
-
-    private assertEnabled(): void {
-        if (!this.enabled) {
-            throw new InstallerError(
-                '插件安装功能未启用（installer.enabled=false）'
-            )
-        }
-    }
-
-    private serialize<T>(task: () => Promise<T>): Promise<T> {
-        const run = this.tail.then(task, task)
-        this.tail = run.then(
-            () => undefined,
-            () => undefined
-        )
-        return run
-    }
-}
-
-export function createDisabledInstaller(): PluginInstaller {
-    const fail = (): Promise<never> =>
-        Promise.reject(new InstallerError('插件安装功能未启用'))
-
-    return {
-        enabled: false,
-        list: () => Promise.resolve([]),
-        install: fail,
-        remove: fail,
-        update: fail,
     }
 }

@@ -232,7 +232,7 @@ npm run build
 
 根目录的 `npm run build` 构建内核。插件自身的构建在启动时缺少 `dist` 会自动执行；需要提前校验时也可以手动运行 `npm run build --prefix plugins/my-plugin`。
 
-根目录的 `npm run build:local` / `npm run check:local` 目前只覆盖 `plugins/poke` 和 `plugins/llm`。新增插件请使用 `npm run build --prefix plugins/<id>` 和 `npm run check --prefix plugins/<id>`，或者把新目录加入根 `package.json` 的对应脚本。
+根目录的 `npm run build:plugin` / `npm run check:plugin` 会自动发现 `plugins/*` 中包含 `src/`、`tsconfig.json` 且声明了对应 npm script 的目录；没有安装 `node_modules` 的目录会跳过。新增插件不需要修改根 `package.json`，也可以单独运行 `npm run build --prefix plugins/<id>` 和 `npm run check --prefix plugins/<id>`。
 
 开发时可以单独开一个终端监听：
 
