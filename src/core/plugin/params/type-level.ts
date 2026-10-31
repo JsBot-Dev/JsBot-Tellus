@@ -8,12 +8,16 @@ type TrimRight<Source extends string> =
 
 type Trim<Source extends string> = TrimLeft<TrimRight<Source>>
 
+type StripLength<Type extends string> =
+    Trim<Type> extends `${infer Base}(${string})` ? Trim<Base> : Trim<Type>
+
 type ParamValue<Type extends string> =
-    Trim<Type> extends 'string' | 'text'
+    StripLength<Type> extends 'string' | 'text'
         ? string
-        : Trim<Type> extends 'number' | 'integer' | 'at' | 'reply' | 'time'
+        : StripLength<Type> extends
+                'number' | 'integer' | 'at' | 'reply' | 'time'
           ? number
-          : Trim<Type> extends 'boolean'
+          : StripLength<Type> extends 'boolean'
             ? boolean
             : unknown
 
