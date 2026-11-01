@@ -30,6 +30,11 @@ export class CommandParamsError extends Error {
     }
 }
 
+export interface ParamLength {
+    min?: number | undefined
+    max?: number | undefined
+}
+
 export interface ParamSpec {
     name: string
     type: CommandParamType
@@ -37,6 +42,7 @@ export interface ParamSpec {
     rest: boolean
     hasDefault: boolean
     defaultValue?: unknown
+    length?: ParamLength | undefined
 }
 
 export interface InputToken {

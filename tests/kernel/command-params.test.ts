@@ -50,6 +50,81 @@ describe('command params', () => {
         })
     })
 
+    it('limits string lengths', () => {
+        const max = compileCommandParams('<name:string(..3)>')
+
+        expect(max.usage).toBe('<name>')
+        expect(max.parse('abc')).toEqual({ args: ['abc'], ignored: [] })
+        expect(() => max.parse('abcd')).toThrowError(
+            new CommandParamsError('参数 name 不能超过 3 个字符', '<name>')
+        )
+
+        const min = compileCommandParams('[name:string(2..)]')
+
+        expect(min.parse('ab')).toEqual({ args: ['ab'], ignored: [] })
+        expect(() => min.parse('a')).toThrowError(
+            new CommandParamsError('参数 name 至少需要 2 个字符', '[name]')
+        )
+
+        const range = compileCommandParams('<name:string(2..3)>')
+
+        expect(range.parse('ab')).toEqual({ args: ['ab'], ignored: [] })
+        expect(range.parse('abc')).toEqual({ args: ['abc'], ignored: [] })
+        expect(() => range.parse('a')).toThrowError(
+            new CommandParamsError('参数 name 至少需要 2 个字符', '<name>')
+        )
+        expect(() => range.parse('abcd')).toThrowError(
+            new CommandParamsError('参数 name 不能超过 3 个字符', '<name>')
+        )
+    })
+
+    it('limits text lengths', () => {
+        const params = compileCommandParams('<message:text(2..5)>')
+
+        expect(params.usage).toBe('<message...>')
+        expect(params.parse('hello')).toEqual({
+            args: ['hello'],
+            ignored: [],
+        })
+        expect(params.parse('"你好"')).toEqual({
+            args: ['你好'],
+            ignored: [],
+        })
+        expect(() => params.parse('a')).toThrowError(
+            new CommandParamsError(
+                '参数 message 至少需要 2 个字符',
+                '<message...>'
+            )
+        )
+        expect(() => params.parse('hello world')).toThrowError(
+            new CommandParamsError(
+                '参数 message 不能超过 5 个字符',
+                '<message...>'
+            )
+        )
+    })
+
+    it('counts lengths in unicode code points', () => {
+        const params = compileCommandParams('<name:string(..1)>')
+
+        expect(params.parse('😀')).toEqual({ args: ['😀'], ignored: [] })
+        expect(() => params.parse('😀😀')).toThrowError(
+            new CommandParamsError('参数 name 不能超过 1 个字符', '<name>')
+        )
+    })
+
+    it('validates default lengths when compiling', () => {
+        const params = compileCommandParams('[name:string(2..3)=ab]')
+
+        expect(params.parse('')).toEqual({ args: ['ab'], ignored: [] })
+        expect(() => compileCommandParams('[name:string(2..3)=a]')).toThrow(
+            /参数 name 的默认值至少需要 2 个字符/
+        )
+        expect(() => compileCommandParams('[name:string(2..3)=abcd]')).toThrow(
+            /参数 name 的默认值不能超过 3 个字符/
+        )
+    })
+
     it('supports quoted fixed arguments', () => {
         const params = compileCommandParams('<name:string> <message:text>')
 
@@ -355,6 +430,30 @@ describe('command params', () => {
         )
         expect(() => compileCommandParams('[arg:time=abc]')).toThrow(
             /默认值不是时间/
+        )
+        expect(() => compileCommandParams('<arg:number(1..2)>')).toThrow(
+            /只有 string\/text 参数支持长度限制/
+        )
+        expect(() => compileCommandParams('<arg:string(..)>')).toThrow(
+            /长度限制不能为空/
+        )
+        expect(() => compileCommandParams('<arg:string(3..2)>')).toThrow(
+            /长度下限不能大于上限/
+        )
+        expect(() => compileCommandParams('<arg:string(-1..2)>')).toThrow(
+            /非法的长度限制/
+        )
+        expect(() => compileCommandParams('<arg:string(1.5..2)>')).toThrow(
+            /非法的长度限制/
+        )
+        expect(() => compileCommandParams('<arg:string(1...2)>')).toThrow(
+            /非法的参数声明/
+        )
+        expect(() => compileCommandParams('<arg:string(1..2>')).toThrow(
+            /非法的参数声明/
+        )
+        expect(() => compileCommandParams('[...rest(1..2)]')).toThrow(
+            /变长参数不支持长度限制/
         )
     })
 })

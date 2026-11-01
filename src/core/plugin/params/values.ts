@@ -37,6 +37,10 @@ export function unquote(value: string): string {
     return result
 }
 
+export function measureLength(value: string): number {
+    return Array.from(value).length
+}
+
 export function parseBoolean(value: string): boolean | null {
     const normalized = value.trim().toLowerCase()
 
