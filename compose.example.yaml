@@ -1,0 +1,18 @@
+services:
+    jsbot:
+        image: ghcr.io/jsbot-dev/jsbot-tellus:latest
+        container_name: jsbot
+        restart: unless-stopped
+        init: true
+        environment:
+            BOT_LOG_LEVEL: info
+        ports:
+            - '127.0.0.1:8787:8787'
+        volumes:
+            - ./config:/app/config
+            - jsbot-data:/app/data
+            - jsbot-plugins:/app/plugins
+
+volumes:
+    jsbot-data:
+    jsbot-plugins:

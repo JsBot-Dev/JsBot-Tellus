@@ -9,9 +9,10 @@ on:
 permissions:
     contents: read
     id-token: write
+    packages: write
 
 concurrency:
-    group: npm-publish
+    group: cd
     cancel-in-progress: false
 
 jobs:
@@ -53,3 +54,129 @@ jobs:
                       exit 0
                   fi
                   npm publish --provenance --access public
+
+    docker:
+        name: docker
+        needs: publish
+        runs-on: ubuntu-latest
+        timeout-minutes: 30
+        steps:
+            - name: Check out tested commit
+              uses: actions/checkout@v4
+              with:
+                  ref: ${{ github.event.workflow_run.head_sha }}
+
+            - name: Read version
+              id: version
+              env:
+                  HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+              run: |
+                  echo "version=$(node -p "require('./package.json').version")" >> "$GITHUB_OUTPUT"
+                  echo "short_sha=${HEAD_SHA:0:7}" >> "$GITHUB_OUTPUT"
+
+            - name: Verify Docker Hub secrets
+              env:
+                  DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+                  DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+              run: |
+                  if [ -z "$DOCKERHUB_USERNAME" ] || [ -z "$DOCKERHUB_TOKEN" ]; then
+                      echo "::error::DOCKERHUB_USERNAME and DOCKERHUB_TOKEN repository secrets are required"
+                      exit 1
+                  fi
+
+            - name: Setup buildx
+              uses: docker/setup-buildx-action@v3
+
+            - name: Log in to GHCR
+              uses: docker/login-action@v3
+              with:
+                  registry: ghcr.io
+                  username: ${{ github.actor }}
+                  password: ${{ secrets.GITHUB_TOKEN }}
+
+            - name: Log in to Docker Hub
+              uses: docker/login-action@v3
+              with:
+                  registry: docker.io
+                  username: ${{ secrets.DOCKERHUB_USERNAME }}
+                  password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+            - name: Check published images
+              id: check
+              env:
+                  VERSION: ${{ steps.version.outputs.version }}
+                  DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+              run: |
+                  ghcr_missing=true
+                  dockerhub_missing=true
+
+                  if docker manifest inspect "ghcr.io/jsbot-dev/jsbot-tellus:$VERSION" >/dev/null 2>&1; then
+                      ghcr_missing=false
+                  fi
+
+                  if docker manifest inspect "docker.io/$DOCKERHUB_USERNAME/jsbot-tellus:$VERSION" >/dev/null 2>&1; then
+                      dockerhub_missing=false
+                  fi
+
+                  echo "ghcr_missing=$ghcr_missing" >> "$GITHUB_OUTPUT"
+                  echo "dockerhub_missing=$dockerhub_missing" >> "$GITHUB_OUTPUT"
+
+                  if [ "$ghcr_missing" = "false" ] && [ "$dockerhub_missing" = "false" ]; then
+                      echo "::notice::both registries already have $VERSION, skipping"
+                  elif [ "$ghcr_missing" = "false" ] || [ "$dockerhub_missing" = "false" ]; then
+                      echo "::warning::$VERSION exists in only one registry; only the missing registry will be pushed"
+                  fi
+
+            - name: Extract GHCR metadata
+              if: steps.check.outputs.ghcr_missing == 'true'
+              id: meta-ghcr
+              uses: docker/metadata-action@v5
+              with:
+                  images: ghcr.io/jsbot-dev/jsbot-tellus
+                  tags: |
+                      type=semver,pattern={{version}},value=v${{ steps.version.outputs.version }}
+                      type=semver,pattern={{major}}.{{minor}},value=v${{ steps.version.outputs.version }}
+                      type=semver,pattern={{major}},value=v${{ steps.version.outputs.version }}
+                      type=raw,value=sha-${{ steps.version.outputs.short_sha }}
+                      type=raw,value=latest
+
+            - name: Extract Docker Hub metadata
+              if: steps.check.outputs.dockerhub_missing == 'true'
+              id: meta-dockerhub
+              uses: docker/metadata-action@v5
+              with:
+                  images: docker.io/${{ secrets.DOCKERHUB_USERNAME }}/jsbot-tellus
+                  tags: |
+                      type=semver,pattern={{version}},value=v${{ steps.version.outputs.version }}
+                      type=semver,pattern={{major}}.{{minor}},value=v${{ steps.version.outputs.version }}
+                      type=semver,pattern={{major}},value=v${{ steps.version.outputs.version }}
+                      type=raw,value=sha-${{ steps.version.outputs.short_sha }}
+                      type=raw,value=latest
+
+            - name: Build and push GHCR
+              if: steps.check.outputs.ghcr_missing == 'true'
+              uses: docker/build-push-action@v6
+              with:
+                  context: .
+                  platforms: linux/amd64
+                  push: true
+                  tags: ${{ steps.meta-ghcr.outputs.tags }}
+                  labels: ${{ steps.meta-ghcr.outputs.labels }}
+                  cache-from: type=gha
+                  cache-to: type=gha,mode=max,ignore-error=true
+                  provenance: true
+                  sbom: true
+
+            - name: Build and push Docker Hub
+              if: steps.check.outputs.dockerhub_missing == 'true'
+              uses: docker/build-push-action@v6
+              with:
+                  context: .
+                  platforms: linux/amd64
+                  push: true
+                  tags: ${{ steps.meta-dockerhub.outputs.tags }}
+                  labels: ${{ steps.meta-dockerhub.outputs.labels }}
+                  cache-from: type=gha
+                  cache-to: type=gha,mode=max,ignore-error=true
+                  provenance: true
+                  sbom: true
