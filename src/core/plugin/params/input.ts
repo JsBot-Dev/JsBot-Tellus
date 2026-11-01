@@ -101,11 +101,7 @@ export function tokenizeInput(input: string, usage: string): InputToken[] {
     return tokens
 }
 
-function enforceLength(
-    spec: ParamSpec,
-    value: string,
-    usage: string
-): string {
+function enforceLength(spec: ParamSpec, value: string, usage: string): string {
     const length = spec.length
 
     if (length === undefined) {
