@@ -24,6 +24,15 @@ jsbot --config ./bot.config.json
 
 也可以从源码运行，见下方快速开始。
 
+### Docker
+
+```bash
+docker pull ghcr.io/jsbot-dev/jsbot-tellus:latest
+docker run --rm ghcr.io/jsbot-dev/jsbot-tellus:latest --help
+```
+
+镜像同时发布到 GHCR 和 Docker Hub，配置目录、数据卷和 WebUI 的完整说明见 [Docker 部署](docs/docker.md)。
+
 ## 快速开始
 
 ```bash
@@ -160,11 +169,12 @@ npm run plugin:gen -- my-plugin  # 生成并安装 plugins/my-plugin 模板依�
 
 ## 发布
 
-发布由 [`.github/workflows/cd.yaml`](.github/workflows/cd.yaml) 驱动：`main` 的 CI 成功后自动通过 npm Trusted Publisher 发布；已存在的版本会跳过。不需要版本标签。检查、构建和首次配置见[发布流程](docs/release.md)。
+发布由 [`.github/workflows/cd.yaml`](.github/workflows/cd.yaml) 驱动：`main` 的 CI 成功后自动通过 npm Trusted Publisher 发布，并构建推送 GHCR 与 Docker Hub 的 Docker 镜像；已存在的版本会跳过。不需要版本标签。检查、构建和首次配置见[发布流程](docs/release.md)，容器部署见 [Docker 部署](docs/docker.md)。
 
 ## 文档
 
 - [架构](docs/architecture.md)
+- [Docker 部署](docs/docker.md)
 - [WebUI](docs/webui.md)
 - [插件开发](docs/plugin-development.md)
 - [插件 API](docs/plugin-api.md)
