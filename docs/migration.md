@@ -8,7 +8,7 @@
 
 - 安装本地依赖：`npm install --prefix plugins/poke`、`npm install --prefix plugins/llm`
 - 构建本地插件：`npm run build:plugin`
-- 启动时加载：应用会自动扫描 `plugins/<id>/dist`，不需要路径参数
+- 启动和重启时加载：应用会自动扫描 `plugins/<id>/dist`，不需要路径参数
 
 应用会跳过与内置插件同 ID 的本地插件。没有加载的插件不能出现在 `plugins` 配置中，否则会因未知插件 ID 启动失败。
 

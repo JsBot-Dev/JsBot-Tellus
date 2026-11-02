@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, rm, utimes, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
@@ -312,7 +312,7 @@ describe('local plugin loader', () => {
             timeoutMs: 1_234,
         })
         expect(infos).toEqual([
-            'building local plugin demo: dist directory not found',
+            'building local plugin demo',
             'built local plugin demo',
         ])
     })
@@ -364,17 +364,144 @@ describe('local plugin loader', () => {
         expect(plugins).toEqual([])
         expect(calls).toHaveLength(1)
         expect(errors[0]).toContain('failed to build local plugin demo')
-        expect(warnings).toContain('skipping local plugin demo: build failed')
+        expect(warnings).toContain(
+            'skipping local plugin demo: build failed and dist directory not found'
+        )
     })
 
-    it('does not build installer-managed plugins', async () => {
+    it('rebuilds a local plugin that already has dist', async () => {
         const root = await temporaryDirectory()
+        const directory = await createPluginFixture(root, 'demo', {
+            build: 'tsc -p tsconfig.json',
+        })
+        const { runner, calls } = createBuildRunner(async () => {
+            await mkdir(join(directory, 'dist'), { recursive: true })
+            await writeFile(
+                join(directory, 'dist', 'index.mjs'),
+                pluginSource('rebuilt'),
+                'utf8'
+            )
+        })
+
+        await mkdir(join(directory, 'dist'), { recursive: true })
+        await writeFile(
+            join(directory, 'dist', 'index.mjs'),
+            pluginSource('stale'),
+            'utf8'
+        )
+
+        const plugins = await loadLocalPlugins(root, undefined, { runner })
+
+        expect(calls).toHaveLength(1)
+        expect(plugins.map((plugin) => plugin.manifest.id)).toEqual(['rebuilt'])
+    })
+
+    it('loads fresh build output on consecutive loads', async () => {
+        const root = await temporaryDirectory()
+        const directory = await createPluginFixture(root, 'demo', {
+            build: 'tsc -p tsconfig.json',
+        })
+        let builds = 0
+        const { runner } = createBuildRunner(async () => {
+            builds += 1
+
+            const file = join(directory, 'dist', 'index.mjs')
+
+            await mkdir(join(directory, 'dist'), { recursive: true })
+            await writeFile(
+                file,
+                pluginSource(builds === 1 ? 'first' : 'second'),
+                'utf8'
+            )
+            await utimes(
+                file,
+                new Date(Date.now() + builds * 1_000),
+                new Date(Date.now() + builds * 1_000)
+            )
+        })
+
+        const first = await loadLocalPlugins(root, undefined, { runner })
+        const second = await loadLocalPlugins(root, undefined, { runner })
+
+        expect(builds).toBe(2)
+        expect(first.map((plugin) => plugin.manifest.id)).toEqual(['first'])
+        expect(second.map((plugin) => plugin.manifest.id)).toEqual(['second'])
+    })
+
+    it('falls back to existing dist when the build fails', async () => {
+        const root = await temporaryDirectory()
+        const directory = await createPluginFixture(root, 'demo', {
+            build: 'tsc -p tsconfig.json',
+        })
+        const { logger, warnings, errors } = createLoaderLogger()
+        const { runner, calls } = createBuildRunner(() => {
+            throw new Error('boom')
+        })
+
+        await mkdir(join(directory, 'dist'), { recursive: true })
+        await writeFile(
+            join(directory, 'dist', 'index.mjs'),
+            pluginSource('stale'),
+            'utf8'
+        )
+
+        const plugins = await loadLocalPlugins(root, logger, { runner })
+
+        expect(calls).toHaveLength(1)
+        expect(plugins.map((plugin) => plugin.manifest.id)).toEqual(['stale'])
+        expect(errors[0]).toContain('failed to build local plugin demo')
+        expect(warnings).toContain(
+            'using existing dist for local plugin demo: rebuild failed'
+        )
+    })
+
+    it('falls back to existing dist when node_modules is missing', async () => {
+        const root = await temporaryDirectory()
+        const directory = await createPluginFixture(root, 'demo', {
+            build: 'tsc -p tsconfig.json',
+            nodeModules: false,
+        })
         const { logger, warnings } = createLoaderLogger()
         const { runner, calls } = createBuildRunner(() => {})
 
-        await createPluginFixture(root, 'demo', {
+        await mkdir(join(directory, 'dist'), { recursive: true })
+        await writeFile(
+            join(directory, 'dist', 'index.mjs'),
+            pluginSource('stale'),
+            'utf8'
+        )
+
+        const plugins = await loadLocalPlugins(root, logger, { runner })
+
+        expect(calls).toHaveLength(0)
+        expect(plugins.map((plugin) => plugin.manifest.id)).toEqual(['stale'])
+        expect(warnings[0]).toContain('node_modules is missing')
+        expect(warnings).toContain(
+            'using existing dist for local plugin demo: rebuild failed'
+        )
+    })
+
+    it('rebuilds installer-managed plugins', async () => {
+        const root = await temporaryDirectory()
+        const directory = await createPluginFixture(root, 'demo', {
             build: 'tsc -p tsconfig.json',
         })
+        const { logger, warnings } = createLoaderLogger()
+        const { runner, calls } = createBuildRunner(async () => {
+            await mkdir(join(directory, 'dist'), { recursive: true })
+            await writeFile(
+                join(directory, 'dist', 'index.mjs'),
+                pluginSource('rebuilt'),
+                'utf8'
+            )
+        })
+
+        await mkdir(join(directory, 'dist'), { recursive: true })
+        await writeFile(
+            join(directory, 'dist', 'index.mjs'),
+            pluginSource('installed'),
+            'utf8'
+        )
         await writeFile(
             join(root, '.jsbot-installed.json'),
             `${JSON.stringify(
@@ -399,21 +526,26 @@ describe('local plugin loader', () => {
 
         const plugins = await loadLocalPlugins(root, logger, { runner })
 
-        expect(plugins).toEqual([])
-        expect(calls).toHaveLength(0)
-        expect(warnings[0]).toContain(
-            'installed package is expected to include dist'
-        )
+        expect(calls).toHaveLength(1)
+        expect(warnings).toEqual([])
+        expect(plugins.map((plugin) => plugin.manifest.id)).toEqual(['rebuilt'])
     })
 
-    it('disables auto-build when install state is unreadable', async () => {
+    it('rebuilds plugins when install state is unreadable', async () => {
         const root = await temporaryDirectory()
-        const { logger, warnings } = createLoaderLogger()
-        const { runner, calls } = createBuildRunner(() => {})
-
-        await createPluginFixture(root, 'demo', {
+        const directory = await createPluginFixture(root, 'demo', {
             build: 'tsc -p tsconfig.json',
         })
+        const { logger } = createLoaderLogger()
+        const { runner, calls } = createBuildRunner(async () => {
+            await mkdir(join(directory, 'dist'), { recursive: true })
+            await writeFile(
+                join(directory, 'dist', 'index.mjs'),
+                pluginSource('rebuilt'),
+                'utf8'
+            )
+        })
+
         await writeFile(
             join(root, '.jsbot-installed.json'),
             '{ not valid json',
@@ -422,11 +554,8 @@ describe('local plugin loader', () => {
 
         const plugins = await loadLocalPlugins(root, logger, { runner })
 
-        expect(plugins).toEqual([])
-        expect(calls).toHaveLength(0)
-        expect(warnings[0]).toContain(
-            'automatic local plugin build is disabled'
-        )
+        expect(calls).toHaveLength(1)
+        expect(plugins.map((plugin) => plugin.manifest.id)).toEqual(['rebuilt'])
     })
 
     it('builds a local plugin with npm before loading', async () => {

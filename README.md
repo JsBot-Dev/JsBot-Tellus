@@ -8,7 +8,7 @@
 - 插件只通过 `PluginContext` 使用内核能力，不直接接触 SDK client、Router 或数据库。
 - SDK 只注册一个 middleware：`client.use(router.dispatch)`。
 - 内置插件 `core`、`admin` 是普通源码，位于 `src/plugins/`，随内核一起编译。
-- `poke`、`llm` 等本地插件放在不跟踪的 `plugins/`，各自是独立包，从 `plugins/<id>/dist` 自动加载；缺少 `dist` 时会先尝试自动构建。
+- `poke`、`llm` 等本地插件放在不跟踪的 `plugins/`，各自是独立包，从 `plugins/<id>/dist` 自动加载；每次加载前会尝试自动构建。
 
 ## 环境要求
 
@@ -55,6 +55,8 @@ npm run start:source
 # 开发模式（Watch）
 npm run dev
 ```
+
+开发模式会监听核心源码和本地插件源码；插件构建产物 `plugins/*/dist/` 不参与 watch，避免构建触发无限重启。
 
 默认配置路径是 `./bot.config.json`，默认数据目录是 `./data`。从旧版升级前请先备份并移走旧配置和数据库，见[迁移与回滚](docs/migration.md)。
 
@@ -115,7 +117,7 @@ npm run build:plugin
 node dist/app.js
 ```
 
-应用启动时会固定扫描 `plugins/<id>/dist`，不需要路径参数。`plugins/` 中没有 `dist` 的本地插件如果带有 `build` 脚本且依赖已安装，会先自动执行 `npm run build` 再加载；没有 `build` 脚本、缺少 `node_modules` 或构建失败时会记录警告并跳过该插件。`plugins/` 中与内置插件同 ID 的插件也会被跳过。本地插件是普通 ESM 模块，默认导出、`plugin` 命名导出或 `plugins` 数组导出均可被加载。开发和发布方式见 [插件开发指南](docs/plugin-development.md)，示例位于 [`examples/plugins/hello`](examples/plugins/hello)。
+应用启动和每次运行时重启前都会固定扫描 `plugins/<id>/dist`，不需要路径参数。`plugins/` 中带有 `build` 脚本且依赖已安装的插件会先自动执行 `npm run build`，无论 `dist` 是否已经存在；构建失败或缺少 `node_modules` 时会回退加载已有 `dist`，没有可用 `dist` 时记录警告并跳过该插件。没有 `build` 脚本的插件直接加载现有 `dist`。`plugins/` 中与内置插件同 ID 的插件也会被跳过。本地插件是普通 ESM 模块，默认导出、`plugin` 命名导出或 `plugins` 数组导出均可被加载。开发和发布方式见 [插件开发指南](docs/plugin-development.md)，示例位于 [`examples/plugins/hello`](examples/plugins/hello)。
 
 ## 在线安装插件包
 
@@ -147,7 +149,7 @@ jsbot [options]
 --log-level <level>  debug、info、warn、error，优先级 CLI > BOT_LOG_LEVEL
 --help               显示帮助
 
-本地插件固定从 ./plugins/<id>/dist 自动加载；缺少 dist 时会先自动构建。
+本地插件固定从 ./plugins/<id>/dist 自动加载；每次加载前会尝试自动重建。
 ```
 
 ## 开发与校验
