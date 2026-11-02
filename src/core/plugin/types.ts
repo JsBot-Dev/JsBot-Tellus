@@ -1,6 +1,8 @@
 import type {
+    OneBotGroupMessageEvent,
     OneBotMessageEvent,
     OneBotNoticeEvent,
+    OneBotPrivateMessageEvent,
     OneBotRequestEvent,
     OutgoingMessage,
     SnowLumaEvent,
@@ -17,6 +19,10 @@ import type { CommandParamArgs } from './command-params.js'
 
 export type EventType = 'message' | 'notice' | 'request' | 'meta'
 
+export type MessageType = 'group' | 'private'
+
+export type MessageTypeFilter = MessageType | readonly MessageType[]
+
 export interface CommandMatch {
     command: string
     prefix: string
@@ -28,6 +34,7 @@ export interface CommandInfo {
     name: string
     aliases: string[]
     permission: Permission
+    messageTypes: MessageType[]
     description?: string | undefined
     usage?: string | undefined
     pluginId: string
@@ -59,6 +66,16 @@ export type MessageHandler = (
     context: EventContext<OneBotMessageEvent>
 ) => void | Promise<void>
 
+export type GroupMessageHandler = (
+    event: OneBotGroupMessageEvent,
+    context: EventContext<OneBotGroupMessageEvent>
+) => void | Promise<void>
+
+export type PrivateMessageHandler = (
+    event: OneBotPrivateMessageEvent,
+    context: EventContext<OneBotPrivateMessageEvent>
+) => void | Promise<void>
+
 export type NoticeHandler = (
     event: OneBotNoticeEvent,
     context: EventContext<OneBotNoticeEvent>
@@ -80,6 +97,7 @@ export interface CommandOptions<Declaration extends string = string> {
     aliases?: string[] | undefined
     prefixes?: string[] | undefined
     permission?: Permission | undefined
+    messageType?: MessageTypeFilter | undefined
     description?: string | undefined
     params?: Declaration | undefined
 }
@@ -127,6 +145,8 @@ export interface CommandRegistrar extends CommandGroupRegistrar {
 
 export interface EventRegistrar {
     onMessage(handler: MessageHandler): () => void
+    onGroupMessage(handler: GroupMessageHandler): () => void
+    onPrivateMessage(handler: PrivateMessageHandler): () => void
     onNotice(options: NoticeOptions, handler: NoticeHandler): () => void
     onRequest(options: RequestOptions, handler: RequestHandler): () => void
 }

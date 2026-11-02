@@ -1,4 +1,4 @@
-import type { SnowLumaEvent } from '@snowluma/sdk'
+import { isMessageEvent, type SnowLumaEvent } from '@snowluma/sdk'
 import type { BotClient } from './client.js'
 import type { AppConfig } from './config/schema.js'
 import { createBotApi, type BotApi } from './api.js'
@@ -93,6 +93,13 @@ export class Kernel {
                               .listCommands()
                               .filter((command) =>
                                   gate.isEnabled(command.pluginId, event)
+                              )
+                              .filter(
+                                  (command) =>
+                                      !isMessageEvent(event) ||
+                                      command.messageTypes.includes(
+                                          event.message_type
+                                      )
                               ),
             },
             plugins: {

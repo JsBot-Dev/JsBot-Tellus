@@ -15,6 +15,8 @@ import type {
     CommandInfo,
     EventType,
     MessageHandler,
+    MessageType,
+    MessageTypeFilter,
     MiddlewareOptions,
     NoticeHandler,
     NoticeOptions,
@@ -27,6 +29,7 @@ import { PermissionRefuser } from '../security/refuse.js'
 import type { Permission } from '../security/permission.js'
 import {
     CommandRegistry,
+    normalizeMessageTypes,
     type CommandGroupRegistration,
     type CommandRegistration,
 } from './command.js'
@@ -34,6 +37,7 @@ import {
     createEventContext,
     eventTypeOf,
     HandlerRegistry,
+    isMessageOf,
     isNoticeOf,
     isRequestOf,
 } from './handler.js'
@@ -64,6 +68,7 @@ export interface RegisterCommandOptions {
     aliases?: string[] | undefined
     prefixes?: string[] | undefined
     permission?: Permission | undefined
+    messageType?: MessageTypeFilter | undefined
     description?: string | undefined
     params?: string | undefined
     handler: AnyCommandHandler
@@ -75,6 +80,7 @@ export interface RegisterCommandGroupOptions {
     aliases?: string[] | undefined
     prefixes?: string[] | undefined
     permission?: Permission | undefined
+    messageType?: MessageTypeFilter | undefined
     description?: string | undefined
     params?: string | undefined
     handler?: AnyCommandHandler | undefined
@@ -160,7 +166,10 @@ export class Router {
             if (context.stopped) return
 
             if (isMessageEvent(event)) {
-                const found = this.commands.match(event.raw_message)
+                const found = this.commands.match(
+                    event.raw_message,
+                    event.message_type
+                )
 
                 if (found) {
                     sdkContext.stopPropagation()
@@ -257,6 +266,7 @@ export class Router {
             aliases: options.aliases ?? [],
             prefixes: options.prefixes ?? ['/'],
             permission: options.permission ?? 'User',
+            messageTypes: normalizeMessageTypes(options.messageType),
             ...(options.description !== undefined
                 ? { description: options.description }
                 : {}),
@@ -277,6 +287,7 @@ export class Router {
             aliases: options.aliases ?? [],
             prefixes: options.prefixes ?? ['/'],
             permission: options.permission ?? 'User',
+            messageTypes: normalizeMessageTypes(options.messageType),
             ...(options.description !== undefined
                 ? { description: options.description }
                 : {}),
@@ -289,8 +300,12 @@ export class Router {
         return this.commands.group(registration, setup)
     }
 
-    registerMessage(pluginId: string, handler: MessageHandler): () => void {
-        return this.handlers.registerMessage(pluginId, handler)
+    registerMessage(
+        pluginId: string,
+        handler: MessageHandler,
+        messageType?: MessageType
+    ): () => void {
+        return this.handlers.registerMessage(pluginId, handler, messageType)
     }
 
     registerNotice(options: RegisterNoticeOptions): () => void {
@@ -430,6 +445,8 @@ export class Router {
 
             for (const registration of this.handlers.messages()) {
                 if (messageContext.stopped) return
+
+                if (!isMessageOf(event, registration)) continue
 
                 if (!this.gate.isEnabled(registration.pluginId, event)) {
                     continue
