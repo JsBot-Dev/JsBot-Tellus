@@ -14,7 +14,7 @@ import type { Permission } from '../../src/core/security/permission.js'
 import { RoleService } from '../../src/core/security/roles.js'
 import { FakeClient } from '../helpers/fake-client.js'
 import { FakeEventContext } from '../helpers/event-context.js'
-import { groupMessage, pokeNotice } from '../helpers/events.js'
+import { groupMessage, pokeNotice, privateMessage } from '../helpers/events.js'
 import { createCapturingLogger } from '../helpers/loggers.js'
 
 function plugin(id: string): AnyPluginDefinition {
@@ -634,6 +634,54 @@ describe('router', () => {
         await dispatch(groupMessage({ raw_message: 'hello' }))
 
         expect(handler).toHaveBeenCalledTimes(1)
+    })
+
+    it('filters message handlers by message type', async () => {
+        const { router, dispatch } = harness()
+        const all = vi.fn(async () => {})
+        const group = vi.fn(async () => {})
+        const privateOnly = vi.fn(async () => {})
+
+        router.registerMessage('test', all)
+        router.registerMessage('test', group, 'group')
+        router.registerMessage('test', privateOnly, 'private')
+
+        await dispatch(groupMessage({ raw_message: 'hello' }))
+
+        expect(all).toHaveBeenCalledTimes(1)
+        expect(group).toHaveBeenCalledTimes(1)
+        expect(privateOnly).not.toHaveBeenCalled()
+
+        all.mockClear()
+        group.mockClear()
+
+        await dispatch(privateMessage({ raw_message: 'hello' }))
+
+        expect(all).toHaveBeenCalledTimes(1)
+        expect(group).not.toHaveBeenCalled()
+        expect(privateOnly).toHaveBeenCalledTimes(1)
+    })
+
+    it('does not match commands scoped to another message type', async () => {
+        const { router, dispatch } = harness()
+        const command = vi.fn(async () => {})
+        const handler = vi.fn(async () => {})
+
+        router.registerCommand({
+            pluginId: 'test',
+            name: 'group-only',
+            messageType: 'group',
+            handler: command,
+        })
+        router.registerMessage('test', handler)
+
+        const { context } = await dispatch(
+            privateMessage({ raw_message: '/group-only' })
+        )
+
+        expect(command).not.toHaveBeenCalled()
+        expect(handler).toHaveBeenCalledTimes(1)
+        expect(context.stopped).toBe(false)
     })
 
     it('filters notices by type and subtype', async () => {

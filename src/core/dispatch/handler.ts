@@ -1,4 +1,5 @@
 import type {
+    OneBotMessageEvent,
     OneBotNoticeEvent,
     OneBotRequestEvent,
     SnowLumaEvent,
@@ -9,6 +10,7 @@ import type {
     EventContext,
     EventType,
     MessageHandler,
+    MessageType,
     NoticeHandler,
     RequestHandler,
 } from '../plugin/types.js'
@@ -16,6 +18,7 @@ import type { MessageSender } from '../messaging/sender.js'
 
 export interface MessageRegistration {
     pluginId: string
+    messageType?: MessageType | undefined
     handler: MessageHandler
 }
 
@@ -96,9 +99,14 @@ export class HandlerRegistry {
     private noticeRegistrations: NoticeRegistration[] = []
     private requestRegistrations: RequestRegistration[] = []
 
-    registerMessage(pluginId: string, handler: MessageHandler): () => void {
+    registerMessage(
+        pluginId: string,
+        handler: MessageHandler,
+        messageType?: MessageType
+    ): () => void {
         const registration: MessageRegistration = {
             pluginId,
+            ...(messageType !== undefined ? { messageType } : {}),
             handler,
         }
 
@@ -154,6 +162,16 @@ export class HandlerRegistry {
             (item) => item.pluginId !== pluginId
         )
     }
+}
+
+export function isMessageOf(
+    event: OneBotMessageEvent,
+    registration: MessageRegistration
+): boolean {
+    return (
+        registration.messageType === undefined ||
+        registration.messageType === event.message_type
+    )
 }
 
 export function isNoticeOf(

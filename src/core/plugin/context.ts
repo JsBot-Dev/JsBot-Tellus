@@ -12,6 +12,7 @@ import type {
     CommandHandler,
     CommandOptions,
     CoreServices,
+    MessageHandler,
     PluginContext,
     PluginDefinition,
 } from './types.js'
@@ -63,6 +64,9 @@ export function createPluginContext<TConfig>(
                     ...(options.permission !== undefined
                         ? { permission: options.permission }
                         : {}),
+                    ...(options.messageType !== undefined
+                        ? { messageType: options.messageType }
+                        : {}),
                     ...(options.description !== undefined
                         ? { description: options.description }
                         : {}),
@@ -89,6 +93,9 @@ export function createPluginContext<TConfig>(
                         ...(options.permission !== undefined
                             ? { permission: options.permission }
                             : {}),
+                        ...(options.messageType !== undefined
+                            ? { messageType: options.messageType }
+                            : {}),
                         ...(options.description !== undefined
                             ? { description: options.description }
                             : {}),
@@ -110,6 +117,20 @@ export function createPluginContext<TConfig>(
         events: {
             onMessage(handler) {
                 return deps.router.registerMessage(id, handler)
+            },
+            onGroupMessage(handler) {
+                return deps.router.registerMessage(
+                    id,
+                    handler as MessageHandler,
+                    'group'
+                )
+            },
+            onPrivateMessage(handler) {
+                return deps.router.registerMessage(
+                    id,
+                    handler as MessageHandler,
+                    'private'
+                )
             },
             onNotice(options, handler) {
                 return deps.router.registerNotice({

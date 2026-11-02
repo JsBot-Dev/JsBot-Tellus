@@ -26,6 +26,8 @@ import { RoleService } from '../../src/core/security/roles.js'
 import { openMemoryDatabase } from '../../src/core/storage/database.js'
 import { SqliteSessionStore } from '../../src/core/storage/session.js'
 import { FakeClient } from '../helpers/fake-client.js'
+import { FakeEventContext } from '../helpers/event-context.js'
+import { groupMessage, privateMessage } from '../helpers/events.js'
 import { createCapturingLogger } from '../helpers/loggers.js'
 
 function envelope(value: Record<string, unknown>): PluginEnvelope {
@@ -226,6 +228,46 @@ describe('plugin host', () => {
                 loaded: false,
             },
         ])
+    })
+
+    it('registers scoped message handlers from plugin context', async () => {
+        const group = vi.fn(async () => {})
+        const privateHandler = vi.fn(async () => {})
+        const { host, router, database } = harness([
+            makePlugin('scoped', {
+                setup: (context) => {
+                    context.events.onGroupMessage(group)
+                    context.events.onPrivateMessage(privateHandler)
+                },
+            }),
+        ])
+
+        databases.push(database)
+
+        await host.setup()
+        await host.start()
+
+        const groupEvent = groupMessage()
+        await router.dispatch(
+            groupEvent,
+            new FakeEventContext(groupEvent),
+            async () => {}
+        )
+
+        expect(group).toHaveBeenCalledTimes(1)
+        expect(privateHandler).not.toHaveBeenCalled()
+
+        group.mockClear()
+
+        const privateEvent = privateMessage()
+        await router.dispatch(
+            privateEvent,
+            new FakeEventContext(privateEvent),
+            async () => {}
+        )
+
+        expect(group).not.toHaveBeenCalled()
+        expect(privateHandler).toHaveBeenCalledTimes(1)
     })
 
     it('runs setup, start and stop in order', async () => {

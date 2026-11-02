@@ -4,7 +4,7 @@ import { definePlugin } from '../../src/core/plugin/types.js'
 import { corePlugin } from '../../src/plugins/core/index.js'
 import { adminPlugin } from '../../src/plugins/admin/index.js'
 import type { FakeEventContext } from '../helpers/event-context.js'
-import { groupMessage } from '../helpers/events.js'
+import { groupMessage, privateMessage } from '../helpers/events.js'
 import { createTestApp, type TestApp } from '../helpers/test-app.js'
 
 function messageText(app: TestApp, context: FakeEventContext): string {
@@ -125,6 +125,58 @@ describe('core plugin', () => {
 
         expect(allowedText).toContain('/utter')
         expect(allowedText).toContain('/plugin')
+
+        await app.stop()
+    })
+
+    it('filters help by message type', async () => {
+        const scopedPlugin = definePlugin({
+            manifest: {
+                id: 'scoped',
+                version: '1.0.0',
+                defaultEnabled: true,
+                configSchema: z.object({}).strict(),
+            },
+            setup(ctx) {
+                ctx.commands.register(
+                    {
+                        name: 'group-only',
+                        messageType: 'group',
+                        description: '仅群聊',
+                    },
+                    async () => {}
+                )
+                ctx.commands.register(
+                    {
+                        name: 'private-only',
+                        messageType: 'private',
+                        description: '仅私聊',
+                    },
+                    async () => {}
+                )
+            },
+        })
+        const app = await createTestApp({
+            plugins: [corePlugin, scopedPlugin],
+        })
+
+        const group = await app.dispatch(
+            groupMessage({ raw_message: '/help', user_id: 30000 })
+        )
+        const groupText = messageText(app, group)
+
+        expect(groupText).toContain('/group-only')
+        expect(groupText).not.toContain('/private-only')
+
+        app.client.sent.length = 0
+
+        const privateResult = await app.dispatch(
+            privateMessage({ raw_message: '/help', user_id: 30000 })
+        )
+        const privateText = messageText(app, privateResult)
+
+        expect(privateText).toContain('/private-only')
+        expect(privateText).not.toContain('/group-only')
 
         await app.stop()
     })

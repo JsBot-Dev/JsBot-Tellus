@@ -13,6 +13,7 @@ function registration(
         pluginId: string
         aliases: string[]
         prefixes: string[]
+        messageTypes: Array<'group' | 'private'>
         params: string
     }> = {}
 ) {
@@ -22,6 +23,7 @@ function registration(
         aliases: overrides.aliases ?? [],
         prefixes: overrides.prefixes ?? ['/'],
         permission: 'User' as const,
+        messageTypes: overrides.messageTypes ?? ['group', 'private'],
         ...(overrides.params !== undefined ? { params: overrides.params } : {}),
         handler,
     }
@@ -34,6 +36,7 @@ function groupRegistration(
         aliases?: string[]
         prefixes?: string[]
         permission?: 'User' | 'Admin' | 'SuperAdmin'
+        messageTypes?: Array<'group' | 'private'>
         description?: string
         params?: string
         handler?: CommandHandler
@@ -45,6 +48,7 @@ function groupRegistration(
         aliases: overrides.aliases ?? [],
         prefixes: overrides.prefixes ?? ['/'],
         permission: overrides.permission ?? 'User',
+        messageTypes: overrides.messageTypes ?? ['group', 'private'],
         ...(overrides.description !== undefined
             ? { description: overrides.description }
             : {}),
@@ -69,6 +73,53 @@ describe('command registry', () => {
         })
         expect(registry.match('/h')?.match.command).toBe('h')
         expect(registry.match('help')).toBeNull()
+    })
+
+    it('filters commands by message type', () => {
+        const registry = new CommandRegistry()
+        const groupOnly = registration('group', { messageTypes: ['group'] })
+        const privateOnly = registration('private', {
+            messageTypes: ['private'],
+        })
+
+        registry.register(groupOnly)
+        registry.register(privateOnly)
+
+        expect(registry.match('/group', 'group')?.registration.name).toBe(
+            'group'
+        )
+        expect(registry.match('/group', 'private')).toBeNull()
+        expect(registry.match('/private', 'private')?.registration.name).toBe(
+            'private'
+        )
+        expect(registry.match('/private', 'group')).toBeNull()
+        expect(registry.match('/group')).not.toBeNull()
+    })
+
+    it('inherits message types through command groups', () => {
+        const registry = new CommandRegistry()
+
+        registry.group(
+            groupRegistration('admin', { messageTypes: ['group'] }),
+            (group) => {
+                group.register({ name: 'list' }, handler)
+                group.register({ name: 'say', messageType: 'private' }, handler)
+                group.group({ name: 'nested' }, (nested) => {
+                    nested.register({ name: 'run' }, handler)
+                })
+            }
+        )
+
+        expect(registry.match('/admin list', 'group')).not.toBeNull()
+        expect(registry.match('/admin list', 'private')).toBeNull()
+        expect(registry.match('/admin say', 'private')?.registration.name).toBe(
+            'admin say'
+        )
+        expect(registry.match('/admin say', 'group')?.registration.name).toBe(
+            'admin'
+        )
+        expect(registry.match('/admin nested run', 'group')).not.toBeNull()
+        expect(registry.match('/admin nested run', 'private')).toBeNull()
     })
 
     it('prefers longer prefixes', () => {
@@ -139,6 +190,7 @@ describe('command registry', () => {
                 name: 'help',
                 aliases: ['h'],
                 permission: 'User',
+                messageTypes: ['group', 'private'],
                 pluginId: 'core',
             },
         ])
@@ -158,6 +210,7 @@ describe('command registry', () => {
                 name: 'ask',
                 aliases: [],
                 permission: 'User',
+                messageTypes: ['group', 'private'],
                 usage: '<question> [count]',
                 pluginId: 'test',
             },

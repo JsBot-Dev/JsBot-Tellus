@@ -184,7 +184,7 @@ const installed = await ctx.core.installer.list()
 ctx.core.restart()
 ```
 
-核心服务由内核注入，适合帮助、状态类插件。`ctx.core.commands.list(event)` 会按当前会话的 `enabled`、`groups`、`private` gating 过滤命令；不传 `event` 时返回全部命令。`ctx.core.installer` 额外提供 `install` / `remove` / `update` / `list`；它不会检查调用者角色，权限判断由调用方负责（`admin` 的 `/plugin` 命令要求 SuperAdmin）。安装器默认关闭，必须在配置中显式启用。`ctx.core.restart()` 请求应用重建运行时并重新加载插件；第三方插件不应把这些方法暴露给普通用户。
+核心服务由内核注入，适合帮助、状态类插件。`ctx.core.commands.list(event)` 会按当前会话的 `enabled`、`groups`、`private` gating 以及命令的 `messageType` 过滤命令；不传 `event` 时返回全部命令。`ctx.core.installer` 额外提供 `install` / `remove` / `update` / `list`；它不会检查调用者角色，权限判断由调用方负责（`admin` 的 `/plugin` 命令要求 SuperAdmin）。安装器默认关闭，必须在配置中显式启用。`ctx.core.restart()` 请求应用重建运行时并重新加载插件；第三方插件不应把这些方法暴露给普通用户。
 
 安装的插件与内置插件运行在同一个宿主进程中，可访问文件系统、网络和 `process.env`，属于完全可信代码，不是安全沙箱。
 
@@ -215,10 +215,13 @@ ctx.commands.register(
 | `aliases`     | `[]`     | 别名                                         |
 | `prefixes`    | `['/']`  | 前缀；空字符串表示无前缀                     |
 | `permission`  | `'User'` | `User`、`Admin`、`SuperAdmin`                |
+| `messageType` | 无       | `'group'`、`'private'` 或数组，限定生效会话  |
 | `description` | 无       | `/help` 中展示                               |
 | `params`      | 无       | Koishi 风格参数声明；省略时 handler 行为不变 |
 
 `name` 和 `aliases` 的每一项只能是一个路径段；多级命令请使用 `commands.group()`。
+
+`messageType` 省略时群聊和私聊都可触发；`messageType: 'group'` 只匹配群消息，私聊中的同名文本会继续进入 `onMessage`。命令组会继承该设置，子命令可以覆盖。
 
 ### 参数
 
@@ -344,7 +347,7 @@ ctx.commands.group(
 
 - `group()` 的 `name` 和 `aliases` 同样是单个路径段；通过嵌套 `group()` 组成任意层级。
 - 子命令自动拼接组路径，例如上面的 `plugin` + `install` 对应 `/plugin install`。
-- 子命令默认继承组的 `prefixes`、`permission`，也可以在子命令上覆盖。
+- 子命令默认继承组的 `prefixes`、`permission`、`messageType`，也可以在子命令上覆盖。
 - 组别名和子命令别名会自动组合；组 `plugin` 别名 `p`、子命令 `install` 别名 `i` 时，`/p i` 也能命中。
 - 组根没有提供 `handler` 时，会自动注册根命令并生成用法提示，列出直接子命令、参数用法和描述。
 - 组根提供了 `handler` 时，未命中子命令的输入（例如 `/plugin`、`/plugin help`、`/plugin unknown`）会进入该 handler。
@@ -385,6 +388,16 @@ ctx.events.onMessage(async (event, context) => {
     }
 })
 
+ctx.events.onGroupMessage(async (event, context) => {
+    // 只处理群消息，event.message_type 收窄为 'group'
+    await context.send(`${event.group_id} 收到消息`)
+})
+
+ctx.events.onPrivateMessage(async (_event, context) => {
+    // 只处理私聊消息
+    await context.send('私聊收到')
+})
+
 ctx.events.onNotice(
     { noticeType: 'notify', subType: 'poke' },
     async (event, context) => {
@@ -401,6 +414,8 @@ ctx.events.onRequest({ requestType: 'friend' }, async (event) => {
 ```
 
 未匹配命令的消息才会进入 message handler。notice/request handler 会先按类型过滤，再检查插件 gating。
+
+`onGroupMessage` / `onPrivateMessage` 与 SDK 的同名方法对齐，在注册时按 `message_type` 过滤，事件类型分别收窄为群消息和私聊消息。
 
 ## 中间件
 

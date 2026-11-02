@@ -11,10 +11,34 @@ import type {
     CommandInfo,
     CommandMatch,
     CommandOptions,
+    MessageType,
+    MessageTypeFilter,
 } from '../plugin/types.js'
 import type { Permission } from '../security/permission.js'
 
 type AnyCommandHandler = CommandHandler<OneBotMessageEvent, any[]>
+
+const DEFAULT_MESSAGE_TYPES: MessageType[] = ['group', 'private']
+
+export function normalizeMessageTypes(
+    value: MessageTypeFilter | undefined
+): MessageType[] {
+    if (value === undefined) return [...DEFAULT_MESSAGE_TYPES]
+
+    const values = typeof value === 'string' ? [value] : value
+    const result: MessageType[] = []
+
+    for (const item of values) {
+        if (
+            (item === 'group' || item === 'private') &&
+            !result.includes(item)
+        ) {
+            result.push(item)
+        }
+    }
+
+    return result.length > 0 ? result : [...DEFAULT_MESSAGE_TYPES]
+}
 
 export interface CommandRegistration {
     pluginId: string
@@ -22,6 +46,7 @@ export interface CommandRegistration {
     aliases: string[]
     prefixes: string[]
     permission: Permission
+    messageTypes: MessageType[]
     description?: string | undefined
     params?: string | undefined
     paramsParser?: CompiledCommandParams | undefined
@@ -35,6 +60,7 @@ export interface CommandGroupRegistration {
     aliases: string[]
     prefixes: string[]
     permission: Permission
+    messageTypes: MessageType[]
     description?: string | undefined
     params?: string | undefined
     handler?: AnyCommandHandler | undefined
@@ -188,6 +214,7 @@ export class CommandRegistry {
             bases,
             prefixes,
             registration.permission,
+            registration.messageTypes,
             children
         )
 
@@ -199,6 +226,7 @@ export class CommandRegistry {
                 bases,
                 prefixes,
                 registration.permission,
+                registration.messageTypes,
                 registration.description,
                 registration.params,
                 registration.handler,
@@ -253,6 +281,7 @@ export class CommandRegistry {
                 name: registration.name,
                 aliases: [...registration.aliases],
                 permission: registration.permission,
+                messageTypes: [...registration.messageTypes],
                 ...(registration.description !== undefined
                     ? { description: registration.description }
                     : {}),
@@ -263,7 +292,10 @@ export class CommandRegistry {
             }))
     }
 
-    match(rawMessage: string): RegisteredCommand | null {
+    match(
+        rawMessage: string,
+        messageType?: MessageType
+    ): RegisteredCommand | null {
         const raw = stripLeadingReply(rawMessage.trim()).trim()
 
         if (!raw) return null
@@ -297,6 +329,13 @@ export class CommandRegistry {
                 const registration = this.index.get(prefix)?.get(key)
 
                 if (!registration) continue
+
+                if (
+                    messageType !== undefined &&
+                    !registration.messageTypes.includes(messageType)
+                ) {
+                    continue
+                }
 
                 const start = first.index ?? 0
                 const end = (last.index ?? 0) + last[0].length
@@ -404,6 +443,7 @@ export class CommandRegistry {
         bases: string[],
         prefixes: string[],
         permission: Permission,
+        messageTypes: MessageType[],
         children: GroupChild[]
     ): GroupScope {
         const disposers: Array<() => void> = []
@@ -464,6 +504,10 @@ export class CommandRegistry {
                     aliases: childBases.slice(1),
                     prefixes: options.prefixes ?? prefixes,
                     permission: options.permission ?? permission,
+                    messageTypes:
+                        options.messageType !== undefined
+                            ? normalizeMessageTypes(options.messageType)
+                            : [...messageTypes],
                     ...(options.description !== undefined
                         ? { description: options.description }
                         : {}),
@@ -506,12 +550,17 @@ export class CommandRegistry {
                 )
                 const nestedPrefixes = options.prefixes ?? prefixes
                 const nestedPermission = options.permission ?? permission
+                const nestedMessageTypes =
+                    options.messageType !== undefined
+                        ? normalizeMessageTypes(options.messageType)
+                        : [...messageTypes]
                 const nestedChildren: GroupChild[] = []
                 const nestedScope = this.createGroupScope(
                     pluginId,
                     nestedBases,
                     nestedPrefixes,
                     nestedPermission,
+                    nestedMessageTypes,
                     nestedChildren
                 )
 
@@ -523,6 +572,7 @@ export class CommandRegistry {
                         nestedBases,
                         nestedPrefixes,
                         nestedPermission,
+                        nestedMessageTypes,
                         options.description,
                         options.params,
                         options.handler,
@@ -567,6 +617,7 @@ export class CommandRegistry {
         bases: string[],
         prefixes: string[],
         permission: Permission,
+        messageTypes: MessageType[],
         description: string | undefined,
         params: string | undefined,
         handler: AnyCommandHandler | undefined,
@@ -584,6 +635,7 @@ export class CommandRegistry {
             aliases: bases.slice(1),
             prefixes,
             permission,
+            messageTypes: [...messageTypes],
             ...(description !== undefined ? { description } : {}),
             ...(params !== undefined ? { params } : {}),
             handler: handler ?? createGroupUsageHandler(children),
