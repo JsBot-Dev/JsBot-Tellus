@@ -1,6 +1,6 @@
 {
     "name": "@jsbot-tellus/core",
-    "version": "2.6.0",
+    "version": "2.7.0",
     "engines": {
         "node": "^24.22.1 || >=26.12.1"
     },
@@ -44,7 +44,7 @@
         "jsbot": "dist/app.js"
     },
     "scripts": {
-        "dev": "tsx watch src/app.ts",
+        "dev": "tsx watch --exclude \"plugins/**/dist/**\" --include \"plugins/*/src/**\" src/app.ts",
         "dev:webui": "vite --config webui/vite.config.ts",
         "start": "node dist/app.js",
         "start:build": "npm run build && npm start",

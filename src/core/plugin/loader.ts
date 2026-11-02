@@ -4,7 +4,7 @@ import { pathToFileURL } from 'node:url'
 import fg from 'fast-glob'
 import type { Logger } from '../logging/logger.js'
 import { collectPluginExports } from './exports.js'
-import { readInstallState, readJsonFile } from './install-dir.js'
+import { readJsonFile } from './install-dir.js'
 import { NpmCliRunner, type NpmRunner } from './npm-runner.js'
 import type { AnyPluginDefinition } from './types.js'
 
@@ -13,7 +13,7 @@ type LoaderLogger = Pick<Logger, 'warn' | 'error'> & {
 }
 
 export interface LocalPluginLoaderOptions {
-    /** Build local plugins that have a build script but no dist. Defaults to true. */
+    /** Rebuild local plugins that have a build script on every load. Defaults to true. */
     autoBuild?: boolean | undefined
     /** Timeout for a single local plugin build. Defaults to 120 seconds. */
     buildTimeoutMs?: number | undefined
@@ -49,19 +49,7 @@ async function readBuildScript(directory: string): Promise<string | undefined> {
         : undefined
 }
 
-async function readManagedDirectories(
-    root: string
-): Promise<Set<string> | null> {
-    try {
-        const state = await readInstallState(root)
-
-        return new Set(
-            Object.values(state.packages).map((record) => record.dir)
-        )
-    } catch {
-        return null
-    }
-}
+type BuildOutcome = 'built' | 'missing-node-modules' | 'failed'
 
 async function buildLocalPlugin(
     directory: string,
@@ -69,22 +57,15 @@ async function buildLocalPlugin(
     logger: LoaderLogger | undefined,
     runner: NpmRunner,
     timeoutMs: number
-): Promise<boolean> {
-    if ((await readBuildScript(directory)) === undefined) {
-        logger?.warn(
-            `skipping local plugin ${name}: dist directory not found and package.json has no build script`
-        )
-        return false
-    }
-
+): Promise<BuildOutcome> {
     if (!(await directoryExists(join(directory, 'node_modules')))) {
         logger?.warn(
-            `skipping local plugin ${name}: dist directory not found and node_modules is missing; run npm install --prefix ${directory}`
+            `cannot build local plugin ${name}: node_modules is missing; run npm install --prefix ${directory}`
         )
-        return false
+        return 'missing-node-modules'
     }
 
-    logger?.info?.(`building local plugin ${name}: dist directory not found`)
+    logger?.info?.(`building local plugin ${name}`)
 
     try {
         await runner.run(['run', 'build'], {
@@ -93,13 +74,12 @@ async function buildLocalPlugin(
         })
     } catch (error) {
         logger?.error(`failed to build local plugin ${name}`, error)
-        logger?.warn(`skipping local plugin ${name}: build failed`)
-        return false
+        return 'failed'
     }
 
     logger?.info?.(`built local plugin ${name}`)
 
-    return true
+    return 'built'
 }
 
 export async function loadPluginsFromDirectory(
@@ -127,7 +107,14 @@ export async function loadPluginsFromDirectory(
         let imported: unknown
 
         try {
-            imported = await import(pathToFileURL(file).href)
+            const info = await stat(file).catch(() => null)
+            const url = pathToFileURL(file)
+
+            if (info !== null) {
+                url.searchParams.set('v', String(info.mtimeMs))
+            }
+
+            imported = await import(url.href)
         } catch (error) {
             logger?.error(`failed to import plugin file: ${file}`, error)
             invalid.push(
@@ -170,22 +157,7 @@ export async function loadLocalPlugins(
     )
     const plugins: AnyPluginDefinition[] = []
 
-    let autoBuild = options.autoBuild !== false
-    let managed = new Set<string>()
-
-    if (autoBuild) {
-        const directories = await readManagedDirectories(absolute)
-
-        if (directories === null) {
-            logger?.warn(
-                'cannot read plugin install state; automatic local plugin build is disabled'
-            )
-            autoBuild = false
-        } else {
-            managed = directories
-        }
-    }
-
+    const autoBuild = options.autoBuild !== false
     const runner = options.runner ?? new NpmCliRunner()
     const timeoutMs = options.buildTimeoutMs ?? DEFAULT_BUILD_TIMEOUT_MS
 
@@ -195,24 +167,11 @@ export async function loadLocalPlugins(
 
         const directory = join(absolute, entry.name)
         const dist = join(directory, 'dist')
+        const hasBuildScript = (await readBuildScript(directory)) !== undefined
         let distInfo = await stat(dist).catch(() => null)
 
-        if (!distInfo?.isDirectory()) {
-            if (!autoBuild) {
-                logger?.warn(
-                    `skipping local plugin ${entry.name}: dist directory not found`
-                )
-                continue
-            }
-
-            if (managed.has(entry.name)) {
-                logger?.warn(
-                    `skipping local plugin ${entry.name}: dist directory not found (installed package is expected to include dist)`
-                )
-                continue
-            }
-
-            const built = await buildLocalPlugin(
+        if (autoBuild && hasBuildScript) {
+            const outcome = await buildLocalPlugin(
                 directory,
                 entry.name,
                 logger,
@@ -220,16 +179,32 @@ export async function loadLocalPlugins(
                 timeoutMs
             )
 
-            if (!built) continue
-
             distInfo = await stat(dist).catch(() => null)
 
             if (!distInfo?.isDirectory()) {
-                logger?.warn(
-                    `skipping local plugin ${entry.name}: build finished but dist directory not found`
-                )
+                const reason =
+                    outcome === 'built'
+                        ? 'build finished but dist directory not found'
+                        : outcome === 'missing-node-modules'
+                          ? 'node_modules is missing and dist directory not found'
+                          : 'build failed and dist directory not found'
+
+                logger?.warn(`skipping local plugin ${entry.name}: ${reason}`)
                 continue
             }
+
+            if (outcome !== 'built') {
+                logger?.warn(
+                    `using existing dist for local plugin ${entry.name}: rebuild failed`
+                )
+            }
+        } else if (!distInfo?.isDirectory()) {
+            logger?.warn(
+                hasBuildScript
+                    ? `skipping local plugin ${entry.name}: dist directory not found and automatic build is disabled`
+                    : `skipping local plugin ${entry.name}: dist directory not found and package.json has no build script`
+            )
+            continue
         }
 
         plugins.push(...(await loadPluginsFromDirectory(dist, logger)))
