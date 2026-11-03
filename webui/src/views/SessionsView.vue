@@ -6,7 +6,7 @@
                     v-model="query"
                     placeholder="搜索 session id"
                     clearable
-                    style="width: 260px"
+                    style="width: 16.25rem"
                     @keyup.enter="load"
                 />
                 <el-button type="primary" @click="load">搜索</el-button>
@@ -23,19 +23,20 @@
                 <el-table-column
                     prop="sessionId"
                     label="Session ID"
+                    :min-width="scaledPx(260)"
                     show-overflow-tooltip
                 />
-                <el-table-column label="消息数" width="90">
+                <el-table-column label="消息数" :width="scaledPx(90)">
                     <template #default="{ row }">
                         {{ row.messageCount }}
                     </template>
                 </el-table-column>
-                <el-table-column label="更新时间" width="180">
+                <el-table-column label="更新时间" :width="scaledPx(180)">
                     <template #default="{ row }">
                         {{ formatTime(row.updatedAt) }}
                     </template>
                 </el-table-column>
-                <el-table-column label="操作" width="160">
+                <el-table-column label="操作" :width="scaledPx(160)">
                     <template #default="{ row }">
                         <el-button size="small" @click.stop="openDetail(row)">
                             详情
@@ -62,7 +63,7 @@
 
         <el-drawer v-model="drawer" size="45%" :title="'会话 ' + detailId">
             <div v-if="detail">
-                <el-form label-width="90px" size="small">
+                <el-form label-width="5.625rem" size="small">
                     <el-form-item label="provider">
                         <el-input v-model="form.provider" />
                     </el-form-item>
@@ -144,6 +145,7 @@ import {
     formatTime,
     showError,
 } from '@/api'
+import { scaledPx } from '@/use-ui-scale'
 
 interface SessionSummary {
     sessionId: string
@@ -318,30 +320,30 @@ onMounted(() => void load())
 
 <style scoped>
 .block {
-    margin-bottom: 16px;
+    margin-bottom: 1rem;
 }
 
 .pager {
-    margin-top: 12px;
+    margin-top: 0.75rem;
 }
 
 .message {
-    margin: 8px 0;
+    margin: 0.5rem 0;
 }
 
 .message-content {
-    margin: 4px 0 0;
-    padding: 8px;
+    margin: 0.25rem 0 0;
+    padding: 0.5rem;
     background: var(--app-panel-2);
     border: 1px solid var(--app-border);
-    border-radius: 8px;
+    border-radius: 0.5rem;
     color: var(--app-text);
     white-space: pre-wrap;
-    font-size: 12px;
+    font-size: 0.75rem;
 }
 
 .sub {
     color: var(--app-muted);
-    font-size: 12px;
+    font-size: 0.75rem;
 }
 </style>

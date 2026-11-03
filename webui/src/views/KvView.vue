@@ -4,7 +4,7 @@
             <el-select
                 v-model="pluginId"
                 placeholder="选择插件"
-                style="width: 240px"
+                style="width: 15rem"
                 @change="load"
             >
                 <el-option
@@ -21,7 +21,7 @@
                 <el-input
                     v-model="prefix"
                     placeholder="key 前缀过滤"
-                    style="width: 200px"
+                    style="width: 12.5rem"
                     @keyup.enter="load"
                 />
                 <el-button @click="load">过滤</el-button>
@@ -29,18 +29,27 @@
             </el-space>
 
             <el-table v-loading="busy" :data="items" size="small">
-                <el-table-column prop="key" label="Key" show-overflow-tooltip />
-                <el-table-column label="Value" show-overflow-tooltip>
+                <el-table-column
+                    prop="key"
+                    label="Key"
+                    :min-width="scaledPx(200)"
+                    show-overflow-tooltip
+                />
+                <el-table-column
+                    label="Value"
+                    :min-width="scaledPx(240)"
+                    show-overflow-tooltip
+                >
                     <template #default="{ row }">
                         {{ display(row.value) }}
                     </template>
                 </el-table-column>
-                <el-table-column label="更新时间" width="180">
+                <el-table-column label="更新时间" :width="scaledPx(180)">
                     <template #default="{ row }">
                         {{ formatTime(row.updatedAt) }}
                     </template>
                 </el-table-column>
-                <el-table-column label="操作" width="150">
+                <el-table-column label="操作" :width="scaledPx(150)">
                     <template #default="{ row }">
                         <el-button size="small" @click="edit(row)"
                             >编辑</el-button
@@ -64,8 +73,8 @@
             />
         </el-card>
 
-        <el-dialog v-model="editor" title="KV 编辑" width="560px">
-            <el-form label-width="80px">
+        <el-dialog v-model="editor" title="KV 编辑" width="min(92vw, 35rem)">
+            <el-form label-width="5rem">
                 <el-form-item label="key">
                     <el-input
                         v-model="editKey"
@@ -93,6 +102,7 @@
 import { ElMessage } from 'element-plus'
 import { onMounted, ref } from 'vue'
 import { apiDelete, apiGet, apiPut, formatTime, showError } from '@/api'
+import { scaledPx } from '@/use-ui-scale'
 
 interface KvPlugin {
     pluginId: string
@@ -225,10 +235,10 @@ onMounted(async () => {
 
 <style scoped>
 .block {
-    margin-bottom: 12px;
+    margin-bottom: 0.75rem;
 }
 
 .pager {
-    margin-top: 12px;
+    margin-top: 0.75rem;
 }
 </style>

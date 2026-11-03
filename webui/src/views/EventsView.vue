@@ -5,7 +5,7 @@
                 <el-select
                     v-model="type"
                     placeholder="全部类型"
-                    style="width: 140px"
+                    style="width: 8.75rem"
                     clearable
                 >
                     <el-option label="message" value="message" />
@@ -14,7 +14,7 @@
                     <el-option label="meta" value="meta" />
                     <el-option label="other" value="other" />
                 </el-select>
-                <el-select v-model="live" style="width: 90px">
+                <el-select v-model="live" style="width: 5.625rem">
                     <el-option label="实时" value="on" />
                     <el-option label="暂停" value="off" />
                 </el-select>
@@ -24,18 +24,23 @@
 
         <el-card>
             <el-table :data="items" size="small" max-height="640">
-                <el-table-column label="时间" width="170">
+                <el-table-column label="时间" :width="scaledPx(170)">
                     <template #default="{ row }">{{
                         formatTime(row.time)
                     }}</template>
                 </el-table-column>
-                <el-table-column prop="type" label="类型" width="100" />
+                <el-table-column
+                    prop="type"
+                    label="类型"
+                    :width="scaledPx(100)"
+                />
                 <el-table-column
                     prop="summary"
                     label="摘要"
+                    :min-width="scaledPx(240)"
                     show-overflow-tooltip
                 />
-                <el-table-column label="详情" width="90">
+                <el-table-column label="详情" :width="scaledPx(90)">
                     <template #default="{ row }">
                         <el-button size="small" @click="viewDetail(row)">
                             查看
@@ -60,6 +65,7 @@ import {
     showError,
     type FeedEventItem,
 } from '@/api'
+import { scaledPx } from '@/use-ui-scale'
 
 const type = ref('')
 const live = ref('on')
@@ -123,11 +129,11 @@ onUnmounted(() => {
 
 <style scoped>
 .block {
-    margin-bottom: 16px;
+    margin-bottom: 1rem;
 }
 
 .json {
     white-space: pre-wrap;
-    font-size: 12px;
+    font-size: 0.75rem;
 }
 </style>

@@ -30,7 +30,7 @@ export interface UiAppearance {
     disableMotion?: boolean
     /** Corner radius in rem: 0–2. */
     radius?: number
-    /** Root font-size factor 0.5–2 (rem-based sizes track it). */
+    /** Root font-size factor 0.5–2 (100% = 16px; the whole UI is rem-based). */
     uiScale?: number
 }
 
@@ -111,7 +111,10 @@ export function resolvedMode(appearance: UiAppearance): AppearanceMode {
 
 function writeStored(appearance: UiAppearance): void {
     try {
-        localStorage.setItem(APPEARANCE_KEY, JSON.stringify(appearance))
+        localStorage.setItem(
+            APPEARANCE_KEY,
+            JSON.stringify({ ...appearance, v: 2 })
+        )
     } catch {
         // Storage unavailable (private mode etc.); keep in memory only.
     }
@@ -121,7 +124,22 @@ function readStored(): UiAppearance {
     try {
         const raw = localStorage.getItem(APPEARANCE_KEY)
 
-        if (raw !== null) return normalizeAppearance(JSON.parse(raw))
+        if (raw !== null) {
+            const parsed = JSON.parse(raw) as unknown
+
+            if (parsed !== null && typeof parsed === 'object') {
+                const record = parsed as Record<string, unknown>
+
+                // v2 moved the zoom base back to 16px. Scale values saved by
+                // the short-lived 36px build would blow the UI up, so drop
+                // them once instead of carrying them over.
+                if (record['v'] !== 2) delete record['uiScale']
+
+                return normalizeAppearance(record)
+            }
+
+            return normalizeAppearance(parsed)
+        }
 
         // Migrate the pre-appearance theme toggle so nobody loses their pick.
         const legacy = localStorage.getItem(LEGACY_THEME_KEY)
@@ -203,11 +221,11 @@ export function applyAppearance(appearance: UiAppearance): void {
         root.style.removeProperty('--app-radius')
     }
 
-    if (appearance.uiScale !== undefined) {
-        root.style.fontSize = `${Math.round(16 * appearance.uiScale * 100) / 100}px`
-    } else {
-        root.style.removeProperty('font-size')
-    }
+    // Every dimension in the WebUI is rem-based, so scaling the root font
+    // size zooms the whole interface (100% = 16px).
+    const uiScale = appearance.uiScale ?? 1
+
+    root.style.fontSize = `${Math.round(16 * uiScale * 100) / 100}px`
 }
 
 export function setAppearance(patch: UiAppearance): UiAppearance {

@@ -8,12 +8,12 @@
         />
 
         <el-card class="block">
-            <el-form label-width="100px" size="small">
+            <el-form label-width="6.25rem" size="small">
                 <el-form-item label="action">
                     <el-input
                         v-model="action"
                         placeholder="如 get_login_info / send_private_msg"
-                        style="width: 320px"
+                        style="width: 20rem"
                     />
                 </el-form-item>
                 <el-form-item label="params (JSON)">
@@ -99,19 +99,19 @@ onMounted(() => {
 
 <style scoped>
 .block {
-    margin-bottom: 16px;
+    margin-bottom: 1rem;
 }
 
 .result {
     margin: 0;
-    padding: 12px;
+    padding: 0.75rem;
     background: var(--app-bg);
     border: 1px solid var(--app-border);
-    border-radius: 10px;
+    border-radius: 0.625rem;
     color: var(--app-text);
     white-space: pre-wrap;
-    font-size: 12px;
-    min-height: 80px;
+    font-size: 0.75rem;
+    min-height: 5rem;
     font-family: 'SF Mono', ui-monospace, Menlo, Consolas, monospace;
 }
 </style>

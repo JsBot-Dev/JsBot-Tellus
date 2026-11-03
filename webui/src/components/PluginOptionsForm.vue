@@ -1,68 +1,49 @@
 <template>
     <div class="opts-form">
-        <template v-if="mode === 'form'">
-            <div v-if="rows.length === 0" class="empty">
-                该插件暂无配置。点「添加字段」创建第一个，或切到 JSON 直接编辑。
-            </div>
+        <template v-if="mode === 'form' && canUseForm">
+            <p v-if="fieldEntries.length === 0" class="empty">
+                该插件的 Schema 没有声明可配置字段。
+            </p>
 
-            <div v-for="(row, index) in rows" :key="index" class="row">
-                <el-input
-                    v-model="row.key"
-                    class="key"
-                    :class="{ dup: isDupKey(index) }"
-                    placeholder="字段名"
-                />
+            <SchemaField
+                v-for="[key, field] in fieldEntries"
+                :key="key"
+                :name="key"
+                :path="key"
+                :schema="field"
+                :required="requiredSet.has(key)"
+                :model-value="draft[key]"
+                :depth="1"
+                :report-invalid="reportInvalid"
+                @update:model-value="(value: unknown) => setValue(key, value)"
+            />
 
-                <el-select v-model="row.type" class="type">
-                    <el-option label="字符串" value="string" />
-                    <el-option label="数字" value="number" />
-                    <el-option label="开关" value="boolean" />
-                    <el-option label="JSON" value="json" />
-                    <el-option label="null" value="null" />
-                </el-select>
+            <el-alert
+                v-if="unknownKeys.length > 0"
+                type="warning"
+                :closable="false"
+                show-icon
+                class="notice"
+            >
+                <template #title>
+                    Schema 之外的字段已忽略：{{ unknownKeys.join('、') }}
+                </template>
+            </el-alert>
 
-                <div class="value">
-                    <el-input
-                        v-if="row.type === 'string'"
-                        v-model="row.text"
-                        placeholder="字符串"
-                    />
-                    <el-input-number
-                        v-else-if="row.type === 'number'"
-                        v-model="row.num"
-                        :step="1"
-                        class="num"
-                    />
-                    <el-switch
-                        v-else-if="row.type === 'boolean'"
-                        v-model="row.bool"
-                    />
-                    <span v-else-if="row.type === 'null'" class="null-mark"
-                        >null</span
-                    >
-                    <el-input
-                        v-else
-                        v-model="row.raw"
-                        type="textarea"
-                        :rows="3"
-                        spellcheck="false"
-                        class="raw"
-                        :class="rawInvalid(row) ? 'bad' : ''"
-                        placeholder="数组或对象，JSON 格式"
-                    />
-                </div>
-
-                <el-button
-                    class="drop"
-                    text
-                    :icon="Delete"
-                    @click="rows.splice(index, 1)"
-                />
-            </div>
-
-            <el-button class="add" text :icon="Plus" @click="addField">
-                添加字段
-            </el-button>
+            <el-alert
+                v-if="issues.length > 0"
+                type="error"
+                :closable="false"
+                show-icon
+                class="notice"
+                title="配置未通过 Schema 校验"
+            >
+                <ul class="issue-list">
+                    <li v-for="(issue, index) in issues" :key="index">
+                        {{ issue.path }}：{{ issue.message }}
+                    </li>
+                </ul>
+            </el-alert>
         </template>
 
         <template v-else>
@@ -72,34 +53,43 @@
                 :rows="14"
                 spellcheck="false"
                 class="mono"
-                :class="jsonInvalid ? 'bad' : ''"
+                :class="jsonError ? 'bad' : ''"
                 placeholder="{}"
+                @update:model-value="onJsonInput"
             />
-            <p class="hint" :class="{ bad: jsonInvalid }">
-                {{
-                    jsonInvalid
-                        ? 'JSON 格式错误，顶层必须是对象或数组'
-                        : 'JSON 校验通过——保存时会以这份 JSON 为准'
-                }}
+
+            <p class="hint" :class="{ bad: jsonError }">
+                {{ hint }}
             </p>
+
+            <el-alert
+                v-if="issues.length > 0"
+                type="error"
+                :closable="false"
+                show-icon
+                title="配置未通过 Schema 校验"
+            >
+                <ul class="issue-list">
+                    <li v-for="(issue, index) in issues" :key="index">
+                        {{ issue.path }}：{{ issue.message }}
+                    </li>
+                </ul>
+            </el-alert>
         </template>
     </div>
 </template>
 
 <script setup lang="ts">
 import { computed, reactive, ref, watch } from 'vue'
-import { Delete, Plus } from '@element-plus/icons-vue'
-
-type FieldType = 'string' | 'number' | 'boolean' | 'json' | 'null'
-
-interface FieldRow {
-    key: string
-    type: FieldType
-    text: string
-    num: number | undefined
-    bool: boolean
-    raw: string
-}
+import SchemaField from '@/components/SchemaField.vue'
+import {
+    applyDefaults,
+    canRenderForm,
+    isRecord,
+    validateSchemaValue,
+    type JsonSchema,
+    type SchemaIssue,
+} from '@/components/json-schema'
 
 interface CollectResult {
     ok: boolean
@@ -109,124 +99,174 @@ interface CollectResult {
 
 const props = defineProps<{
     options: Record<string, unknown>
+    schema: JsonSchema | null
 }>()
 
 const mode = ref<'form' | 'json'>('form')
-const rows = reactive<FieldRow[]>([])
+const canUseForm = computed(() => canRenderForm(props.schema))
+const fields = computed(() => props.schema?.properties ?? {})
+const fieldEntries = computed(() => Object.entries(fields.value))
+const requiredSet = computed(() => new Set(props.schema?.required ?? []))
+
+const draft = reactive<Record<string, unknown>>({})
+const unknownKeys = ref<string[]>([])
+const issues = ref<SchemaIssue[]>([])
+const invalidFields = reactive(new Map<string, string>())
+
 const jsonDraft = ref('')
+const jsonError = ref(false)
 
-const infer = (value: unknown): FieldRow => {
-    const row: FieldRow = {
-        key: '',
-        type: 'json',
-        text: '',
-        num: undefined,
-        bool: false,
-        raw: '',
-    }
-
-    if (value === null) {
-        row.type = 'null'
-    } else if (typeof value === 'string') {
-        row.type = 'string'
-        row.text = value
-    } else if (typeof value === 'number') {
-        row.type = 'number'
-        row.num = value
-    } else if (typeof value === 'boolean') {
-        row.type = 'boolean'
-        row.bool = value
+const reportInvalid = (path: string, message: string | null): void => {
+    if (message === null) {
+        invalidFields.delete(path)
     } else {
-        row.type = 'json'
-        row.raw = JSON.stringify(value, null, 4)
+        invalidFields.set(path, message)
+    }
+}
+
+const clearDraft = (): void => {
+    for (const key of Object.keys(draft)) delete draft[key]
+}
+
+const splitOptions = (
+    source: Record<string, unknown>
+): { known: Record<string, unknown>; unknown: string[] } => {
+    if (props.schema === null) {
+        return { known: { ...source }, unknown: [] }
     }
 
-    return row
-}
+    const allowed = new Set(Object.keys(fields.value))
+    const known: Record<string, unknown> = {}
+    const unknown: string[] = []
 
-const rebuild = (): void => {
-    rows.length = 0
-
-    for (const [key, value] of Object.entries(props.options ?? {})) {
-        const row = infer(value)
-
-        row.key = key
-        rows.push(row)
+    for (const [key, value] of Object.entries(source)) {
+        if (allowed.has(key)) {
+            known[key] = value
+        } else {
+            unknown.push(key)
+        }
     }
 
-    jsonDraft.value = JSON.stringify(props.options ?? {}, null, 4)
+    return { known, unknown }
 }
 
-watch(() => props.options, rebuild, { immediate: true, deep: false })
+const fillDraft = (value: unknown): void => {
+    clearDraft()
 
-const isDupKey = (index: number): boolean =>
-    rows.filter((row) => row.key === rows[index]?.key).length > 1
+    if (!isRecord(value)) return
 
-const addField = (): void => {
-    let suffix = 1
-
-    while (rows.some((row) => row.key === `新字段${suffix}`)) suffix += 1
-
-    rows.push({
-        key: `新字段${suffix}`,
-        type: 'string',
-        text: '',
-        num: undefined,
-        bool: false,
-        raw: '',
-    })
+    for (const [key, child] of Object.entries(value)) {
+        if (child !== undefined) draft[key] = child
+    }
 }
 
-const rawInvalid = (row: FieldRow): boolean => {
-    if (row.type !== 'json') return false
+const reset = (): void => {
+    invalidFields.clear()
+    issues.value = []
+    jsonError.value = false
+
+    const source = props.options ?? {}
+    const { known, unknown } = splitOptions(source)
+
+    unknownKeys.value = unknown
+    jsonDraft.value = JSON.stringify(source, null, 4)
+
+    if (props.schema === null) {
+        fillDraft(known)
+        mode.value = 'json'
+
+        return
+    }
+
+    fillDraft(applyDefaults(props.schema, known))
+    mode.value = canUseForm.value ? 'form' : 'json'
+}
+
+watch([() => props.options, () => props.schema], reset, { immediate: true })
+
+const setValue = (key: string, value: unknown): void => {
+    if (value === undefined) {
+        delete draft[key]
+    } else {
+        draft[key] = value
+    }
+
+    issues.value = []
+}
+
+const plainDraft = (): Record<string, unknown> =>
+    JSON.parse(JSON.stringify(draft)) as Record<string, unknown>
+
+const formatIssues = (list: SchemaIssue[]): string =>
+    list.map((issue) => `${issue.path}：${issue.message}`).join('；')
+
+const onJsonInput = (raw: string): void => {
+    jsonError.value = false
+    issues.value = []
+
+    if (raw.trim().length === 0) return
 
     try {
-        JSON.parse(row.raw)
+        JSON.parse(raw)
     } catch {
-        return true
+        jsonError.value = true
+    }
+}
+
+const hint = computed(() => {
+    if (jsonError.value) return 'JSON 格式错误，请先修复再保存。'
+    if (props.schema === null) {
+        return '该插件的 Schema 无法转为表单，只能编辑 JSON。保存时后端仍会严格校验。'
     }
 
-    return false
-}
-
-const parseJsonBlock = (value: string): unknown => {
-    if (value.trim().length === 0) return null
-
-    return JSON.parse(value)
-}
-
-const collectRows = (): Record<string, unknown> => {
-    const result: Record<string, unknown> = {}
-
-    for (const row of rows) {
-        if (row.key.trim().length === 0) continue
-
-        result[row.key] = toRowValue(row)
-    }
-
-    return result
-}
-
-const toRowValue = (row: FieldRow): unknown => {
-    if (row.type === 'null') return null
-    if (row.type === 'json') return parseJsonBlock(row.raw)
-    if (row.type === 'number') return row.num ?? 0
-    if (row.type === 'boolean') return row.bool
-
-    return row.text
-}
-
-const jsonInvalid = computed((): boolean => {
-    try {
-        parseJsonBlock(jsonDraft.value)
-
-        const parsed = JSON.parse(jsonDraft.value)
-
-        return !(typeof parsed === 'object' && parsed !== null)
-    } catch {
-        return true
-    }
+    return 'JSON 格式正确。保存时后端会按插件 Schema 严格校验。'
 })
+
+const collect = (): CollectResult => {
+    if (mode.value === 'json') {
+        if (jsonError.value) {
+            return { ok: false, message: 'JSON 格式错误' }
+        }
+
+        let parsed: unknown = {}
+
+        try {
+            parsed =
+                jsonDraft.value.trim().length > 0
+                    ? JSON.parse(jsonDraft.value)
+                    : {}
+        } catch {
+            return { ok: false, message: 'JSON 格式错误' }
+        }
+
+        if (!isRecord(parsed)) {
+            return { ok: false, message: '顶层配置必须是一个对象' }
+        }
+
+        const found: SchemaIssue[] = []
+        validateSchemaValue(props.schema, parsed, '', found)
+        issues.value = found
+
+        return found.length > 0
+            ? { ok: false, message: formatIssues(found) }
+            : { ok: true, options: parsed }
+    }
+
+    if (invalidFields.size > 0) {
+        return {
+            ok: false,
+            message: `以下字段的 JSON 有格式错误：${[...invalidFields.keys()].join('、')}`,
+        }
+    }
+
+    const found: SchemaIssue[] = []
+    validateSchemaValue(props.schema, draft, '', found)
+    issues.value = found
+
+    return found.length > 0
+        ? { ok: false, message: formatIssues(found) }
+        : { ok: true, options: plainDraft() }
+}
 
 const switchMode = (
     next: 'form' | 'json'
@@ -234,84 +274,54 @@ const switchMode = (
     if (next === mode.value) return { ok: true }
 
     if (next === 'json') {
-        for (const row of rows) {
-            if (row.type === 'json' && rawInvalid(row)) {
-                return {
-                    ok: false,
-                    message: `字段「${row.key}」的 JSON 有格式错误，无法切到 JSON 模式`,
-                }
+        if (invalidFields.size > 0) {
+            return {
+                ok: false,
+                message: `以下字段的 JSON 有格式错误：${[...invalidFields.keys()].join('、')}`,
             }
         }
 
-        jsonDraft.value = JSON.stringify(collectRows(), null, 4)
+        jsonDraft.value = JSON.stringify(plainDraft(), null, 4)
+        jsonError.value = false
+        issues.value = []
         mode.value = 'json'
 
         return { ok: true }
     }
 
-    if (jsonInvalid.value) {
+    if (!canUseForm.value) {
         return {
             ok: false,
-            message: 'JSON 里有格式错误，修好了才能切回表单',
+            message: '该插件的 Schema 无法用表单呈现，请继续使用 JSON',
         }
     }
 
-    const parsed: Record<string, unknown> = JSON.parse(jsonDraft.value)
-
-    if (Array.isArray(parsed)) {
-        return {
-            ok: false,
-            message: '数组根无法用表单呈现，请继续用 JSON 编辑',
-        }
+    if (jsonError.value) {
+        return { ok: false, message: 'JSON 里有格式错误，修好了才能切回表单' }
     }
 
-    rows.length = 0
+    let parsed: unknown = {}
 
-    for (const [key, value] of Object.entries(parsed)) {
-        const row = infer(value)
-
-        row.key = key
-        rows.push(row)
+    try {
+        parsed =
+            jsonDraft.value.trim().length > 0 ? JSON.parse(jsonDraft.value) : {}
+    } catch {
+        return { ok: false, message: 'JSON 里有格式错误，修好了才能切回表单' }
     }
 
+    if (!isRecord(parsed)) {
+        return { ok: false, message: '顶层配置必须是一个对象，无法用表单呈现' }
+    }
+
+    const { known, unknown } = splitOptions(parsed)
+
+    unknownKeys.value = unknown
+    fillDraft(applyDefaults(props.schema, known))
+    issues.value = []
+    invalidFields.clear()
     mode.value = 'form'
 
     return { ok: true }
-}
-
-const collect = (): CollectResult => {
-    if (mode.value === 'json') {
-        if (jsonInvalid.value) {
-            return { ok: false, message: 'JSON 格式错误' }
-        }
-
-        return { ok: true, options: JSON.parse(jsonDraft.value) }
-    }
-
-    const keyCounts = new Map<string, number>()
-
-    for (const row of rows) {
-        if (row.key.trim().length === 0) {
-            return { ok: false, message: '有字段没有名字，请为每个字段命名' }
-        }
-
-        keyCounts.set(row.key, (keyCounts.get(row.key) ?? 0) + 1)
-
-        if (row.type === 'json' && rawInvalid(row)) {
-            return {
-                ok: false,
-                message: `字段「${row.key}」的 JSON 有格式错误`,
-            }
-        }
-    }
-
-    const dup = [...keyCounts.entries()].find(([, count]) => count > 1)
-
-    if (dup !== undefined) {
-        return { ok: false, message: `字段名「${dup[0]}」重复，请先改名` }
-    }
-
-    return { ok: true, options: collectRows() }
 }
 
 defineExpose({ collect, mode, switchMode })
@@ -321,71 +331,23 @@ defineExpose({ collect, mode, switchMode })
 .opts-form {
     display: flex;
     flex-direction: column;
-    gap: 10px;
+    gap: 0.875rem;
 }
 
-.row {
-    display: flex;
-    gap: 10px;
-    align-items: flex-start;
+.notice {
+    margin-top: 0.25rem;
 }
 
-.row .key {
-    flex: 0 0 148px;
-}
-
-.row .type {
-    flex: 0 0 96px;
-}
-
-.row .value {
-    flex: 1;
-    min-width: 0;
-}
-
-.row .num {
-    width: 100%;
-}
-
-.row .raw :deep(textarea) {
-    font-family: 'SF Mono', ui-monospace, Menlo, Consolas, monospace;
-    font-size: 12px;
+.issue-list {
+    margin: 0.25rem 0 0;
+    padding-left: 1.25rem;
+    font-size: 0.75rem;
     line-height: 1.6;
-}
-
-.row > .drop {
-    flex: none;
-    color: var(--app-muted);
-}
-
-.row > .drop:hover {
-    color: var(--app-log-error);
-}
-
-.key.dup :deep(.el-input__wrapper) {
-    box-shadow:
-        0 0 0 1px var(--app-log-error) inset,
-        0 0 0 3px color-mix(in oklab, var(--app-log-error) 16%, transparent);
-}
-
-.null-mark {
-    display: inline-flex;
-    padding: 2px 10px;
-    border-radius: 7px;
-    background: color-mix(in oklab, var(--app-muted) 14%, transparent);
-    color: var(--app-muted);
-    font-family: 'SF Mono', ui-monospace, Menlo, Consolas, monospace;
-    font-size: 12px;
-}
-
-.add {
-    align-self: flex-start;
-    color: var(--app-accent);
 }
 
 .mono :deep(textarea) {
     font-family: 'SF Mono', ui-monospace, Menlo, Consolas, monospace;
-    font-size: 12.5px;
+    font-size: 0.8125rem;
     line-height: 1.65;
 }
 
@@ -397,7 +359,7 @@ defineExpose({ collect, mode, switchMode })
 
 .hint {
     margin: 0;
-    font-size: 12px;
+    font-size: 0.75rem;
     color: var(--app-muted);
 }
 
@@ -406,8 +368,9 @@ defineExpose({ collect, mode, switchMode })
 }
 
 .empty {
-    padding: 18px 0;
+    padding: 0.5rem 0;
+    margin: 0;
+    font-size: 0.8125rem;
     color: var(--app-muted);
-    font-size: 12.5px;
 }
 </style>

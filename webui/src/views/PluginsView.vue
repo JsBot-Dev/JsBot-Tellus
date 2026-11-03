@@ -16,10 +16,18 @@
                 </div>
             </template>
             <el-table v-loading="busy" :data="plugins" size="small">
-                <el-table-column prop="id" label="ID" width="160" />
-                <el-table-column prop="version" label="版本" width="100" />
-                <el-table-column prop="description" label="说明" />
-                <el-table-column label="状态" width="110">
+                <el-table-column prop="id" label="ID" :width="scaledPx(260)" />
+                <el-table-column
+                    prop="version"
+                    label="版本"
+                    :width="scaledPx(100)"
+                />
+                <el-table-column
+                    prop="description"
+                    label="说明"
+                    :min-width="scaledPx(260)"
+                />
+                <el-table-column label="状态" :width="scaledPx(110)">
                     <template #default="{ row }">
                         <el-tag
                             size="small"
@@ -29,7 +37,18 @@
                         </el-tag>
                     </template>
                 </el-table-column>
-                <el-table-column label="启用" width="80">
+                <el-table-column label="群限制" :width="scaledPx(110)">
+                    <template #default="{ row }">
+                        <el-tag
+                            size="small"
+                            :type="groupSummary(row).type"
+                            :title="groupSummary(row).detail"
+                        >
+                            {{ groupSummary(row).text }}
+                        </el-tag>
+                    </template>
+                </el-table-column>
+                <el-table-column label="启用" :width="scaledPx(80)">
                     <template #default="{ row }">
                         <el-switch
                             :model-value="row.enabled"
@@ -40,7 +59,7 @@
                         />
                     </template>
                 </el-table-column>
-                <el-table-column label="操作" width="190">
+                <el-table-column label="操作" :width="scaledPx(190)">
                     <template #default="{ row }">
                         <el-button size="small" @click="openConfig(row)">
                             配置
@@ -62,14 +81,22 @@
                 </div>
             </template>
             <el-table :data="installed" size="small">
-                <el-table-column prop="packageName" label="包名" />
-                <el-table-column prop="version" label="版本" width="110" />
-                <el-table-column label="插件 ID" width="200">
+                <el-table-column
+                    prop="packageName"
+                    label="包名"
+                    :min-width="scaledPx(260)"
+                />
+                <el-table-column
+                    prop="version"
+                    label="版本"
+                    :width="scaledPx(110)"
+                />
+                <el-table-column label="插件 ID" :width="scaledPx(200)">
                     <template #default="{ row }">
                         {{ (row.pluginIds ?? []).join(', ') }}
                     </template>
                 </el-table-column>
-                <el-table-column label="卸载" width="110">
+                <el-table-column label="卸载" :width="scaledPx(110)">
                     <template #default="{ row }">
                         <el-button
                             size="small"
@@ -88,7 +115,7 @@
                 <el-input
                     v-model="installSpec"
                     placeholder="包名，如 @scope/jsbot-plugin-xxx"
-                    style="width: 320px"
+                    style="width: 20rem"
                 />
                 <el-button type="primary" :loading="busy" @click="install">
                     安装
@@ -98,10 +125,10 @@
 
         <el-drawer
             v-model="configOpen"
-            size="620px"
+            size="min(94vw, 38.75rem)"
             :title="'插件配置 · ' + currentId"
         >
-            <div class="cfg-mode">
+            <div v-if="canUseForm" class="cfg-mode">
                 <el-radio-group
                     :model-value="cfgMode"
                     size="small"
@@ -112,7 +139,69 @@
                 </el-radio-group>
             </div>
 
-            <PluginOptionsForm ref="formRef" :options="currentOptions" />
+            <el-alert
+                v-else
+                type="info"
+                :closable="false"
+                show-icon
+                class="cfg-note"
+                title="该插件的 Schema 无法转换为表单，请直接编辑 JSON；保存时仍会严格校验。"
+            />
+
+            <section class="envelope">
+                <div class="envelope-head">
+                    <h4>群限制</h4>
+                    <span class="envelope-hint">
+                        allow / deny 不能同时非空；留空表示不限制
+                    </span>
+                </div>
+
+                <div class="group-grid">
+                    <div class="group-field">
+                        <span class="group-label">
+                            仅允许这些群 <code>allow</code>
+                        </span>
+                        <el-input
+                            v-model="allowText"
+                            type="textarea"
+                            :rows="2"
+                            spellcheck="false"
+                            placeholder="群号，逗号或换行分隔"
+                        />
+                    </div>
+
+                    <div class="group-field">
+                        <span class="group-label">
+                            禁止这些群 <code>deny</code>
+                        </span>
+                        <el-input
+                            v-model="denyText"
+                            type="textarea"
+                            :rows="2"
+                            spellcheck="false"
+                            placeholder="群号，逗号或换行分隔"
+                        />
+                    </div>
+                </div>
+
+                <div class="private-row">
+                    <div>
+                        <span class="group-label">允许私聊</span>
+                        <p class="envelope-hint">关闭后该插件只处理群消息</p>
+                    </div>
+                    <el-switch v-model="currentPrivate" />
+                </div>
+
+                <p v-if="groupsError" class="group-error">
+                    {{ groupsError }}
+                </p>
+            </section>
+
+            <PluginOptionsForm
+                ref="formRef"
+                :options="currentOptions"
+                :schema="currentSchema"
+            />
 
             <template #footer>
                 <el-button @click="configOpen = false">取消</el-button>
@@ -126,9 +215,23 @@
 
 <script setup lang="ts">
 import { ElMessage } from 'element-plus'
-import { onMounted, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { apiGet, apiPost, apiPut, showError } from '@/api'
 import PluginOptionsForm from '@/components/PluginOptionsForm.vue'
+import { canRenderForm, type JsonSchema } from '@/components/json-schema'
+import { scaledPx } from '@/use-ui-scale'
+
+interface PluginGroups {
+    allow?: number[]
+    deny?: number[]
+}
+
+interface PluginEnvelope {
+    enabled?: boolean
+    private?: boolean
+    groups?: PluginGroups
+    [key: string]: unknown
+}
 
 interface PluginRow {
     id: string
@@ -136,7 +239,9 @@ interface PluginRow {
     description: string
     enabled: boolean
     loaded: boolean
+    config: PluginEnvelope
     options: Record<string, unknown>
+    configSchema: JsonSchema | null
 }
 
 interface InstalledRow {
@@ -162,7 +267,93 @@ const cfgMode = ref<'form' | 'json'>('form')
 const currentId = ref('')
 const currentHash = ref('')
 const currentOptions = ref<Record<string, unknown>>({})
+const currentSchema = ref<JsonSchema | null>(null)
+const currentPrivate = ref(true)
+const allowText = ref('')
+const denyText = ref('')
 const formRef = ref<InstanceType<typeof PluginOptionsForm> | null>(null)
+const canUseForm = computed(() => canRenderForm(currentSchema.value))
+
+type TagType = 'success' | 'warning' | 'info'
+
+const groupSummary = (
+    row: PluginRow
+): {
+    text: string
+    type: TagType
+    detail: string
+} => {
+    const allow = row.config?.groups?.allow ?? []
+    const deny = row.config?.groups?.deny ?? []
+
+    if (allow.length > 0) {
+        return {
+            text: `允许 ${allow.length} 群`,
+            type: 'success',
+            detail: `allow: ${allow.join(', ')}`,
+        }
+    }
+
+    if (deny.length > 0) {
+        return {
+            text: `禁止 ${deny.length} 群`,
+            type: 'warning',
+            detail: `deny: ${deny.join(', ')}`,
+        }
+    }
+
+    return { text: '不限', type: 'info', detail: '未设置 allow / deny' }
+}
+
+const parseGroupIds = (
+    raw: string,
+    label: string
+): { ids: number[]; error: string | null } => {
+    const ids: number[] = []
+
+    for (const token of raw.split(/[\s,，;；]+/u)) {
+        if (token.length === 0) continue
+
+        if (!/^[0-9]+$/u.test(token)) {
+            return { ids, error: `${label}中包含无效群号：${token}` }
+        }
+
+        const id = Number(token)
+
+        if (!Number.isSafeInteger(id) || id <= 0) {
+            return { ids, error: `${label}中的群号必须是正整数：${token}` }
+        }
+
+        if (!ids.includes(id)) ids.push(id)
+    }
+
+    return { ids, error: null }
+}
+
+const parsedGroups = computed(() => {
+    const allow = parseGroupIds(allowText.value, '允许群')
+    const deny = parseGroupIds(denyText.value, '禁止群')
+
+    if (allow.error !== null) {
+        return { allow: allow.ids, deny: [], error: allow.error }
+    }
+
+    if (deny.error !== null) {
+        return { allow: allow.ids, deny: deny.ids, error: deny.error }
+    }
+
+    if (allow.ids.length > 0 && deny.ids.length > 0) {
+        return {
+            allow: allow.ids,
+            deny: deny.ids,
+            error: '允许群和禁止群不能同时填写，请清空其中一个',
+        }
+    }
+
+    return { allow: allow.ids, deny: deny.ids, error: null }
+})
+
+const groupsError = computed(() => parsedGroups.value.error ?? '')
 
 const load = async (): Promise<void> => {
     busy.value = true
@@ -198,7 +389,11 @@ const togglePlugin = async (
 const openConfig = (row: PluginRow): void => {
     currentId.value = row.id
     currentOptions.value = row.options ?? {}
-    cfgMode.value = 'form'
+    currentSchema.value = row.configSchema ?? null
+    currentPrivate.value = row.config?.private ?? true
+    allowText.value = (row.config?.groups?.allow ?? []).join(', ')
+    denyText.value = (row.config?.groups?.deny ?? []).join(', ')
+    cfgMode.value = canRenderForm(row.configSchema ?? null) ? 'form' : 'json'
     configOpen.value = true
 }
 
@@ -220,6 +415,14 @@ const onModeChange = (value: string | number | boolean): void => {
 const saveConfig = async (): Promise<void> => {
     if (busy.value) return
 
+    const groups = parsedGroups.value
+
+    if (groups.error !== null) {
+        ElMessage.warning(groups.error)
+
+        return
+    }
+
     const form = formRef.value
 
     if (form === null) return
@@ -239,6 +442,8 @@ const saveConfig = async (): Promise<void> => {
             `/api/plugins/${encodeURIComponent(currentId.value)}/config`,
             {
                 options: result.options ?? {},
+                private: currentPrivate.value,
+                groups: { allow: groups.allow, deny: groups.deny },
                 baseHash: currentHash.value,
             }
         )
@@ -300,7 +505,7 @@ onMounted(() => void load())
 
 <style scoped>
 .block {
-    margin-bottom: 16px;
+    margin-bottom: 1rem;
 }
 
 .card-header {
@@ -310,6 +515,81 @@ onMounted(() => void load())
 }
 
 .cfg-mode {
-    margin: 0 0 14px 4px;
+    margin: 0 0 0.875rem 0.25rem;
+}
+
+.cfg-note {
+    margin-bottom: 0.875rem;
+}
+
+.envelope {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+    padding-bottom: 0.875rem;
+    margin-bottom: 0.875rem;
+    border-bottom: 1px solid var(--app-border);
+}
+
+.envelope-head {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.25rem 0.75rem;
+    align-items: baseline;
+    justify-content: space-between;
+}
+
+.envelope-head h4 {
+    margin: 0;
+    font-size: 0.875rem;
+    font-weight: 600;
+    color: var(--app-text);
+}
+
+.group-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.75rem;
+}
+
+.group-field {
+    display: flex;
+    flex-direction: column;
+    gap: 0.375rem;
+}
+
+.group-label {
+    font-size: 0.8125rem;
+    font-weight: 600;
+    color: var(--app-text);
+}
+
+.group-label code {
+    font-size: 0.6875rem;
+    font-weight: 500;
+    color: var(--app-muted);
+}
+
+.envelope-hint {
+    margin: 0;
+    font-size: 0.75rem;
+    color: var(--app-muted);
+}
+
+.private-row {
+    display: flex;
+    gap: 1rem;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.private-row p {
+    margin: 0.125rem 0 0;
+}
+
+.group-error {
+    margin: 0;
+    font-size: 0.75rem;
+    color: var(--app-log-error);
 }
 </style>

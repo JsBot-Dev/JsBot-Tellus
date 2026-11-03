@@ -1,6 +1,6 @@
 <template>
     <el-container class="layout">
-        <el-aside width="232px" class="sidebar">
+        <el-aside width="14.5rem" class="sidebar">
             <div class="brand">
                 <div class="logo">J</div>
                 <div class="brand-text">
@@ -17,7 +17,7 @@
                     class="nav-item"
                     :class="{ active: route.name === item.key }"
                 >
-                    <el-icon :size="17">
+                    <el-icon size="1.0625rem">
                         <component :is="item.icon" />
                     </el-icon>
                     <span>{{ item.label }}</span>
@@ -45,7 +45,7 @@
                         class="theme-toggle"
                         @click="onToggleTheme($event)"
                     >
-                        <el-icon :size="17">
+                        <el-icon size="1.0625rem">
                             <Sunny v-if="isDark" />
                             <Moon v-else />
                         </el-icon>
@@ -59,7 +59,7 @@
                         class="theme-toggle"
                         @click="appearanceOpen = true"
                     >
-                        <el-icon :size="17"><Brush /></el-icon>
+                        <el-icon size="1.0625rem"><Brush /></el-icon>
                     </el-button>
                 </el-tooltip>
 
@@ -242,20 +242,20 @@ const logout = async (): Promise<void> => {
 
 .brand {
     display: flex;
-    gap: 12px;
+    gap: 0.75rem;
     align-items: center;
-    padding: 22px 20px 18px;
+    padding: 1.375rem 1.25rem 1.125rem;
 }
 
 .logo {
     display: flex;
     align-items: center;
     justify-content: center;
-    width: 36px;
-    height: 36px;
+    width: 2.25rem;
+    height: 2.25rem;
     font-weight: 700;
     color: #fff;
-    border-radius: 10px;
+    border-radius: 0.625rem;
     background: linear-gradient(
         135deg,
         oklch(68.5% 0.155 230),
@@ -268,36 +268,37 @@ const logout = async (): Promise<void> => {
 
 .brand-text h2 {
     margin: 0;
-    font-size: 14.5px;
+    font-size: 0.90625rem;
     color: var(--app-text);
     letter-spacing: 0.02em;
 }
 
 .brand-text p {
-    margin: 3px 0 0;
-    font-size: 11px;
+    margin: 0.1875rem 0 0;
+    font-size: 0.6875rem;
     color: var(--app-muted);
 }
 
 .nav {
     display: flex;
     flex-direction: column;
-    gap: 2px;
-    padding: 6px 12px;
-    margin-top: 4px;
+    gap: 0.125rem;
+    padding: 0.375rem 0.75rem;
+    margin-top: 0.25rem;
     flex: 1;
+    overflow-y: auto;
 }
 
 .nav-item {
     position: relative;
     display: flex;
-    gap: 10px;
+    gap: 0.625rem;
     align-items: center;
-    padding: 9px 13px;
-    font-size: 13.5px;
+    padding: 0.5625rem 0.8125rem;
+    font-size: 0.84375rem;
     color: var(--app-muted) !important;
     text-decoration: none;
-    border-radius: 9px;
+    border-radius: 0.5625rem;
     transition:
         background 0.14s ease,
         color 0.14s ease;
@@ -316,11 +317,11 @@ const logout = async (): Promise<void> => {
 .nav-item.active::before {
     content: '';
     position: absolute;
-    left: -12px;
+    left: -0.75rem;
     top: 20%;
     bottom: 20%;
-    width: 3px;
-    border-radius: 999px;
+    width: 0.1875rem;
+    border-radius: 62.4375rem;
     background: linear-gradient(
         180deg,
         oklch(68.5% 0.155 230),
@@ -330,17 +331,17 @@ const logout = async (): Promise<void> => {
 
 .sidebar-footer {
     display: flex;
-    gap: 8px;
+    gap: 0.5rem;
     align-items: center;
-    padding: 14px 20px;
-    font-size: 12px;
+    padding: 0.875rem 1.25rem;
+    font-size: 0.75rem;
     border-top: 1px solid var(--app-border);
 }
 
 .status-dot {
-    width: 8px;
-    height: 8px;
-    border-radius: 999px;
+    width: 0.5rem;
+    height: 0.5rem;
+    border-radius: 62.4375rem;
 }
 
 .status-dot.ok {
@@ -355,15 +356,15 @@ const logout = async (): Promise<void> => {
 .header {
     display: flex;
     align-items: center;
-    height: 58px;
-    padding: 0 24px;
+    height: 3.625rem;
+    padding: 0 1.5rem;
     background: var(--app-glass);
     border-bottom: 1px solid var(--app-border);
-    backdrop-filter: blur(12px);
+    backdrop-filter: blur(0.75rem);
 }
 
 .title {
-    font-size: 14.5px;
+    font-size: 0.90625rem;
     font-weight: 600;
     color: var(--app-text);
 }
@@ -373,18 +374,18 @@ const logout = async (): Promise<void> => {
 }
 
 .theme-toggle {
-    margin-right: 6px;
+    margin-right: 0.375rem;
     color: var(--app-muted);
 }
 
 .user {
     display: flex;
-    gap: 9px;
+    gap: 0.5625rem;
     align-items: center;
     color: var(--app-text);
     cursor: pointer;
-    padding: 4px 6px 4px 4px;
-    border-radius: 999px;
+    padding: 0.25rem 0.375rem 0.25rem 0.25rem;
+    border-radius: 62.4375rem;
     transition: background 0.14s ease;
 }
 
@@ -396,9 +397,9 @@ const logout = async (): Promise<void> => {
     display: flex;
     align-items: center;
     justify-content: center;
-    width: 28px;
-    height: 28px;
-    font-size: 12.5px;
+    width: 1.75rem;
+    height: 1.75rem;
+    font-size: 0.78125rem;
     font-weight: 700;
     color: #fff;
     background: linear-gradient(
@@ -406,14 +407,14 @@ const logout = async (): Promise<void> => {
         oklch(68.5% 0.155 230),
         oklch(56% 0.15 250)
     );
-    border-radius: 999px;
+    border-radius: 62.4375rem;
 }
 
 .username {
-    font-size: 13px;
+    font-size: 0.8125rem;
 }
 
 .main {
-    padding: 22px 24px;
+    padding: 1.375rem 1.5rem;
 }
 </style>

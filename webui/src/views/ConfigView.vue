@@ -2,7 +2,7 @@
     <div>
         <el-tabs v-model="tab">
             <el-tab-pane label="常用设置" name="form">
-                <el-form label-width="140px" size="small" class="form">
+                <el-form label-width="8.75rem" size="small" class="form">
                     <el-divider content-position="left">连接</el-divider>
                     <el-form-item label="ws url">
                         <el-input v-model="form.url" />
@@ -24,7 +24,7 @@
                         <el-space>
                             <el-input
                                 v-model="form.webui.host"
-                                style="width: 160px"
+                                style="width: 10rem"
                             />
                             <el-input-number
                                 v-model="form.webui.port"
@@ -36,7 +36,7 @@
                     <el-form-item label="username">
                         <el-input
                             v-model="form.webui.username"
-                            style="width: 200px"
+                            style="width: 12.5rem"
                         />
                     </el-form-item>
                     <el-form-item label="password">
@@ -48,7 +48,7 @@
                                     ? '留空保持不变'
                                     : '未设置'
                             "
-                            style="width: 240px"
+                            style="width: 15rem"
                         />
                     </el-form-item>
                     <el-form-item label="sessionTtlHours">
@@ -437,11 +437,11 @@ onMounted(() => void load())
 
 <style scoped>
 .form {
-    max-width: 640px;
+    max-width: 40rem;
 }
 
 .block {
-    margin-top: 12px;
+    margin-top: 0.75rem;
 }
 
 .json-editor {
@@ -450,7 +450,7 @@ onMounted(() => void load())
 
 .issues {
     margin: 0;
-    padding-left: 18px;
-    font-size: 12px;
+    padding-left: 1.125rem;
+    font-size: 0.75rem;
 }
 </style>

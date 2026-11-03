@@ -5,6 +5,10 @@
  * dark; a 12px radius scale shared by everything.
  * ------------------------------------------------------------------------- */
 :root {
+    /* Base size. The appearance drawer scales this root font-size; every
+       length in the WebUI is rem-based so the whole layout follows. */
+    font-size: 16px;
+
     --app-radius: 0.75rem;
 
     /* Light surfaces (oklch on a 240-250 cool hue arc) */
@@ -186,6 +190,7 @@ body {
     font-family:
         -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue',
         'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
+    font-size: 1rem;
     background: var(--app-bg);
     color: var(--app-text);
     font-variant-numeric: tabular-nums;
@@ -264,6 +269,197 @@ html[data-density='compact'] body {
     line-height: 1.45;
 }
 
+/* ---------------------------------------------------------------------------
+ * Element Plus metrics are rem-based so the appearance scale reaches each
+ * component's box as well as its text. Values mirror the theme defaults at a
+ * 16px root, so 100% looks exactly like stock Element Plus.
+ * ------------------------------------------------------------------------- */
+:root {
+    --el-font-size-extra-large: 1.25rem;
+    --el-font-size-large: 1.125rem;
+    --el-font-size-medium: 1rem;
+    --el-font-size-base: 0.875rem;
+    --el-font-size-small: 0.8125rem;
+    --el-font-size-extra-small: 0.75rem;
+    --el-component-size: 2rem;
+    --el-component-size-large: 2.5rem;
+    --el-component-size-small: 1.5rem;
+}
+
+.el-button {
+    height: 2rem;
+    padding: 0.5rem 0.9375rem;
+    font-size: 0.875rem;
+}
+
+.el-button.is-circle {
+    width: 2rem;
+    padding: 0;
+}
+
+.el-button--small {
+    height: 1.5rem;
+    padding: 0.3125rem 0.6875rem;
+    font-size: 0.75rem;
+}
+
+.el-button--large {
+    height: 2.5rem;
+    padding: 0.75rem 1.1875rem;
+    font-size: 0.875rem;
+}
+
+.el-input__wrapper {
+    padding: 0.0625rem 0.6875rem;
+}
+
+.el-input__inner,
+.el-select__input,
+.el-textarea__inner {
+    font-size: 0.875rem;
+}
+
+.el-textarea__inner {
+    padding: 0.3125rem 0.6875rem;
+}
+
+.el-form-item__label {
+    font-size: 0.875rem;
+    line-height: 2rem;
+}
+
+.el-table {
+    font-size: 0.875rem;
+}
+
+.el-table .cell {
+    padding: 0 0.75rem;
+    line-height: 1.4375rem;
+}
+
+.el-table td.el-table__cell,
+.el-table th.el-table__cell {
+    padding: 0.5rem 0;
+}
+
+.el-tag {
+    height: 1.5rem;
+    padding: 0 0.4375rem;
+    font-size: 0.75rem;
+}
+
+.el-alert {
+    padding: 0.5rem 1rem;
+    font-size: 0.875rem;
+}
+
+.el-alert__title {
+    font-size: 0.875rem;
+    line-height: 1.4375rem;
+}
+
+.el-alert__description {
+    font-size: 0.75rem;
+}
+
+.el-segmented {
+    font-size: 0.875rem;
+}
+
+.el-segmented__item {
+    padding: 0 0.6875rem;
+}
+
+.el-switch {
+    height: 2rem;
+    font-size: 0.875rem;
+    line-height: 1.25rem;
+}
+
+.el-switch__core {
+    min-width: 2.5rem;
+    height: 1.25rem;
+    border-radius: 0.625rem;
+}
+
+.el-switch__core .el-switch__action {
+    width: 1rem;
+    height: 1rem;
+}
+
+.el-checkbox {
+    --el-checkbox-font-size: 0.875rem;
+    --el-checkbox-input-width: 0.875rem;
+    --el-checkbox-input-height: 0.875rem;
+}
+
+.el-radio {
+    --el-radio-font-size: 0.875rem;
+}
+
+.el-slider {
+    --el-slider-height: 0.375rem;
+    --el-slider-button-size: 1.25rem;
+    --el-slider-button-wrapper-size: 2.25rem;
+    --el-slider-button-wrapper-offset: -0.9375rem;
+}
+
+.el-pagination {
+    --el-pagination-button-width: 2rem;
+    --el-pagination-button-height: 2rem;
+    --el-pagination-button-width-large: 2.5rem;
+    --el-pagination-button-height-large: 2.5rem;
+    --el-pagination-button-width-small: 1.5rem;
+    --el-pagination-button-height-small: 1.5rem;
+    --el-pagination-font-size: 0.875rem;
+    --el-pagination-font-size-small: 0.75rem;
+    --el-pagination-item-gap: 1rem;
+}
+
+.el-select-dropdown__item {
+    height: 2.125rem;
+    font-size: 0.875rem;
+    line-height: 2.125rem;
+}
+
+.el-dropdown-menu__item {
+    font-size: 0.875rem;
+    line-height: 2.25rem;
+}
+
+.el-message {
+    --el-message-padding: 0.6875rem 0.9375rem;
+    --el-message-close-size: 1rem;
+    font-size: 0.875rem;
+}
+
+.el-message-box {
+    font-size: 0.875rem;
+}
+
+.el-message-box__title {
+    font-size: 1.125rem;
+}
+
+.el-dialog {
+    padding: 1rem;
+}
+
+.el-dialog__title {
+    font-size: 1.125rem;
+}
+
+.el-drawer__header {
+    font-size: 1.25rem;
+}
+
+.el-tooltip__popper,
+.el-popper.is-dark,
+.el-popper.is-light {
+    font-size: 0.875rem;
+    line-height: 1.25rem;
+}
+
 /* Reduce motion: collapse non-essential CSS transitions/animations. The
    view-transition reveal has its own narrower guard above. */
 html[data-reduce-motion='1'] *,
@@ -318,8 +514,8 @@ body,
 
 /* Scrollbars — foreground-mixed thumb like the SnowLuma shell */
 ::-webkit-scrollbar {
-    width: 10px;
-    height: 10px;
+    width: 0.625rem;
+    height: 0.625rem;
 }
 
 ::-webkit-scrollbar-track {
@@ -327,8 +523,8 @@ body,
 }
 
 ::-webkit-scrollbar-thumb {
-    border: 2px solid transparent;
-    border-radius: 999px;
+    border: 0.125rem solid transparent;
+    border-radius: 62.4375rem;
     background-clip: content-box;
     background-color: color-mix(in oklab, var(--app-text) 22%, transparent);
 }
@@ -366,7 +562,7 @@ body,
 
 @keyframes theme-reveal {
     from {
-        clip-path: circle(0px at var(--vt-x, 50%) var(--vt-y, 50%));
+        clip-path: circle(0rem at var(--vt-x, 50%) var(--vt-y, 50%));
     }
 
     to {
@@ -394,14 +590,14 @@ body,
 .login-waves path {
     fill: none;
     stroke: currentColor;
-    stroke-width: 1px;
+    stroke-width: 0.0625rem;
 }
 
 /* ---------------------------------------------------------------------------
  * Buttons
  * ------------------------------------------------------------------------- */
 .el-button {
-    border-radius: calc(var(--app-radius) - 2px);
+    border-radius: calc(var(--app-radius) - 0.125rem);
     transition:
         background 0.15s ease,
         border-color 0.15s ease,
@@ -434,7 +630,7 @@ body,
 .el-select__wrapper,
 .el-date-editor.el-input__wrapper {
     background: var(--app-field);
-    border-radius: calc(var(--app-radius) - 2px);
+    border-radius: calc(var(--app-radius) - 0.125rem);
     box-shadow: 0 0 0 1px var(--app-field-border) inset;
     transition:
         box-shadow 0.16s ease,
@@ -463,7 +659,7 @@ body,
 
 .el-textarea__inner {
     color: var(--app-text);
-    padding: 10px 12px;
+    padding: 0.625rem 0.75rem;
     line-height: 1.6;
 }
 
@@ -480,36 +676,36 @@ body,
 
 /* Larger touch targets: default 32px is too small for an admin panel. */
 .el-input:not(.el-input--small):not(.el-input--large).el-input {
-    --el-input-height: 38px;
+    --el-input-height: 2.375rem;
 }
 
 .el-input--large.el-input {
-    --el-input-height: 44px;
+    --el-input-height: 2.75rem;
 }
 
 .el-input--small.el-input {
-    --el-input-height: 28px;
+    --el-input-height: 1.75rem;
 }
 
 .el-select:not(.el-select--small):not(.el-select--large) .el-select__wrapper {
-    min-height: 38px;
-    padding: 3px 12px;
+    min-height: 2.375rem;
+    padding: 0.1875rem 0.75rem;
 }
 
 .el-select--large .el-select__wrapper {
-    min-height: 44px;
+    min-height: 2.75rem;
 }
 
 .el-select--small .el-select__wrapper {
-    min-height: 28px;
+    min-height: 1.75rem;
 }
 
 .el-textarea__inner {
-    min-height: 44px;
+    min-height: 2.75rem;
 }
 
 .el-input-number:not(.el-input-number--small) {
-    width: 180px;
+    width: 11.25rem;
 }
 
 /* Textarea count badge */
@@ -537,10 +733,10 @@ body,
 }
 
 .el-select-dropdown__item {
-    margin: 2px 6px 2px;
+    margin: 0.125rem 0.375rem 0.125rem;
     padding: 0 0.625rem;
-    height: 32px;
-    border-radius: 7px;
+    height: 2rem;
+    border-radius: 0.4375rem;
     color: var(--app-text);
     font-size: 0.8125rem;
     line-height: 2rem;
@@ -564,9 +760,9 @@ body,
 /* Dropdown menus share the global context-menu language: tight 5px padding,
    32px rows, 7px item radii, brand-tinted hover. */
 .el-dropdown__popper.el-popper {
-    padding: 5px;
+    padding: 0.3125rem;
     border: 1px solid color-mix(in oklab, var(--app-border) 74%, transparent);
-    border-radius: calc(var(--app-radius) + 2px);
+    border-radius: calc(var(--app-radius) + 0.125rem);
     background: var(--el-bg-color-overlay);
     box-shadow: var(--app-pop-shadow);
     outline: none;
@@ -579,11 +775,11 @@ body,
 
 .el-dropdown-menu__item {
     display: flex;
-    gap: 8px;
+    gap: 0.5rem;
     align-items: center;
-    height: 32px;
+    height: 2rem;
     padding: 0 0.625rem;
-    border-radius: 7px;
+    border-radius: 0.4375rem;
     color: var(--app-text);
     font-size: 0.8125rem;
     font-weight: 500;
@@ -604,9 +800,9 @@ body,
  * Cards
  * ------------------------------------------------------------------------- */
 .el-card {
-    --el-card-padding: 18px;
+    --el-card-padding: 1.125rem;
     border: 1px solid var(--app-border);
-    border-radius: calc(var(--app-radius) + 4px);
+    border-radius: calc(var(--app-radius) + 0.25rem);
     background: var(--app-panel);
     box-shadow: var(--card-shadow);
     transition: border-color 0.15s ease;
@@ -617,14 +813,14 @@ body,
 }
 
 .el-card__header {
-    padding: 13px 18px;
+    padding: 0.8125rem 1.125rem;
     font-weight: 600;
-    font-size: 13.5px;
+    font-size: 0.84375rem;
     letter-spacing: 0.01em;
     background: transparent;
     border-bottom: 1px solid var(--app-border);
-    border-top-left-radius: calc(var(--app-radius) + 3px);
-    border-top-right-radius: calc(var(--app-radius) + 3px);
+    border-top-left-radius: calc(var(--app-radius) + 0.1875rem);
+    border-top-right-radius: calc(var(--app-radius) + 0.1875rem);
 }
 
 .card-header {
@@ -637,13 +833,13 @@ body,
  * Tags
  * ------------------------------------------------------------------------- */
 .el-tag {
-    border-radius: 999px;
+    border-radius: 62.4375rem;
     font-weight: 500;
 }
 
 /* Tags — level hues follow the log-color tokens so pills match log text */
 .el-tag {
-    border-radius: 999px;
+    border-radius: 62.4375rem;
     font-weight: 500;
 }
 
@@ -717,7 +913,7 @@ body,
 }
 
 .el-table th.el-table__cell {
-    font-size: 12px;
+    font-size: 0.75rem;
     font-weight: 600;
 }
 
@@ -733,14 +929,14 @@ html.dark .el-table,
 .el-dialog,
 .el-message-box {
     border: 1px solid var(--app-border-strong);
-    border-radius: calc(var(--app-radius) + 2px);
+    border-radius: calc(var(--app-radius) + 0.125rem);
     background: var(--el-bg-color-overlay);
 }
 
 .el-drawer__header,
 .el-dialog__header {
     font-weight: 600;
-    margin-bottom: 12px;
+    margin-bottom: 0.75rem;
 }
 
 .el-pagination {
@@ -762,11 +958,11 @@ html.dark .el-table,
 }
 
 .page-block {
-    margin-bottom: 16px;
+    margin-bottom: 1rem;
 }
 
 .page-sub {
-    margin: 8px 0 0;
+    margin: 0.5rem 0 0;
     color: var(--app-muted);
     font-size: 0.6875rem;
     line-height: 1rem;
@@ -776,12 +972,12 @@ html.dark .el-table,
 
 pre.code,
 pre.json {
-    padding: 12px 14px;
+    padding: 0.75rem 0.875rem;
     background: var(--app-bg);
     border: 1px solid var(--app-border);
-    border-radius: calc(var(--app-radius) - 2px);
+    border-radius: calc(var(--app-radius) - 0.125rem);
     white-space: pre-wrap;
-    font-size: 12px;
+    font-size: 0.75rem;
     line-height: 1.65;
     color: var(--app-text);
     font-family: 'SF Mono', ui-monospace, Menlo, Consolas, monospace;

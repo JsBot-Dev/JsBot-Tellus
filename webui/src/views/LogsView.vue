@@ -336,11 +336,11 @@ onUnmounted(() => {
 
     display: flex;
     flex-direction: column;
-    height: calc(100vh - 192px);
-    min-height: 420px;
+    height: calc(100vh - 12rem);
+    min-height: 26.25rem;
     position: relative;
     border: 1px solid var(--app-border);
-    border-radius: calc(var(--app-radius) + 2px);
+    border-radius: calc(var(--app-radius) + 0.125rem);
     background: var(--app-bg);
     box-shadow: var(--card-shadow);
     overflow: hidden;
@@ -354,30 +354,30 @@ onUnmounted(() => {
 
 .term-bar {
     display: flex;
-    gap: 10px;
+    gap: 0.625rem;
     align-items: center;
     flex: none;
-    padding: 8px 12px;
+    padding: 0.5rem 0.75rem;
     border-bottom: 1px solid var(--app-border);
     background: var(--app-panel);
 }
 
 .term-traffic {
     display: flex;
-    gap: 6px;
+    gap: 0.375rem;
     flex: none;
 }
 
 .dot {
-    width: 10px;
-    height: 10px;
-    border-radius: 999px;
+    width: 0.625rem;
+    height: 0.625rem;
+    border-radius: 62.4375rem;
     background: var(--app-dot-off);
     opacity: 0.55;
 }
 
 .term-title {
-    font-size: 12.5px;
+    font-size: 0.78125rem;
     font-weight: 600;
     color: var(--app-text);
     font-family: 'SF Mono', ui-monospace, Menlo, Consolas, monospace;
@@ -393,16 +393,16 @@ onUnmounted(() => {
 }
 
 .ctl {
-    width: 128px;
+    width: 8rem;
     flex: none;
 }
 
 .sel-level {
-    width: 108px;
+    width: 6.75rem;
 }
 
 .sel-live {
-    width: 104px;
+    width: 6.5rem;
 }
 
 .refresh {
@@ -413,12 +413,12 @@ onUnmounted(() => {
 .term-body {
     position: relative;
     flex: 1;
-    padding: 10px 14px 14px;
+    padding: 0.625rem 0.875rem 0.875rem;
     overflow-y: auto;
     font-family:
         'SF Mono', ui-monospace, Menlo, Monaco, Consolas, 'Liberation Mono',
         monospace;
-    font-size: 12px;
+    font-size: 0.75rem;
     line-height: 1.7;
     font-variant-numeric: tabular-nums;
     scrollbar-color: color-mix(in oklab, var(--app-text) 22%, transparent)
@@ -426,20 +426,20 @@ onUnmounted(() => {
 }
 
 .term-empty {
-    padding: 48px 0;
+    padding: 3rem 0;
     text-align: center;
     color: var(--app-muted);
-    font-size: 12px;
+    font-size: 0.75rem;
 }
 
 .log-row {
     display: flex;
-    gap: 10px;
+    gap: 0.625rem;
     align-items: baseline;
-    padding: 0 6px;
-    border-radius: 6px;
+    padding: 0 0.375rem;
+    border-radius: 0.375rem;
     content-visibility: auto;
-    contain-intrinsic-size: auto 24px;
+    contain-intrinsic-size: auto 1.5rem;
     white-space: pre-wrap;
     word-break: break-word;
 }
@@ -455,9 +455,9 @@ onUnmounted(() => {
 
 .lv {
     flex: none;
-    width: 52px;
+    width: 3.25rem;
     font-weight: 600;
-    font-size: 11px;
+    font-size: 0.6875rem;
     letter-spacing: 0.02em;
 }
 
@@ -515,7 +515,7 @@ onUnmounted(() => {
 @keyframes terminal-row-in {
     from {
         opacity: 0;
-        transform: translateY(6px);
+        transform: translateY(0.375rem);
     }
 
     to {
@@ -527,15 +527,15 @@ onUnmounted(() => {
 /* Jump-to-latest pill */
 .jump-latest {
     position: absolute;
-    bottom: 14px;
+    bottom: 0.875rem;
     left: 50%;
     translate: -50% 0;
-    padding: 6px 14px;
+    padding: 0.375rem 0.875rem;
     border: 1px solid color-mix(in oklab, var(--app-border) 74%, transparent);
-    border-radius: 999px;
+    border-radius: 62.4375rem;
     background: var(--el-bg-color-overlay);
     color: var(--app-accent);
-    font-size: 12px;
+    font-size: 0.75rem;
     font-weight: 500;
     box-shadow: var(--app-pop-shadow);
     cursor: pointer;
@@ -556,7 +556,7 @@ onUnmounted(() => {
 .pill-enter-from,
 .pill-leave-to {
     opacity: 0;
-    translate: -50% 6px;
+    translate: -50% 0.375rem;
 }
 
 @media (prefers-reduced-motion: reduce) {
