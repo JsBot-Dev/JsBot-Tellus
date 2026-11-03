@@ -2,12 +2,17 @@ import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+import { z } from 'zod'
 import {
     appConfigSchema,
     type AppConfig,
     type WebUiConfig,
 } from '../../src/core/config/schema.js'
 import { createSilentLogger } from '../../src/core/logging/logger.js'
+import {
+    definePlugin,
+    type AnyPluginDefinition,
+} from '../../src/core/plugin/types.js'
 import { LogBuffer } from '../../src/core/logging/log-buffer.js'
 import { EventFeed } from '../../src/core/web/event-feed.js'
 import { WebUiServer } from '../../src/core/web/server.js'
@@ -56,7 +61,10 @@ function webUiConfig(
     }
 }
 
-async function createEnv(webui: WebUiConfig): Promise<TestEnv> {
+async function createEnv(
+    webui: WebUiConfig,
+    plugins: AnyPluginDefinition[] = []
+): Promise<TestEnv> {
     const directory = await mkdtemp(join(tmpdir(), 'jsbot-web-server-'))
 
     directories.push(directory)
@@ -92,6 +100,7 @@ async function createEnv(webui: WebUiConfig): Promise<TestEnv> {
         logs,
         events,
         getWebUiConfig: () => config.value,
+        getPlugins: () => plugins,
         readConfig: async () => {
             const raw = await readFileOf(configPath)
 
@@ -303,6 +312,57 @@ describe('WebUiServer', () => {
             const logList = await env.fetch('/api/logs?limit=1')
 
             expect(logList.text).toContain('hello')
+        } finally {
+            await env.shutdown()
+        }
+    })
+
+    it('lists plugin configs while the runtime is unavailable', async () => {
+        const demo = definePlugin({
+            manifest: {
+                id: 'demo',
+                version: '1.0.0',
+                defaultEnabled: true,
+                configSchema: z
+                    .object({ token: z.string().optional() })
+                    .strict(),
+            },
+            setup: () => {},
+        })
+        const env = await createEnv(webUiConfig(0), [demo])
+
+        try {
+            await env.fetch('/api/auth/login', {
+                method: 'POST',
+                body: '{"username":"admin","password":"super-secret-pass"}',
+            })
+
+            const response = await env.fetch('/api/plugins')
+            const payload = JSON.parse(response.text) as {
+                data: {
+                    plugins: Array<{
+                        id: string
+                        enabled: boolean
+                        loaded: boolean
+                        config: Record<string, unknown>
+                        configSchema: Record<string, unknown> | null
+                    }>
+                    installerEnabled: boolean
+                }
+            }
+
+            expect(response.status).toBe(200)
+            expect(payload.data.installerEnabled).toBe(false)
+            expect(payload.data.plugins).toHaveLength(1)
+            expect(payload.data.plugins[0]).toMatchObject({
+                id: 'demo',
+                enabled: true,
+                loaded: false,
+                config: {},
+            })
+            expect(payload.data.plugins[0]?.configSchema).toMatchObject({
+                type: 'object',
+            })
         } finally {
             await env.shutdown()
         }

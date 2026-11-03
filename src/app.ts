@@ -54,6 +54,9 @@ async function main(): Promise<void> {
     // from when the config cannot even be parsed.
     const initialSpec = await loadRuntimeSpec(settings)
 
+    // Keep the last successfully loaded definitions even when the kernel fails
+    // to start, so the WebUI can still render and validate plugin configs.
+    let latestSpec = initialSpec
     let runtime: Runtime | null = null
     let currentConfig: AppConfig = initialSpec.config
     let generation = 0
@@ -97,6 +100,7 @@ async function main(): Promise<void> {
 
             const spec = await loadRuntimeSpec(settings)
 
+            latestSpec = spec
             currentConfig = spec.config
 
             const next = createRuntime(
@@ -153,7 +157,7 @@ async function main(): Promise<void> {
 
     const store = new ConfigStore({
         configPath,
-        getPlugins: () => runtime?.spec.plugins ?? [],
+        getPlugins: () => latestSpec.plugins,
         restart: () => restartRuntime(),
     })
 
@@ -170,6 +174,7 @@ async function main(): Promise<void> {
         events,
         store,
         getCurrentConfig: () => currentConfig,
+        getPlugins: () => latestSpec.plugins,
         getRuntime: () => runtime,
         getGeneration: () => generation,
         restart: () => restartRuntime(),

@@ -70,7 +70,7 @@ http://127.0.0.1:8787
 
 ### 启动失败
 
-当 `webui.enabled=true` 且 Kernel 启动失败（WebSocket 连不上、插件 setup 失败等）时，进程会保留 WebUI 在线，页面显示错误。可以在配置页修正问题后直接重启运行时，不需要手动改文件。
+当 `webui.enabled=true` 且 Kernel 启动失败（WebSocket 连不上、插件 setup 失败等）时，进程会保留 WebUI 在线，页面显示错误。插件页会继续使用最近一次成功加载的插件定义，因此插件配置缺失时仍可补全配置；修正后直接重启运行时即可，不需要手动改文件。
 
 如果配置文件本身 JSON 或 schema 错误，进程仍会在启动前退出，此时 WebUI 无法启动。
 
