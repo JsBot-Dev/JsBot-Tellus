@@ -16,8 +16,8 @@ import { onMounted, onUnmounted, ref } from 'vue'
 import { getAppearance } from '@/appearance'
 
 /**
- * 雪色自适应光标：默认是小圆点；悬停可点击目标时按目标边界'扑'上去变成
- * 半透明描边块，进入文本区收窄成 I-beam 胶囊，拖拽/等待/禁用各有形态。
+ * 雪色自适应光标：默认是小圆点；悬停可点击目标时整块吸附到目标边界上，
+ * 变成半透明描边块，进入文本区收窄成 I-beam 胶囊，拖拽/等待/禁用各有形态。
  * 仅在 hover:hover + pointer:fine 且未开启减少/关闭动效时武装；武装后隐藏
  * 原生光标（CSS: html[data-cursor-armed="1"] * { cursor: none }），组件卸载
  * 或武装失败时系统光标原样保留。
@@ -33,9 +33,13 @@ type CursorMode =
     | 'not-allowed'
 
 const TARGET_SELECTOR =
-    'button, a[href], summary, select, label[for], ' +
+    'button, a[href], summary, select, label, ' +
     '[role="button"], [role="link"], [role="tab"], [role="checkbox"], ' +
-    '[role="radio"], [role="switch"], [role="menuitem"], [role="option"], ' +
+    '[role="radio"], [role="switch"], [role="slider"], [role="menuitem"], ' +
+    '[role="option"], ' +
+    '.el-select__wrapper, .el-segmented__item, .el-dropdown-menu__item, ' +
+    '.el-select-dropdown__item, .el-slider__button-wrapper, ' +
+    '.el-slider__runway, ' +
     '[data-cursor-target], .cursor-pointer'
 
 const TEXT_SELECTOR =
@@ -82,30 +86,77 @@ const resolveMode = (node: Element | null): CursorMode => {
     }
 
     if (node.closest('.cursor-help') !== null) return 'help'
+
+    const select = node.closest('.el-select__wrapper')
+
+    if (select !== null && !select.classList.contains('is-filterable')) {
+        return 'target'
+    }
+
     if (node.closest(TEXT_SELECTOR) !== null) return 'text'
     if (node.closest(TARGET_SELECTOR) !== null) return 'target'
 
     return 'default'
 }
 
-/** closest() 返回匹配的元素本身，事件目标即命中目标，直接量边界。 */
+/** 从命中节点向上找最近的匹配目标，作为吸附边界。 */
 const matchedElement = (
-    event: PointerEvent,
+    node: Element | null,
     selector: string
 ): Element | null => {
-    const node = event.target
-
-    if (!(node instanceof Element)) return null
+    if (node === null) return null
     if (node.matches(selector)) return node
 
     return node.closest(selector)
 }
 
+/** 滑块手柄的外层热区比可见圆点大，吸附时贴可见圆点本身。 */
+const resolveSnapTarget = (target: Element): Element => {
+    if (target.matches('.el-slider__button-wrapper, [role="slider"]')) {
+        return target.querySelector('.el-slider__button') ?? target
+    }
+
+    return target
+}
+
+const clampAxis = (
+    value: number,
+    start: number,
+    end: number,
+    size: number
+): number => {
+    const min = start + size / 2
+    const max = end - size / 2
+
+    return min <= max ? Math.min(Math.max(value, min), max) : (start + end) / 2
+}
+
+const textCursorSize = (
+    target: Element,
+    bounds: DOMRect
+): { width: number; height: number } => {
+    const style = getComputedStyle(target)
+    const fontSize = Number.parseFloat(style.fontSize) || 16
+    const lineHeight = Number.parseFloat(style.lineHeight)
+    const rootFontSize =
+        Number.parseFloat(
+            getComputedStyle(document.documentElement).fontSize
+        ) || 16
+    const height = Math.min(
+        Math.max(Number.isFinite(lineHeight) ? lineHeight : fontSize * 1.5, 10),
+        Math.max(bounds.height - 2, 10)
+    )
+
+    return { width: Math.max(2, rootFontSize * 0.25), height }
+}
+
+let armed = false
 let trackFrame: number | null = null
 let latest: {
     x: number
     y: number
     target: Element | null
+    text: Element | null
     mode: CursorMode
 } | null = null
 
@@ -114,41 +165,100 @@ const paint = (): void => {
 
     if (root.value === null || shape.value === null || latest === null) return
 
-    root.value.style.transform = `translate(${latest.x}px, ${latest.y}px)`
-    mode.value = latest.mode
     visible.value = true
 
-    if (latest.mode === 'target' && latest.target instanceof Element) {
-        const bounds = latest.target.getBoundingClientRect()
+    if (
+        latest.mode === 'target' &&
+        latest.target !== null &&
+        latest.target.isConnected
+    ) {
+        const target = resolveSnapTarget(latest.target)
+        const bounds = target.getBoundingClientRect()
 
-        shape.value.style.setProperty(
-            '--cursor-target-width',
-            `${Math.max(bounds.width, 20)}px`
-        )
-        shape.value.style.setProperty(
-            '--cursor-target-height',
-            `${Math.max(bounds.height, 20)}px`
-        )
-        shape.value.style.setProperty(
-            '--cursor-target-radius',
-            `${Math.min(
-                14,
-                Number.parseFloat(
-                    getComputedStyle(latest.target).borderRadius
-                ) || 10
-            )}px`
-        )
+        if (bounds.width > 0 && bounds.height > 0) {
+            mode.value = 'target'
+            root.value.style.transform = `translate(${
+                bounds.left + bounds.width / 2
+            }px, ${bounds.top + bounds.height / 2}px)`
+
+            shape.value.style.setProperty(
+                '--cursor-target-width',
+                `${bounds.width}px`
+            )
+            shape.value.style.setProperty(
+                '--cursor-target-height',
+                `${bounds.height}px`
+            )
+            shape.value.style.setProperty(
+                '--cursor-target-radius',
+                getComputedStyle(target).borderRadius || '10px'
+            )
+
+            return
+        }
     }
+
+    if (
+        latest.mode === 'text' &&
+        latest.text !== null &&
+        latest.text.isConnected
+    ) {
+        const bounds = latest.text.getBoundingClientRect()
+
+        if (bounds.width > 0 && bounds.height > 0) {
+            const { width, height } = textCursorSize(latest.text, bounds)
+            const multiline = latest.text.matches(
+                'textarea, [contenteditable="true"]'
+            )
+            const x = clampAxis(latest.x, bounds.left, bounds.right, width)
+            const y = multiline
+                ? clampAxis(latest.y, bounds.top, bounds.bottom, height)
+                : bounds.top + bounds.height / 2
+
+            mode.value = 'text'
+            root.value.style.transform = `translate(${x}px, ${y}px)`
+
+            shape.value.style.setProperty('--cursor-text-width', `${width}px`)
+            shape.value.style.setProperty('--cursor-text-height', `${height}px`)
+
+            return
+        }
+    }
+
+    mode.value =
+        latest.mode === 'target' || latest.mode === 'text'
+            ? 'default'
+            : latest.mode
+    root.value.style.transform = `translate(${latest.x}px, ${latest.y}px)`
 }
 
 const schedulePaint = (event: PointerEvent): void => {
+    const node = event.target instanceof Element ? event.target : null
+
     latest = {
         x: event.clientX,
         y: event.clientY,
-        target: matchedElement(event, TARGET_SELECTOR),
-        mode: resolveMode(
-            event.target instanceof Element ? event.target : null
-        ),
+        target: matchedElement(node, TARGET_SELECTOR),
+        text: matchedElement(node, TEXT_SELECTOR),
+        mode: resolveMode(node),
+    }
+
+    if (trackFrame === null) trackFrame = window.requestAnimationFrame(paint)
+}
+
+/** 指针不动时，滚动、窗口缩放或布局变化也要重新量目标边界。 */
+const refreshAtPointer = (): void => {
+    if (!armed || latest === null || !visible.value) return
+
+    const node = document.elementFromPoint(latest.x, latest.y)
+    const target = node instanceof Element ? node : null
+
+    latest = {
+        x: latest.x,
+        y: latest.y,
+        target: matchedElement(target, TARGET_SELECTOR),
+        text: matchedElement(target, TEXT_SELECTOR),
+        mode: resolveMode(target),
     }
 
     if (trackFrame === null) trackFrame = window.requestAnimationFrame(paint)
@@ -184,8 +294,6 @@ const onWindowBlur = (): void => {
     pressed.value = false
 }
 
-let armed = false
-
 const arm = (): void => {
     if (armed) return
 
@@ -205,6 +313,11 @@ const arm = (): void => {
     window.addEventListener('pointerdown', onPointerDown, { passive: true })
     window.addEventListener('pointerup', onPointerUp, { passive: true })
     window.addEventListener('pointerleave', onPointerLeave, { passive: true })
+    window.addEventListener('scroll', refreshAtPointer, {
+        capture: true,
+        passive: true,
+    })
+    window.addEventListener('resize', refreshAtPointer, { passive: true })
     window.addEventListener('blur', onWindowBlur)
 }
 
@@ -215,10 +328,20 @@ const disarm = (): void => {
     document.documentElement.removeAttribute('data-cursor-system')
     document.documentElement.removeAttribute('data-cursor-armed')
 
+    if (trackFrame !== null) {
+        window.cancelAnimationFrame(trackFrame)
+        trackFrame = null
+    }
+    latest = null
+    visible.value = false
+    pressed.value = false
+
     window.removeEventListener('pointermove', onPointerMove)
     window.removeEventListener('pointerdown', onPointerDown)
     window.removeEventListener('pointerup', onPointerUp)
     window.removeEventListener('pointerleave', onPointerLeave)
+    window.removeEventListener('scroll', refreshAtPointer, true)
+    window.removeEventListener('resize', refreshAtPointer)
     window.removeEventListener('blur', onWindowBlur)
 }
 
@@ -295,10 +418,10 @@ onUnmounted(disarm)
     --cursor-fill: color-mix(in oklab, var(--app-accent) 24%, transparent);
 }
 
-/* 文本形态：窄 I-beam 胶囊 */
+/* 文本形态：窄 I-beam 胶囊，尺寸贴合输入框的行高并限制在框内 */
 .adaptive-cursor[data-mode='text'] .adaptive-cursor-shape {
-    width: 0.25rem;
-    height: 1.75rem;
+    width: var(--cursor-text-width, 0.25rem);
+    height: var(--cursor-text-height, 1.75rem);
     --cursor-fill: color-mix(in oklab, var(--app-accent) 84%, var(--app-text));
     --cursor-stroke: color-mix(in oklab, var(--app-bg) 48%, transparent);
     box-shadow:
