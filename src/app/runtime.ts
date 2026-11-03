@@ -454,6 +454,7 @@ export interface WebUiDepsOptions {
     events: EventFeed
     store: ConfigStore
     getCurrentConfig: () => AppConfig
+    getPlugins: () => AnyPluginDefinition[]
     getRuntime: () => Runtime | null
     getGeneration: () => number
     restart: () => Promise<boolean>
@@ -479,6 +480,7 @@ export function createWebUiDeps(options: WebUiDepsOptions): WebUiDeps {
         logs: options.logs,
         events: options.events,
         getWebUiConfig: () => options.getCurrentConfig().webui,
+        getPlugins: () => options.getPlugins(),
         readConfig: () => options.store.read(),
         validateConfig: (value) => options.store.validate(value),
         applyConfig: (value, baseHash) => options.store.apply(value, baseHash),

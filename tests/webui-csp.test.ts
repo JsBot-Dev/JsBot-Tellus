@@ -76,6 +76,7 @@ describe('WebUiServer CSP authorizes the built appearance bootstrap', () => {
             logs: new LogBuffer(),
             events: new EventFeed(),
             getWebUiConfig: () => config.value,
+            getPlugins: () => [],
             readConfig: async () => {
                 const raw = await readFileOf(configPath)
 

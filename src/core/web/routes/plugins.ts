@@ -41,14 +41,19 @@ function pluginJsonSchema(
 }
 
 export async function handlePluginsList(ctx: ApiContext): Promise<void> {
-    const runtime = requireRuntime(ctx.deps)
+    const runtime = ctx.deps.getRuntime()
+    // The kernel can fail to start (for example when a plugin has no config
+    // yet). Keep serving the last loaded definitions so the WebUI can still
+    // edit plugin configs and recover without touching the file by hand.
+    const definitions = runtime?.plugins ?? ctx.deps.getPlugins()
     const statuses = new Map(
-        runtime.kernel.listPlugins().map((entry) => [entry.id, entry])
+        (runtime?.kernel.listPlugins() ?? []).map((entry) => [entry.id, entry])
     )
-    const plugins = runtime.plugins.map((definition) => {
+    const document = await ctx.deps.readConfig()
+    const plugins = definitions.map((definition) => {
         const id = definition.manifest.id
         const status = statuses.get(id)
-        const envelope = asRecord(runtime.config.plugins[id]) as Record<
+        const envelope = asRecord(document.config.plugins[id]) as Record<
             string,
             unknown
         >
@@ -57,6 +62,11 @@ export async function handlePluginsList(ctx: ApiContext): Promise<void> {
         const options = structuredClone(
             stripPluginEnvelope(envelope as never)
         ) as Record<string, unknown>
+        const enabled =
+            status?.enabled ??
+            (typeof envelope['enabled'] === 'boolean'
+                ? envelope['enabled']
+                : (definition.manifest.defaultEnabled ?? false))
 
         return {
             id,
@@ -64,22 +74,24 @@ export async function handlePluginsList(ctx: ApiContext): Promise<void> {
             description: definition.manifest.description,
             dependencies: definition.manifest.dependencies ?? [],
             defaultEnabled: definition.manifest.defaultEnabled ?? false,
-            enabled: status?.enabled ?? false,
+            enabled,
             loaded: status?.loaded ?? false,
             config: envelope,
             options,
             configSchema: pluginJsonSchema(definition),
         }
     })
-    const installed = runtime.installer.enabled
-        ? await runtime.installer.list()
-        : []
+    const installer = runtime?.installer
+    const installed =
+        installer !== undefined && installer.enabled
+            ? await installer.list()
+            : []
 
     sendData(ctx.res, 200, {
         plugins,
         installed,
-        installerEnabled: runtime.installer.enabled,
-        configHash: (await ctx.deps.readConfig()).hash,
+        installerEnabled: installer?.enabled ?? false,
+        configHash: document.hash,
     })
 }
 
@@ -90,14 +102,17 @@ export async function handlePluginConfigPut(ctx: ApiContext): Promise<void> {
 
     if (id === undefined) throw new HttpError(404, 'unknown plugin')
 
-    if (!isRecord(document.config.plugins[id])) {
+    const runtime = ctx.deps.getRuntime()
+    const definition = (runtime?.plugins ?? ctx.deps.getPlugins()).find(
+        (plugin) => plugin.manifest.id === id
+    )
+    const entry = document.config.plugins[id]
+
+    if (definition === undefined && entry === undefined) {
         throw new HttpError(404, `unknown plugin: ${id}`)
     }
 
-    const existing = asRecord(document.config.plugins[id]) as unknown as Record<
-        string,
-        unknown
-    >
+    const existing = asRecord(entry) as unknown as Record<string, unknown>
     const next = { ...existing }
 
     if (typeof body['enabled'] === 'boolean') {
@@ -115,10 +130,6 @@ export async function handlePluginConfigPut(ctx: ApiContext): Promise<void> {
             throw new HttpError(400, 'options must be an object')
         }
 
-        const runtime = ctx.deps.getRuntime()
-        const definition = runtime?.plugins.find(
-            (plugin) => plugin.manifest.id === id
-        )
         const options: Record<string, unknown> = {}
 
         for (const [key, value] of Object.entries(body['options'])) {

@@ -64,6 +64,13 @@ export interface WebUiDeps {
     /** Current webui settings; picked up after runtime restarts. */
     getWebUiConfig(): WebUiConfig
 
+    /**
+     * Plugin definitions from the last successfully loaded runtime spec.
+     * Unlike `getRuntime()`, this stays available when the kernel fails to
+     * start, so plugin configs can still be edited from the WebUI.
+     */
+    getPlugins(): AnyPluginDefinition[]
+
     readConfig(): Promise<ConfigDocument>
     validateConfig(value: unknown): Promise<ConfigValidationResult>
     applyConfig(

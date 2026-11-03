@@ -128,27 +128,28 @@ function validatePlugins(
         definitions.map((definition) => [definition.manifest.id, definition])
     )
 
-    for (const [id, envelope] of Object.entries(config.plugins)) {
-        const definition = byId.get(id)
-
-        if (!definition) {
+    for (const id of Object.keys(config.plugins)) {
+        if (!byId.has(id)) {
             issues.push({
                 path: `plugins.${id}`,
                 message: `unknown plugin id: ${id}`,
             })
-
-            continue
         }
+    }
 
+    // Validate every enabled plugin, not only the ones already present in the
+    // config file. A newly installed plugin has no envelope yet; validating it
+    // here surfaces missing required options before the runtime is restarted.
+    for (const definition of definitions) {
+        const id = definition.manifest.id
+        const envelope = config.plugins[id]
         const enabled =
-            (envelope as PluginEnvelope).enabled ??
-            definition.manifest.defaultEnabled ??
-            false
+            envelope?.enabled ?? definition.manifest.defaultEnabled ?? false
 
         if (!enabled) continue
 
         const result = definition.manifest.configSchema.safeParse(
-            stripPluginEnvelope(envelope as PluginEnvelope)
+            stripPluginEnvelope(envelope ?? ({} as PluginEnvelope))
         )
 
         if (!result.success) {
@@ -255,9 +256,14 @@ export class ConfigStore {
             }
         }
 
+        const pluginIssues = validatePlugins(
+            parsed.data,
+            this.options.getPlugins()
+        )
+
         return {
-            ok: true,
-            issues: validatePlugins(parsed.data, this.options.getPlugins()),
+            ok: pluginIssues.length === 0,
+            issues: pluginIssues,
             config: parsed.data,
         }
     }

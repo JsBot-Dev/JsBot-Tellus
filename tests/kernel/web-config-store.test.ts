@@ -2,10 +2,15 @@ import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterAll, beforeEach, describe, expect, it } from 'vitest'
+import { z } from 'zod'
 import {
     appConfigSchema,
     type AppConfig,
 } from '../../src/core/config/schema.js'
+import {
+    definePlugin,
+    type AnyPluginDefinition,
+} from '../../src/core/plugin/types.js'
 import {
     ConfigStore,
     ConfigStoreError,
@@ -40,7 +45,9 @@ interface TestHarness {
 
 let directories: string[] = []
 
-async function harness(): Promise<TestHarness> {
+async function harness(
+    plugins: AnyPluginDefinition[] = []
+): Promise<TestHarness> {
     const directory = await mkdtemp(join(tmpdir(), 'jsbot-config-store-'))
 
     directories.push(directory)
@@ -50,7 +57,7 @@ async function harness(): Promise<TestHarness> {
 
     const store = new ConfigStore({
         configPath,
-        getPlugins: () => [],
+        getPlugins: () => plugins,
         restart: async () => {
             state.restartCalls += 1
 
@@ -115,6 +122,49 @@ describe('ConfigStore.validate', () => {
     it('passes for a valid document', async () => {
         const env = await harness()
         const result = await env.store.validate({ ...baseConfig() })
+
+        expect(result.ok).toBe(true)
+        expect(result.issues).toEqual([])
+    })
+
+    it('reports missing config for an enabled plugin', async () => {
+        const demo = definePlugin({
+            manifest: {
+                id: 'demo',
+                version: '1.0.0',
+                defaultEnabled: true,
+                configSchema: z.object({ token: z.string() }).strict(),
+            },
+            setup: () => {},
+        })
+        const env = await harness([demo])
+        const result = await env.store.validate({
+            ...baseConfig(),
+            plugins: {},
+        })
+
+        expect(result.ok).toBe(false)
+        expect(result.issues).toContainEqual({
+            path: 'plugins.demo.token',
+            message: expect.any(String),
+        })
+    })
+
+    it('does not require config for a disabled plugin', async () => {
+        const demo = definePlugin({
+            manifest: {
+                id: 'demo',
+                version: '1.0.0',
+                defaultEnabled: true,
+                configSchema: z.object({ token: z.string() }).strict(),
+            },
+            setup: () => {},
+        })
+        const env = await harness([demo])
+        const result = await env.store.validate({
+            ...baseConfig(),
+            plugins: { demo: { enabled: false } },
+        })
 
         expect(result.ok).toBe(true)
         expect(result.issues).toEqual([])
