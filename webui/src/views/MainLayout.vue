@@ -64,7 +64,7 @@
                 </el-tooltip>
 
                 <el-dropdown trigger="click" @command="onCommand">
-                    <span class="user">
+                    <span class="user" data-cursor-target>
                         <span class="avatar">{{ avatarText }}</span>
                         <span class="username">{{ username }}</span>
                     </span>
@@ -96,6 +96,7 @@ import { computed, onMounted, onUnmounted, ref, type Component } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import {
     Bell,
+    Brush,
     ChatDotRound,
     Coin,
     Document,
