@@ -382,7 +382,7 @@ onUnmounted(disarm)
     height: var(--cursor-height);
     translate: -50% -50%;
     border: 1px solid var(--cursor-stroke);
-    border-radius: 9999px;
+    border-radius: 624.9375rem;
     background: var(--cursor-fill);
     box-shadow:
         0 1px 3px oklch(0% 0 0 / 0.16),
@@ -405,7 +405,7 @@ onUnmounted(disarm)
 .adaptive-cursor[data-mode='target'] .adaptive-cursor-shape {
     width: var(--cursor-target-width, 1.125rem);
     height: var(--cursor-target-height, 1.125rem);
-    --cursor-target-radius: 10px;
+    --cursor-target-radius: 0.625rem;
     border-radius: var(--cursor-target-radius);
     --cursor-fill: color-mix(in oklab, var(--app-accent) 14%, transparent);
     --cursor-stroke: color-mix(in oklab, var(--app-accent) 30%, transparent);
@@ -450,17 +450,17 @@ onUnmounted(disarm)
     height: 1.4rem;
     --cursor-fill: color-mix(in oklab, var(--app-bg) 84%, transparent);
     --cursor-stroke: color-mix(in oklab, var(--app-accent) 22%, transparent);
-    border-width: 2px;
+    border-width: 0.125rem;
 }
 
 .adaptive-cursor[data-mode='wait'] .adaptive-cursor-shape::before {
     content: '';
     position: absolute;
-    inset: -4px;
-    border: 2px solid transparent;
+    inset: -0.25rem;
+    border: 0.125rem solid transparent;
     border-top-color: var(--app-accent);
     border-right-color: color-mix(in oklab, var(--app-accent) 55%, transparent);
-    border-radius: 9999px;
+    border-radius: 624.9375rem;
     animation: cursor-spin 0.7s linear infinite;
 }
 
@@ -476,7 +476,7 @@ onUnmounted(disarm)
     height: 1.45rem;
     --cursor-fill: color-mix(in oklab, var(--app-danger) 8%, var(--app-bg));
     --cursor-stroke: color-mix(in oklab, var(--app-danger) 76%, transparent);
-    border-width: 2px;
+    border-width: 0.125rem;
     box-shadow: 0 2px 8px
         color-mix(in oklab, var(--app-danger) 22%, transparent);
 }
@@ -487,8 +487,8 @@ onUnmounted(disarm)
     top: 50%;
     left: 50%;
     width: 1rem;
-    height: 2px;
-    border-radius: 9999px;
+    height: 0.125rem;
+    border-radius: 624.9375rem;
     background: var(--app-danger);
     opacity: 0.9;
     transform: translate(-50%, -50%) rotate(-45deg);

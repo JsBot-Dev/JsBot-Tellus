@@ -87,14 +87,15 @@
                     ) {
                         root.style.setProperty('--app-radius', a.radius + 'rem')
                     }
-                    if (
+                    var uiScale =
+                        a.v === 2 &&
                         typeof a.uiScale === 'number' &&
                         a.uiScale >= 0.5 &&
                         a.uiScale <= 2
-                    ) {
-                        root.style.fontSize =
-                            Math.round(16 * a.uiScale * 100) / 100 + 'px'
-                    }
+                            ? a.uiScale
+                            : 1
+                    root.style.fontSize =
+                        Math.round(16 * uiScale * 100) / 100 + 'px'
                 } catch (e) {
                     /* ignore — fall back to the default theme */
                 }

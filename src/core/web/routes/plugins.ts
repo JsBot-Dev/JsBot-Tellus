@@ -1,8 +1,44 @@
+import { z } from 'zod'
+import { formatConfigIssues } from '../../config/schema.js'
 import { stripPluginEnvelope } from '../../plugin/host.js'
+import type { AnyPluginDefinition } from '../../plugin/types.js'
 import { HttpError, isRecord, readJsonBody, sendData } from '../http.js'
 import { asRecord, requireRuntime, type ApiContext } from './shared.js'
 
 const ENVELOPE_KEYS = new Set(['enabled', 'private', 'groups'])
+
+/**
+ * JSON Schema for a plugin's options, derived from its Zod input schema once
+ * per definition. `null` means the schema cannot be represented and the WebUI
+ * falls back to raw JSON editing.
+ */
+const jsonSchemaCache = new WeakMap<
+    AnyPluginDefinition,
+    Record<string, unknown> | null
+>()
+
+function pluginJsonSchema(
+    definition: AnyPluginDefinition
+): Record<string, unknown> | null {
+    if (jsonSchemaCache.has(definition)) {
+        return jsonSchemaCache.get(definition) ?? null
+    }
+
+    let result: Record<string, unknown> | null = null
+
+    try {
+        result = z.toJSONSchema(definition.manifest.configSchema, {
+            io: 'input',
+            unrepresentable: 'any',
+        }) as Record<string, unknown>
+    } catch {
+        result = null
+    }
+
+    jsonSchemaCache.set(definition, result)
+
+    return result
+}
 
 export async function handlePluginsList(ctx: ApiContext): Promise<void> {
     const runtime = requireRuntime(ctx.deps)
@@ -16,6 +52,11 @@ export async function handlePluginsList(ctx: ApiContext): Promise<void> {
             string,
             unknown
         >
+        // `safeStringify` treats shared references as circular; cloning keeps
+        // `config` and `options` from aliasing the same nested objects.
+        const options = structuredClone(
+            stripPluginEnvelope(envelope as never)
+        ) as Record<string, unknown>
 
         return {
             id,
@@ -26,10 +67,8 @@ export async function handlePluginsList(ctx: ApiContext): Promise<void> {
             enabled: status?.enabled ?? false,
             loaded: status?.loaded ?? false,
             config: envelope,
-            options: stripPluginEnvelope(envelope as never) as Record<
-                string,
-                unknown
-            >,
+            options,
+            configSchema: pluginJsonSchema(definition),
         }
     })
     const installed = runtime.installer.enabled
@@ -76,12 +115,42 @@ export async function handlePluginConfigPut(ctx: ApiContext): Promise<void> {
             throw new HttpError(400, 'options must be an object')
         }
 
+        const runtime = ctx.deps.getRuntime()
+        const definition = runtime?.plugins.find(
+            (plugin) => plugin.manifest.id === id
+        )
+        const options: Record<string, unknown> = {}
+
+        for (const [key, value] of Object.entries(body['options'])) {
+            if (!ENVELOPE_KEYS.has(key)) options[key] = value
+        }
+
         for (const key of Object.keys(next)) {
             if (!ENVELOPE_KEYS.has(key)) delete next[key]
         }
 
-        for (const [key, value] of Object.entries(body['options'])) {
-            if (!ENVELOPE_KEYS.has(key)) next[key] = value
+        if (definition === undefined) {
+            // Without a live runtime there is no schema to enforce; the config
+            // store still owns envelope validation.
+            Object.assign(next, options)
+        } else {
+            const parsed = definition.manifest.configSchema.safeParse(options)
+
+            if (!parsed.success) {
+                throw new HttpError(
+                    400,
+                    formatConfigIssues(parsed.error, `plugins.${id}`)
+                )
+            }
+
+            if (!isRecord(parsed.data)) {
+                throw new HttpError(
+                    400,
+                    `plugins.${id}: config schema must produce an object`
+                )
+            }
+
+            Object.assign(next, parsed.data)
         }
     }
 

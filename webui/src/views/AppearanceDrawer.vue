@@ -2,7 +2,7 @@
     <el-drawer
         v-model="open"
         title="外观"
-        size="336px"
+        size="min(94vw, 21rem)"
         class="appearance-drawer"
         :append-to-body="true"
     >
@@ -51,7 +51,8 @@
                 <div class="slider-row">
                     <h4>界面缩放</h4>
                     <span class="slider-value">
-                        {{ Math.round(form.uiScale * 100) }}%
+                        {{ Math.round(form.uiScale * 100) }}% ·
+                        {{ Math.round(16 * form.uiScale) }}px
                     </span>
                 </div>
                 <el-slider
@@ -174,7 +175,7 @@ const sidebarOptions = [
     { label: '带品牌色', value: 'accent' },
 ]
 
-const scaleMarks = { 1: '100%' }
+const scaleMarks = { 0.5: '50%', 1: '100%', 2: '200%' }
 
 const onModeChange = (): void => {
     setAppearance({
@@ -234,18 +235,18 @@ const onReset = (): void => {
 .panel {
     display: flex;
     flex-direction: column;
-    gap: 20px;
+    gap: 1.25rem;
 }
 
 .group {
     display: flex;
     flex-direction: column;
-    gap: 10px;
+    gap: 0.625rem;
 }
 
 .group h4 {
     margin: 0;
-    font-size: 12.5px;
+    font-size: 0.78125rem;
     font-weight: 600;
     color: var(--app-muted);
     letter-spacing: 0.02em;
@@ -259,7 +260,7 @@ const onReset = (): void => {
 
 .slider-value {
     font-variant-numeric: tabular-nums;
-    font-size: 12.5px;
+    font-size: 0.78125rem;
     color: var(--app-accent);
 }
 

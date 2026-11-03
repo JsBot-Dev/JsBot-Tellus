@@ -111,9 +111,13 @@ export interface Status {
 }
 
 export interface CommandInfo {
-    id: string
+    name: string
+    aliases: string[]
+    permission: string
+    messageTypes: string[]
+    description?: string
+    usage?: string
     pluginId: string
-    description: string
 }
 
 export const fetchStatus = (): Promise<Status> => apiGet<Status>('/api/status')

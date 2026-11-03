@@ -21,7 +21,10 @@
             <path d="M-40 130 C 240 70, 440 190, 720 125 S 1120 40, 1480 140" />
         </svg>
 
-        <el-card class="login-card" :body-style="{ padding: '36px 32px 32px' }">
+        <el-card
+            class="login-card"
+            :body-style="{ padding: '2.25rem 2rem 2rem' }"
+        >
             <div class="brand">
                 <div class="logo">J</div>
                 <h2>JsBot 控制台</h2>
@@ -100,16 +103,16 @@ const submit = async (): Promise<void> => {
 .login-card {
     position: relative;
     z-index: 1;
-    width: 372px;
+    width: 23.25rem;
     background: var(--app-glass);
-    backdrop-filter: blur(18px);
+    backdrop-filter: blur(1.125rem);
     box-shadow:
         var(--card-shadow),
         0 32px 80px -40px oklch(0% 0 0 / 0.35);
 }
 
 .brand {
-    margin-bottom: 26px;
+    margin-bottom: 1.625rem;
     text-align: center;
 }
 
@@ -117,13 +120,13 @@ const submit = async (): Promise<void> => {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    width: 52px;
-    height: 52px;
-    margin-bottom: 16px;
-    font-size: 22px;
+    width: 3.25rem;
+    height: 3.25rem;
+    margin-bottom: 1rem;
+    font-size: 1.375rem;
     font-weight: 700;
     color: var(--app-accent-fg);
-    border-radius: 15px;
+    border-radius: 0.9375rem;
     background: linear-gradient(
         135deg,
         oklch(68.5% 0.155 230),
@@ -136,20 +139,20 @@ const submit = async (): Promise<void> => {
 
 .brand h2 {
     margin: 0;
-    font-size: 18px;
+    font-size: 1.125rem;
     color: var(--app-text);
     letter-spacing: 0.02em;
 }
 
 .brand p {
-    margin: 6px 0 0;
-    font-size: 13px;
+    margin: 0.375rem 0 0;
+    font-size: 0.8125rem;
     color: var(--app-muted);
 }
 
 .submit {
     width: 100%;
-    margin-top: 6px;
+    margin-top: 0.375rem;
     font-weight: 600;
     letter-spacing: 0.35em;
 }

@@ -17,12 +17,12 @@
             class="block"
         />
 
-        <el-row :gutter="16" class="block">
+        <el-row class="stat-grid block">
             <el-col :span="6">
                 <el-card class="stat-card">
                     <div class="stat">
                         <div class="chip sky">
-                            <el-icon :size="18"><Link /></el-icon>
+                            <el-icon size="1.125rem"><Link /></el-icon>
                         </div>
                         <div>
                             <p class="label">连接状态</p>
@@ -44,7 +44,7 @@
                 <el-card class="stat-card">
                     <div class="stat">
                         <div class="chip emerald">
-                            <el-icon :size="18"><Timer /></el-icon>
+                            <el-icon size="1.125rem"><Timer /></el-icon>
                         </div>
                         <div>
                             <p class="label">运行时长</p>
@@ -61,7 +61,7 @@
                 <el-card class="stat-card">
                     <div class="stat">
                         <div class="chip violet">
-                            <el-icon :size="18"><Box /></el-icon>
+                            <el-icon size="1.125rem"><Box /></el-icon>
                         </div>
                         <div>
                             <p class="label">插件</p>
@@ -84,7 +84,7 @@
                 <el-card class="stat-card">
                     <div class="stat">
                         <div class="chip amber">
-                            <el-icon :size="18"><ChatDotRound /></el-icon>
+                            <el-icon size="1.125rem"><ChatDotRound /></el-icon>
                         </div>
                         <div>
                             <p class="label">会话</p>
@@ -126,22 +126,47 @@
         <el-card class="block">
             <template #header>命令列表</template>
             <el-table :data="commands" size="small" max-height="320">
-                <el-table-column prop="id" label="命令" width="220" />
-                <el-table-column prop="pluginId" label="插件" width="180" />
-                <el-table-column prop="description" label="说明" />
+                <el-table-column
+                    prop="name"
+                    label="命令"
+                    :width="scaledPx(220)"
+                />
+                <el-table-column label="别名" :width="scaledPx(200)">
+                    <template #default="{ row }">
+                        {{ (row.aliases ?? []).join(', ') || '—' }}
+                    </template>
+                </el-table-column>
+                <el-table-column
+                    prop="pluginId"
+                    label="插件"
+                    :width="scaledPx(220)"
+                />
+                <el-table-column label="说明 / 用法" :min-width="scaledPx(240)">
+                    <template #default="{ row }">
+                        {{ row.description || row.usage || '—' }}
+                    </template>
+                </el-table-column>
             </el-table>
         </el-card>
 
         <el-card class="block">
             <template #header>最近事件</template>
             <el-table :data="recentEvents" size="small" max-height="320">
-                <el-table-column label="时间" width="170">
+                <el-table-column label="时间" :width="scaledPx(170)">
                     <template #default="{ row }">
                         {{ formatTime(row.time) }}
                     </template>
                 </el-table-column>
-                <el-table-column prop="type" label="类型" width="100" />
-                <el-table-column prop="summary" label="摘要" />
+                <el-table-column
+                    prop="type"
+                    label="类型"
+                    :width="scaledPx(100)"
+                />
+                <el-table-column
+                    prop="summary"
+                    label="摘要"
+                    :min-width="scaledPx(240)"
+                />
             </el-table>
         </el-card>
     </div>
@@ -162,6 +187,7 @@ import {
     type FeedEventItem,
     type Status,
 } from '@/api'
+import { scaledPx } from '@/use-ui-scale'
 
 const status = ref<Status | null>(null)
 const commands = ref<CommandInfo[]>([])
@@ -237,12 +263,27 @@ onUnmounted(() => {
 
 <style scoped>
 .block {
-    margin-bottom: 16px;
+    margin-bottom: 1rem;
+}
+
+/* Grid keeps the four stat cards equal at 100% and lets them reflow when the
+   appearance scale or a narrower viewport leaves less room. */
+.stat-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr));
+    gap: 1rem;
+}
+
+.stat-grid :deep(.el-col) {
+    width: auto;
+    max-width: none;
+    flex: none;
+    padding: 0;
 }
 
 .stat {
     display: flex;
-    gap: 14px;
+    gap: 0.875rem;
     align-items: flex-start;
 }
 
@@ -251,9 +292,9 @@ onUnmounted(() => {
     align-items: center;
     justify-content: center;
     flex: none;
-    width: 40px;
-    height: 40px;
-    border-radius: 11px;
+    width: 2.5rem;
+    height: 2.5rem;
+    border-radius: 0.6875rem;
 }
 
 .chip.sky {
@@ -279,31 +320,31 @@ onUnmounted(() => {
 .label {
     margin: 0;
     color: var(--app-muted);
-    font-size: 12.5px;
+    font-size: 0.78125rem;
 }
 
 .value {
-    margin: 6px 0 0;
-    font-size: 21px;
+    margin: 0.375rem 0 0;
+    font-size: 1.3125rem;
     font-weight: 700;
     color: var(--app-text);
     line-height: 1.25;
 }
 
 .value.small {
-    font-size: 16px;
+    font-size: 1rem;
 }
 
 .unit {
-    font-size: 12px;
+    font-size: 0.75rem;
     font-weight: 500;
     color: var(--app-muted);
 }
 
 .sub {
-    margin: 4px 0 0;
+    margin: 0.25rem 0 0;
     color: var(--app-muted);
-    font-size: 11.5px;
+    font-size: 0.71875rem;
     word-break: break-all;
 }
 
@@ -312,8 +353,8 @@ onUnmounted(() => {
 }
 
 .error-text {
-    margin: 8px 0 0;
+    margin: 0.5rem 0 0;
     white-space: pre-wrap;
-    font-size: 12px;
+    font-size: 0.75rem;
 }
 </style>
