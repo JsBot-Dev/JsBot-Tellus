@@ -113,6 +113,56 @@ function checkRegisterInference(): void {
 
     commands.register(
         {
+            name: 'union',
+            params: '<value:string|integer>',
+        },
+        async (_event, _context, _match, value) => {
+            expectTypeOf(value).toEqualTypeOf<string | number>()
+        }
+    )
+
+    commands.register(
+        {
+            name: 'literal-union',
+            params: "<mode:'fast'|'slow'>",
+        },
+        async (_event, _context, _match, mode) => {
+            expectTypeOf(mode).toEqualTypeOf<'fast' | 'slow'>()
+        }
+    )
+
+    commands.register(
+        {
+            name: 'optional-literal-union',
+            params: "[mode:'fast'|'slow']",
+        },
+        async (_event, _context, _match, mode) => {
+            expectTypeOf(mode).toEqualTypeOf<'fast' | 'slow' | undefined>()
+        }
+    )
+
+    commands.register(
+        {
+            name: 'literal-default',
+            params: "[mode:'fast'|'slow'='fast']",
+        },
+        async (_event, _context, _match, mode) => {
+            expectTypeOf(mode).toEqualTypeOf<'fast' | 'slow'>()
+        }
+    )
+
+    commands.register(
+        {
+            name: 'mixed-union',
+            params: "<value:integer|'none'>",
+        },
+        async (_event, _context, _match, value) => {
+            expectTypeOf(value).toEqualTypeOf<number | 'none'>()
+        }
+    )
+
+    commands.register(
+        {
             name: 'plain',
         },
         async (_event, _context, _match) => {}
@@ -187,6 +237,42 @@ describe('command param type inference', () => {
         expectTypeOf<
             CommandParamArgs<'[name:string="hello world"]'>
         >().toEqualTypeOf<[string]>()
+
+        expectTypeOf<
+            CommandParamArgs<'<value:string|integer>'>
+        >().toEqualTypeOf<[string | number]>()
+
+        expectTypeOf<CommandParamArgs<"<mode:'fast'|'slow'>">>().toEqualTypeOf<
+            ['fast' | 'slow']
+        >()
+
+        expectTypeOf<CommandParamArgs<"[mode:'fast'|'slow']">>().toEqualTypeOf<
+            ['fast' | 'slow' | undefined]
+        >()
+
+        expectTypeOf<
+            CommandParamArgs<"[mode:'fast'|'slow'='fast']">
+        >().toEqualTypeOf<['fast' | 'slow']>()
+
+        expectTypeOf<
+            CommandParamArgs<"<value:integer|'none'>">
+        >().toEqualTypeOf<[number | 'none']>()
+
+        expectTypeOf<CommandParamArgs<"<value:'a|b'|'c'>">>().toEqualTypeOf<
+            ['a|b' | 'c']
+        >()
+
+        expectTypeOf<CommandParamArgs<"<value:'a=b:c'|'d'>">>().toEqualTypeOf<
+            ['a=b:c' | 'd']
+        >()
+
+        expectTypeOf<CommandParamArgs<"<value:'a\\'b'|'c'>">>().toEqualTypeOf<
+            ["a'b" | 'c']
+        >()
+
+        expectTypeOf<
+            CommandParamArgs<'<name:string(2..3)|integer>'>
+        >().toEqualTypeOf<[string | number]>()
 
         expectTypeOf<CommandParamArgs<''>>().toEqualTypeOf<[]>()
         expectTypeOf<CommandParamArgs<string>>().toEqualTypeOf<any[]>()

@@ -1,8 +1,12 @@
 import {
+    candidateLabel,
     declarationError,
+    joinCandidateLabels,
     type CommandParamType,
+    type ParamCandidate,
     type ParamLength,
     type ParamSpec,
+    type ParamTypeCandidate,
 } from './types.js'
 import {
     measureLength,
@@ -28,11 +32,6 @@ export function parseType(value: string): CommandParamType {
         default:
             throw declarationError(`未知的参数类型 "${value}"`)
     }
-}
-
-interface ParsedType {
-    type: CommandParamType
-    length?: ParamLength | undefined
 }
 
 function parseLengthNumber(raw: string, token: string): number {
@@ -70,12 +69,34 @@ function parseLength(raw: string, token: string): ParamLength {
     return { min, max }
 }
 
-function parseTypeDeclaration(raw: string, token: string): ParsedType {
-    const value = raw.trim()
+function isQuoted(value: string): boolean {
+    const quote = value[0]
+
+    return quote === '"' || quote === "'"
+}
+
+function parseLiteral(value: string, token: string): string {
+    const quote = value[0]
+
+    if (
+        (quote !== '"' && quote !== "'") ||
+        value.length < 2 ||
+        value[value.length - 1] !== quote
+    ) {
+        throw declarationError(`非法的字面量 "${value}"：${token}`)
+    }
+
+    return unquote(value)
+}
+
+function parseBuiltinCandidate(
+    value: string,
+    token: string
+): ParamTypeCandidate {
     const open = value.indexOf('(')
 
     if (open < 0) {
-        return { type: parseType(value) }
+        return { kind: 'type', type: parseType(value) }
     }
 
     if (!value.endsWith(')')) {
@@ -89,7 +110,112 @@ function parseTypeDeclaration(raw: string, token: string): ParsedType {
         throw declarationError(`只有 string/text 参数支持长度限制：${token}`)
     }
 
-    return { type, length }
+    return { kind: 'type', type, length }
+}
+
+function candidateKey(candidate: ParamCandidate): string {
+    if (candidate.kind === 'literal') {
+        return `literal:${candidate.value}`
+    }
+
+    const length = candidate.length
+    const range =
+        length === undefined ? '' : `${length.min ?? ''}..${length.max ?? ''}`
+
+    return `type:${candidate.type}:${range}`
+}
+
+function splitUnion(raw: string, token: string): string[] {
+    const parts: string[] = []
+    let current = ''
+    let quote: string | null = null
+
+    for (let index = 0; index < raw.length; index += 1) {
+        const char = raw[index]
+
+        if (char === undefined) break
+
+        if (quote !== null) {
+            current += char
+
+            if (char === '\\') {
+                const next = raw[index + 1]
+
+                if (next !== undefined) {
+                    current += next
+                    index += 1
+                }
+
+                continue
+            }
+
+            if (char === quote) {
+                quote = null
+            }
+
+            continue
+        }
+
+        if (char === '"' || char === "'") {
+            quote = char
+            current += char
+            continue
+        }
+
+        if (char === '|') {
+            parts.push(current)
+            current = ''
+            continue
+        }
+
+        current += char
+    }
+
+    if (quote !== null) {
+        throw declarationError(`参数 "${token}" 的引号未闭合`)
+    }
+
+    parts.push(current)
+
+    return parts
+}
+
+function parseCandidates(raw: string, token: string): ParamCandidate[] {
+    const candidates: ParamCandidate[] = []
+    const seen = new Set<string>()
+
+    for (const part of splitUnion(raw, token)) {
+        const value = part.trim()
+
+        if (!value) {
+            throw declarationError(`联合类型中存在空的类型：${token}`)
+        }
+
+        const candidate = isQuoted(value)
+            ? { kind: 'literal' as const, value: parseLiteral(value, token) }
+            : parseBuiltinCandidate(value, token)
+        const key = candidateKey(candidate)
+
+        if (seen.has(key)) continue
+
+        seen.add(key)
+        candidates.push(candidate)
+    }
+
+    if (candidates.length > 1) {
+        for (const candidate of candidates) {
+            if (
+                candidate.kind === 'type' &&
+                (candidate.type === 'text' || candidate.type === 'reply')
+            ) {
+                throw declarationError(
+                    `${candidate.type} 不能用于联合类型：${token}`
+                )
+            }
+        }
+    }
+
+    return candidates
 }
 
 function validateDefaultLength(
@@ -187,6 +313,84 @@ export function splitDeclaration(input: string): string[] {
     return parts
 }
 
+function hasUnquotedEllipsis(value: string): boolean {
+    let quote: string | null = null
+
+    for (let index = 0; index < value.length; index += 1) {
+        const char = value[index]
+
+        if (char === undefined) break
+
+        if (quote !== null) {
+            if (char === '\\') {
+                index += 1
+                continue
+            }
+
+            if (char === quote) {
+                quote = null
+            }
+
+            continue
+        }
+
+        if (char === '"' || char === "'") {
+            quote = char
+            continue
+        }
+
+        if (value.startsWith('...', index)) {
+            return true
+        }
+    }
+
+    return false
+}
+
+function splitDefault(
+    inner: string,
+    token: string
+): { head: string; defaultRaw?: string | undefined } {
+    let quote: string | null = null
+
+    for (let index = 0; index < inner.length; index += 1) {
+        const char = inner[index]
+
+        if (char === undefined) break
+
+        if (quote !== null) {
+            if (char === '\\') {
+                index += 1
+                continue
+            }
+
+            if (char === quote) {
+                quote = null
+            }
+
+            continue
+        }
+
+        if (char === '"' || char === "'") {
+            quote = char
+            continue
+        }
+
+        if (char === '=') {
+            return {
+                head: inner.slice(0, index).trim(),
+                defaultRaw: inner.slice(index + 1).trim(),
+            }
+        }
+    }
+
+    if (quote !== null) {
+        throw declarationError(`参数 "${token}" 的引号未闭合`)
+    }
+
+    return { head: inner.trim() }
+}
+
 export function parseToken(token: string): ParamSpec {
     const open = token[0]
     const close = token[token.length - 1]
@@ -221,23 +425,22 @@ export function parseToken(token: string): ParamSpec {
 
         return {
             name,
-            type: 'string',
+            candidates: [{ kind: 'type', type: 'string' }],
             required: false,
             rest: true,
             hasDefault: false,
         }
     }
 
-    if (inner.includes('...')) {
+    const { head, defaultRaw } = splitDefault(inner, token)
+
+    if (hasUnquotedEllipsis(head)) {
         throw declarationError(`非法的参数声明 "${token}"`)
     }
 
-    const equals = inner.indexOf('=')
-    const head = equals >= 0 ? inner.slice(0, equals).trim() : inner.trim()
-    const defaultRaw = equals >= 0 ? inner.slice(equals + 1).trim() : undefined
     const colon = head.indexOf(':')
     const name = validateName(colon >= 0 ? head.slice(0, colon) : head)
-    const { type, length } = parseTypeDeclaration(
+    const candidates = parseCandidates(
         colon >= 0 ? head.slice(colon + 1) : 'string',
         token
     )
@@ -247,31 +450,31 @@ export function parseToken(token: string): ParamSpec {
     }
 
     if (defaultRaw !== undefined) {
-        const defaultValue = parseDefaultValue(type, defaultRaw, name)
-
-        if (typeof defaultValue === 'string') {
-            validateDefaultLength(name, defaultValue, length)
-        }
+        const defaultValue = parseDefaultValue(candidates, defaultRaw, name)
 
         return {
             name,
-            type,
+            candidates,
             required,
             rest: false,
             hasDefault: true,
             defaultValue,
-            length,
         }
     }
 
     return {
         name,
-        type,
+        candidates,
         required,
         rest: false,
         hasDefault: false,
-        length,
     }
+}
+
+function hasTextCandidate(spec: ParamSpec): boolean {
+    return spec.candidates.some(
+        (candidate) => candidate.kind === 'type' && candidate.type === 'text'
+    )
 }
 
 export function validateSpecs(specs: ParamSpec[]): void {
@@ -308,7 +511,7 @@ export function validateSpecs(specs: ParamSpec[]): void {
             continue
         }
 
-        if (spec.type === 'text') {
+        if (hasTextCandidate(spec)) {
             if (index !== specs.length - 1) {
                 throw declarationError('文本参数必须放在最后')
             }
@@ -333,23 +536,32 @@ export function usageOf(specs: ParamSpec[]): string {
                 return `[...${spec.name}]`
             }
 
-            const name = spec.type === 'text' ? `${spec.name}...` : spec.name
+            const name = hasTextCandidate(spec) ? `${spec.name}...` : spec.name
 
             return spec.required ? `<${name}>` : `[${name}]`
         })
         .join(' ')
 }
 
-export function parseDefaultValue(
-    type: CommandParamType,
-    raw: string,
+function parseDefaultCandidate(
+    candidate: ParamCandidate,
+    value: string,
     name: string
 ): unknown {
-    const value = unquote(raw)
+    if (candidate.kind === 'literal') {
+        if (value === candidate.value) {
+            return value
+        }
 
-    switch (type) {
+        throw declarationError(
+            `参数 ${name} 的默认值需要是 ${candidateLabel(candidate)}`
+        )
+    }
+
+    switch (candidate.type) {
         case 'string':
         case 'text':
+            validateDefaultLength(name, value, candidate.length)
             return value
         case 'number': {
             const number = value.trim() === '' ? Number.NaN : Number(value)
@@ -391,4 +603,30 @@ export function parseDefaultValue(
             return seconds
         }
     }
+}
+
+export function parseDefaultValue(
+    candidates: ParamCandidate[],
+    raw: string,
+    name: string
+): unknown {
+    const value = unquote(raw)
+
+    if (candidates.length === 1) {
+        return parseDefaultCandidate(candidates[0]!, value, name)
+    }
+
+    for (const candidate of candidates) {
+        try {
+            return parseDefaultCandidate(candidate, value, name)
+        } catch (error) {
+            if (!(error instanceof Error)) {
+                throw error
+            }
+        }
+    }
+
+    throw declarationError(
+        `参数 ${name} 的默认值需要是 ${joinCandidateLabels(candidates)}`
+    )
 }

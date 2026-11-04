@@ -250,6 +250,8 @@ ctx.commands.register(
 | `<arg:type>`          | 指定类型的必填参数                       |
 | `[arg:type=default]`  | 可选参数及默认值                         |
 | `<arg:string(2..10)>` | 带长度限制的字符串参数                   |
+| `<arg:type1\|type2>`  | 联合类型，按声明顺序尝试                 |
+| `<arg:'a'\|'b'>`      | 字面量联合，输入必须匹配其中一个值       |
 | `<arg:text>`          | 文本参数，消费全部剩余输入，必须放在最后 |
 | `[...rest]`           | 变长参数，每个剩余 token 作为一个字符串  |
 
@@ -277,20 +279,38 @@ params: '<message:text(2..200)> [nickname:string(..16)]'
 - 只能用于 `string` / `text`；其他类型和 `[...rest]` 会报声明错误。
 - 默认值也会在注册时校验；usage 不会显示长度限制。
 
+联合类型：
+
+`|` 可以把多个内置类型或字面量组合成一个参数，解析时按声明顺序尝试，第一个成功的候选生效：
+
+```ts
+params: "<value:string|integer> [mode:'fast'|'slow'='fast']"
+```
+
+- 内置类型联合：`<value:string|integer>`，handler 推导为 `string | number`。
+- 字面量联合：`<mode:'fast'|'slow'>`，输入必须精确等于其中一个值，区分大小写；handler 推导为 `'fast' | 'slow'`。字面量必须用单引号或双引号包裹，支持空格、`|`、`=`、`:` 和转义引号。
+- 顺序很重要：`<value:string|integer>` 会把 `123` 解析为字符串 `'123'`；需要数字时写成 `<value:integer|string>`。
+- `string` 候选可以带长度限制，例如 `<name:string(2..10)|integer>`。
+- `text` 和 `reply` 不能用于联合类型；`[...rest]` 仍然只收集字符串。
+- 默认值也按顺序尝试，例如 `[mode:'fast'|'slow'='fast']`。`at` 候选不支持默认值，会被跳过；如果所有候选都无法解析默认值，注册时抛错。
+- 重复的候选会被去重。
+- 可选字面量联合 `[mode:'fast'|'slow']` 推导为 `'fast' | 'slow' | undefined`；`CommandParamArgs<"<mode:'fast'|'slow'>">` 推导为 `['fast' | 'slow']`。
+
 固定参数可以用双引号或单引号包裹，例如 `/ask "hello world" 2` 会把 `hello world` 作为一个 token；引号内的反斜杠用于转义。
 
 解析规则：
 
 - `match.args` 和 `match.rest` 保持原始内容，不会被参数解析结果替换。
 - 声明槽位填完后，多余 token 会被忽略并记录 debug 日志，不会报错。`text` 和 `rest` 会消费全部剩余输入，因此不存在多余 token。
-- 必填参数缺失、已声明槽位类型错误、长度不符合限制或引号未闭合时，Router 会自动回复错误和用法，handler 不会执行。
+- 必填参数缺失、已声明槽位类型错误、联合类型的所有候选都不匹配、长度不符合限制或引号未闭合时，Router 会自动回复错误和用法，handler 不会执行。
 - usage 会自动生成，并显示在 `/help` 和指令组根命令的用法提示中。
 - 必填参数不能出现在可选参数之后；参数名不能重复；`text` 和变长参数必须放在最后；必填参数不能声明默认值；长度限制只能用于 `string` / `text`，上下限必须是非负整数且下限不能大于上限。
-- 当 `params` 是字符串字面量时，handler 从第四个参数开始的位置参数类型会自动推导。例如 `<question:string> [count:integer=1]` 会推导为 `(question: string, count: number)`，`[name:string]` 会推导为 `string | undefined`，`[...rest]` 会推导为 `...string[]`。
+- 联合类型的候选不能为空；`text` 和 `reply` 不能参与联合类型；字面量必须使用单引号或双引号包裹。
+- 当 `params` 是字符串字面量时，handler 从第四个参数开始的位置参数类型会自动推导。例如 `<question:string> [count:integer=1]` 会推导为 `(question: string, count: number)`，`[name:string]` 会推导为 `string | undefined`，`[...rest]` 会推导为 `...string[]`。联合类型会推导为 TypeScript 联合，例如 `<value:string|integer>` 推导为 `string | number`，`<mode:'fast'|'slow'>` 推导为 `'fast' | 'slow'`。
 - 需要在类型位置复用推导结果时，可以使用导出的 `CommandParamArgs<'<question:string>'>`。
 - 也可以继续手写 handler 参数注解；注解与声明不一致时会在编译期报错。
 - 自动推导只对字面量生效：运行时拼接的字符串，或显式声明为 `string` 的变量会回退为 `any[]`。需要保留字面量类型时，使用 `const` 变量或 `as const`。
-- 类型层解析覆盖上面的声明语法；如果默认值包含 `]` 等会干扰声明边界的字符，可能回退为 `any[]`，但不影响运行时解析。非法声明仍然在注册时抛错，而不是变成类型错误。
+- 类型层解析覆盖上面的声明语法，包括联合类型和引号字面量；如果字面量或默认值包含 `>`、`]` 等会干扰声明边界的字符，可能回退为 `any[]`，但不影响运行时解析。非法声明仍然在注册时抛错，而不是变成类型错误。
 
 参数错误示例：
 
@@ -298,6 +318,10 @@ params: '<message:text(2..200)> [nickname:string(..16)]'
 /ask hello abc
 -> 参数 count 需要是整数
 -> 用法：/ask <question> [count]
+
+/mode medium
+-> 参数 mode 需要是 'fast' 或 'slow'
+-> 用法：/mode <mode>
 ```
 
 ### 指令组
