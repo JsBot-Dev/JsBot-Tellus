@@ -1,6 +1,10 @@
 import {
+    candidateLabel,
     CommandParamsError,
+    joinCandidateLabels,
     type InputToken,
+    type ParamCandidate,
+    type ParamLength,
     type ParamSpec,
     type ParsedCommandParams,
 } from './types.js'
@@ -101,9 +105,12 @@ export function tokenizeInput(input: string, usage: string): InputToken[] {
     return tokens
 }
 
-function enforceLength(spec: ParamSpec, value: string, usage: string): string {
-    const length = spec.length
-
+function enforceLength(
+    name: string,
+    length: ParamLength | undefined,
+    value: string,
+    usage: string
+): string {
     if (length === undefined) {
         return value
     }
@@ -112,14 +119,14 @@ function enforceLength(spec: ParamSpec, value: string, usage: string): string {
 
     if (length.min !== undefined && measured < length.min) {
         throw new CommandParamsError(
-            `参数 ${spec.name} 至少需要 ${length.min} 个字符`,
+            `参数 ${name} 至少需要 ${length.min} 个字符`,
             usage
         )
     }
 
     if (length.max !== undefined && measured > length.max) {
         throw new CommandParamsError(
-            `参数 ${spec.name} 不能超过 ${length.max} 个字符`,
+            `参数 ${name} 不能超过 ${length.max} 个字符`,
             usage
         )
     }
@@ -127,16 +134,27 @@ function enforceLength(spec: ParamSpec, value: string, usage: string): string {
     return value
 }
 
-export function parseValue(
+function parseCandidate(
+    candidate: ParamCandidate,
     spec: ParamSpec,
     raw: string,
     usage: string
 ): unknown {
-    switch (spec.type) {
-        case 'string':
-            return enforceLength(spec, raw, usage)
-        case 'text':
+    if (candidate.kind === 'literal') {
+        if (raw === candidate.value) {
             return raw
+        }
+
+        throw new CommandParamsError(
+            `参数 ${spec.name} 需要是 ${candidateLabel(candidate)}`,
+            usage
+        )
+    }
+
+    switch (candidate.type) {
+        case 'string':
+        case 'text':
+            return enforceLength(spec.name, candidate.length, raw, usage)
         case 'number': {
             const value = raw.trim() === '' ? Number.NaN : Number(raw)
 
@@ -175,9 +193,39 @@ export function parseValue(
         }
         case 'at':
             return parseAt(raw, spec.name, usage)
+        case 'reply':
+            throw new CommandParamsError(
+                `参数 ${spec.name} 需要引用一条消息`,
+                usage
+            )
         case 'time':
             return parseTime(raw, spec.name, usage)
     }
+}
+
+export function parseValue(
+    spec: ParamSpec,
+    raw: string,
+    usage: string
+): unknown {
+    if (spec.candidates.length === 1) {
+        return parseCandidate(spec.candidates[0]!, spec, raw, usage)
+    }
+
+    for (const candidate of spec.candidates) {
+        try {
+            return parseCandidate(candidate, spec, raw, usage)
+        } catch (error) {
+            if (!(error instanceof CommandParamsError)) {
+                throw error
+            }
+        }
+    }
+
+    throw new CommandParamsError(
+        `参数 ${spec.name} 需要是 ${joinCandidateLabels(spec.candidates)}`,
+        usage
+    )
 }
 
 export function parseInput(
@@ -191,7 +239,10 @@ export function parseInput(
     let index = 0
 
     for (const spec of specs) {
-        if (spec.type === 'reply') {
+        const sole =
+            spec.candidates.length === 1 ? spec.candidates[0] : undefined
+
+        if (sole?.kind === 'type' && sole.type === 'reply') {
             if (quoteId !== undefined) {
                 args.push(quoteId)
             } else if (spec.required) {
@@ -223,7 +274,7 @@ export function parseInput(
             continue
         }
 
-        if (spec.type === 'text') {
+        if (sole?.kind === 'type' && sole.type === 'text') {
             const token = tokens[index]
 
             if (!token) {
@@ -245,7 +296,7 @@ export function parseInput(
             const value =
                 remaining === 1 ? token.value : input.slice(token.start).trim()
 
-            args.push(enforceLength(spec, value, usage))
+            args.push(enforceLength(spec.name, sole.length, value, usage))
             index = tokens.length
             continue
         }
