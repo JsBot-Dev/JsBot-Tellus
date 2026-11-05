@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { DEFAULT_PERMISSION_DENIED_MESSAGE } from '../security/permission.js'
 
 export const pluginGroupsSchema = z
     .object({
@@ -44,6 +45,18 @@ export const rolesConfigSchema = z
     })
     .strict()
     .default({ superadmin: [], admin: [] })
+
+export const permissionConfigSchema = z
+    .object({
+        deniedMessage: z
+            .string()
+            .trim()
+            .min(1)
+            .max(500)
+            .default(DEFAULT_PERMISSION_DENIED_MESSAGE),
+    })
+    .strict()
+    .default({ deniedMessage: DEFAULT_PERMISSION_DENIED_MESSAGE })
 
 export const installerConfigSchema = z
     .object({
@@ -98,6 +111,7 @@ export const appConfigSchema = z
         url: z.url({ protocol: /^wss?$/ }).default('ws://127.0.0.1:3001/'),
         accessToken: z.string().min(1).optional(),
         roles: rolesConfigSchema,
+        permission: permissionConfigSchema,
         message: messageConfigSchema,
         webui: webuiConfigSchema,
         plugins: z.record(z.string(), pluginEnvelopeSchema).default({}),
@@ -115,6 +129,7 @@ export type PluginGroups = z.infer<typeof pluginGroupsSchema>
 export type PluginEnvelope = z.infer<typeof pluginEnvelopeSchema>
 export type MessageConfig = z.infer<typeof messageConfigSchema>
 export type RolesConfig = z.infer<typeof rolesConfigSchema>
+export type PermissionConfig = z.infer<typeof permissionConfigSchema>
 export type InstallerConfig = z.infer<typeof installerConfigSchema>
 export type WebUiConfig = z.infer<typeof webuiConfigSchema>
 export type AppConfig = z.infer<typeof appConfigSchema>

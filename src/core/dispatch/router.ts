@@ -57,6 +57,7 @@ export interface RouterDeps {
     roles: RoleService
     gate: PluginGate
     logger: Logger
+    permissionDeniedMessage?: string | undefined
     onEvent?: ((event: SnowLumaEvent) => void) | undefined
 }
 
@@ -121,7 +122,11 @@ export class Router {
         this.gate = deps.gate
         this.logger = deps.logger.child('router')
         this.onEvent = deps.onEvent
-        this.refuser = new PermissionRefuser(deps.sender, this.logger)
+        this.refuser = new PermissionRefuser(
+            deps.sender,
+            this.logger,
+            deps.permissionDeniedMessage
+        )
     }
 
     readonly dispatch: RouterEventMiddleware = async (

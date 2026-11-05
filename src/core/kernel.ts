@@ -73,6 +73,7 @@ export class Kernel {
             roles,
             gate,
             logger: options.logger,
+            permissionDeniedMessage: options.config.permission.deniedMessage,
             ...(options.onEvent !== undefined
                 ? { onEvent: options.onEvent }
                 : {}),

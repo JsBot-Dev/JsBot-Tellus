@@ -20,6 +20,9 @@
         "superadmin": [10001],
         "admin": [10002]
     },
+    "permission": {
+        "deniedMessage": "权限不足：需要 {required}，当前 {actual}"
+    },
     "message": {
         "charThreshold": 50,
         "lineThreshold": 3
@@ -49,6 +52,7 @@
 | `url`         | string | `ws://127.0.0.1:3001/`                    | WebSocket 地址，仅 ws/wss |
 | `accessToken` | string | 无                                        | OneBot access token       |
 | `roles`       | object | `{ superadmin: [], admin: [] }`           | 角色名单                  |
+| `permission`  | object | 见[权限提示](#权限提示)                   | 权限不足时的提示          |
 | `message`     | object | `{ charThreshold: 50, lineThreshold: 3 }` | 长消息转 forward 阈值     |
 | `installer`   | object | 见下文                                    | npm 插件安装器            |
 | `plugins`     | object | `{}`                                      | 以插件 ID 为键的配置      |
@@ -56,6 +60,20 @@
 顶层未知字段会导致启动失败。
 
 `message.charThreshold` 按 CQ 字符串长度计算；`message.lineThreshold` 按换行后的行数计算。任一阈值超过都会把回复转成 forward 发送。
+
+## 权限提示
+
+`permission.deniedMessage` 控制命令权限不足时发送的提示，默认值为：
+
+```json
+{
+    "permission": {
+        "deniedMessage": "权限不足：需要 {required}，当前 {actual}"
+    }
+}
+```
+
+提示支持 `{required}` 和 `{actual}` 两个占位符，分别替换为命令要求的角色和用户当前角色。也可以写成不带占位符的固定文本；空字符串或超过 500 个字符会导致配置校验失败。
 
 ## 插件安装器
 

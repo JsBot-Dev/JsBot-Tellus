@@ -3,6 +3,7 @@ export type { BotSendOptions } from './client.js'
 export type {
     InstallerConfig,
     MessageConfig,
+    PermissionConfig,
     PluginEnvelope,
     PluginGroups,
     RolesConfig,
@@ -19,6 +20,7 @@ export type { PluginKV } from './plugin/kv.js'
 export { definePlugin } from './plugin/types.js'
 export type {
     AnyPluginDefinition,
+    CommandEventOf,
     CommandGroupOptions,
     CommandGroupRegistrar,
     CommandHandler,

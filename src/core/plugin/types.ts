@@ -23,6 +23,29 @@ export type MessageType = 'group' | 'private'
 
 export type MessageTypeFilter = MessageType | readonly MessageType[]
 
+type MessageTypeIn<TMessageType extends MessageTypeFilter | undefined> =
+    TMessageType extends readonly (infer TType extends MessageType)[]
+        ? TType
+        : TMessageType extends MessageType
+          ? TMessageType
+          : never
+
+/**
+ * 把命令的 `messageType` 过滤器推导成 handler 收到的消息事件类型。
+ *
+ * 未限定或同时包含群聊和私聊时退回 `OneBotMessageEvent`。
+ */
+export type CommandEventOf<TMessageType extends MessageTypeFilter | undefined> =
+    undefined extends TMessageType
+        ? OneBotMessageEvent
+        : [MessageTypeIn<TMessageType>] extends [never]
+          ? OneBotMessageEvent
+          : [MessageTypeIn<TMessageType>] extends ['group']
+            ? OneBotGroupMessageEvent
+            : [MessageTypeIn<TMessageType>] extends ['private']
+              ? OneBotPrivateMessageEvent
+              : OneBotMessageEvent
+
 export interface CommandMatch {
     command: string
     prefix: string
@@ -92,35 +115,55 @@ export type PluginMiddleware = (
     next: () => Promise<void>
 ) => void | Promise<void>
 
-export interface CommandOptions<Declaration extends string = string> {
+export interface CommandOptions<
+    Declaration extends string = string,
+    TMessageType extends MessageTypeFilter | undefined =
+        MessageTypeFilter | undefined,
+> {
     name: string
     aliases?: string[] | undefined
     prefixes?: string[] | undefined
     permission?: Permission | undefined
-    messageType?: MessageTypeFilter | undefined
+    messageType?: TMessageType
     description?: string | undefined
     params?: Declaration | undefined
 }
 
 export interface CommandGroupOptions<
     Declaration extends string = string,
-> extends CommandOptions<Declaration> {
+    TMessageType extends MessageTypeFilter | undefined =
+        MessageTypeFilter | undefined,
+> extends CommandOptions<Declaration, TMessageType> {
     handler?:
-        | CommandHandler<OneBotMessageEvent, CommandParamArgs<Declaration>>
+        | CommandHandler<
+              CommandEventOf<TMessageType>,
+              CommandParamArgs<Declaration>
+          >
         | undefined
 }
 
-export interface CommandGroupRegistrar {
-    register<Declaration extends string = string>(
-        options: CommandOptions<Declaration>,
+export interface CommandGroupRegistrar<
+    TParentMessageType extends MessageTypeFilter | undefined =
+        MessageTypeFilter | undefined,
+> {
+    register<
+        Declaration extends string = string,
+        const TMessageType extends MessageTypeFilter | undefined =
+            TParentMessageType,
+    >(
+        options: CommandOptions<Declaration, TMessageType>,
         handler: CommandHandler<
-            OneBotMessageEvent,
+            CommandEventOf<TMessageType>,
             CommandParamArgs<Declaration>
         >
     ): () => void
-    group<Declaration extends string = string>(
-        options: CommandGroupOptions<Declaration>,
-        setup: (group: CommandGroupRegistrar) => void
+    group<
+        Declaration extends string = string,
+        const TMessageType extends MessageTypeFilter | undefined =
+            TParentMessageType,
+    >(
+        options: CommandGroupOptions<Declaration, TMessageType>,
+        setup: (group: CommandGroupRegistrar<TMessageType>) => void
     ): () => void
 }
 

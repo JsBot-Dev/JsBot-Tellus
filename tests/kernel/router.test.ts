@@ -31,7 +31,8 @@ function plugin(id: string): AnyPluginDefinition {
 
 function harness(
     definitions: AnyPluginDefinition[] = [plugin('test'), plugin('other')],
-    configs: Record<string, PluginEnvelope> = {}
+    configs: Record<string, PluginEnvelope> = {},
+    permissionDeniedMessage?: string
 ) {
     const { logger, records } = createCapturingLogger()
     const client = new FakeClient()
@@ -50,6 +51,7 @@ function harness(
         roles,
         gate,
         logger,
+        permissionDeniedMessage,
     })
 
     router.accepting = true
@@ -438,6 +440,34 @@ describe('router', () => {
 
         expect(handler).not.toHaveBeenCalled()
         expect(client.sent[0]?.message).toBe('权限不足：需要 Admin，当前 User')
+    })
+
+    it('uses the configured permission refusal message', async () => {
+        const { router, dispatch, client } = harness(
+            undefined,
+            undefined,
+            '无权操作：需要 {required}（当前 {actual}），请联系管理员'
+        )
+        const handler = vi.fn(async () => {})
+
+        router.registerCommand({
+            pluginId: 'test',
+            name: 'admin',
+            permission: 'Admin',
+            handler,
+        })
+
+        await dispatch(
+            groupMessage({
+                raw_message: '/admin',
+                user_id: 30000,
+            })
+        )
+
+        expect(handler).not.toHaveBeenCalled()
+        expect(client.sent[0]?.message).toBe(
+            '无权操作：需要 Admin（当前 User），请联系管理员'
+        )
     })
 
     it('allows users with the required role', async () => {

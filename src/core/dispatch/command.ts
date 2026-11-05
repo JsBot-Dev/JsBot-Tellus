@@ -5,6 +5,7 @@ import {
     type CompiledCommandParams,
 } from '../plugin/command-params.js'
 import type {
+    CommandEventOf,
     CommandGroupOptions,
     CommandGroupRegistrar,
     CommandHandler,
@@ -479,10 +480,14 @@ export class CommandRegistry {
         }
 
         const registrar: CommandGroupRegistrar = {
-            register: <Declaration extends string = string>(
-                options: CommandOptions<Declaration>,
+            register: <
+                Declaration extends string = string,
+                const TMessageType extends MessageTypeFilter | undefined =
+                    MessageTypeFilter | undefined,
+            >(
+                options: CommandOptions<Declaration, TMessageType>,
                 handler: CommandHandler<
-                    OneBotMessageEvent,
+                    CommandEventOf<TMessageType>,
                     CommandParamArgs<Declaration>
                 >
             ) => {
@@ -514,7 +519,7 @@ export class CommandRegistry {
                     ...(options.params !== undefined
                         ? { params: options.params }
                         : {}),
-                    handler,
+                    handler: handler as AnyCommandHandler,
                 })
                 const dispose = this.insert(registration, childBases)
                 const record: GroupChild = {
@@ -538,9 +543,15 @@ export class CommandRegistry {
                 })
             },
 
-            group: <Declaration extends string = string>(
-                options: CommandGroupOptions<Declaration>,
-                nestedSetup: (group: CommandGroupRegistrar) => void
+            group: <
+                Declaration extends string = string,
+                const TMessageType extends MessageTypeFilter | undefined =
+                    MessageTypeFilter | undefined,
+            >(
+                options: CommandGroupOptions<Declaration, TMessageType>,
+                nestedSetup: (
+                    group: CommandGroupRegistrar<TMessageType>
+                ) => void
             ) => {
                 const nestedBases = composedBases(
                     bases,
@@ -575,7 +586,7 @@ export class CommandRegistry {
                         nestedMessageTypes,
                         options.description,
                         options.params,
-                        options.handler,
+                        options.handler as AnyCommandHandler | undefined,
                         nestedChildren
                     )
 

@@ -29,32 +29,45 @@ export const adminPlugin = definePlugin({
     },
 
     setup(ctx) {
-        ctx.commands.register(
+        ctx.commands.group(
             {
                 name: 'utter',
                 permission: 'Admin',
                 description: '向当前会话发送文本',
-                params: '<message:text>',
+                handler: async (_event, context, match) => {
+                    if (!match.rest) {
+                        await context.send('用法：/utter <文本>')
+                        return
+                    }
+
+                    await context.send(match.rest, {
+                        quote: false,
+                        autoEscape: true,
+                    })
+                },
             },
-            async (_event, context, match, text) => {
-                await context.send(text, {
-                    autoEscape: true,
-                })
+            (utter) => {
+                utter.register(
+                    {
+                        name: 'raw',
+                        permission: 'SuperAdmin',
+                        description: '发送原始 CQ 消息',
+                    },
+                    async (_event, context, match) => {
+                        if (!match.rest) {
+                            await context.send('用法：/utter raw <CQ 消息>')
+                            return
+                        }
+
+                        await context.send(match.rest, {
+                            quote: false,
+                            autoEscape: false,
+                        })
+                    }
+                )
             }
         )
-        ctx.commands.register(
-            {
-                name: 'utter.raw',
-                permission: 'Admin',
-                description: '向当前会话发送文本',
-                params: '<message:text>',
-            },
-            async (event, context, match, text) => {
-                await context.send(text, {
-                    autoEscape: false,
-                })
-            }
-        )
+
         ctx.commands.group(
             {
                 name: 'plugin',

@@ -13,6 +13,9 @@ const config: AppConfig = {
         superadmin: [],
         admin: [],
     },
+    permission: {
+        deniedMessage: '权限不足：需要 {required}，当前 {actual}',
+    },
     message: {
         charThreshold: 50,
         lineThreshold: 3,

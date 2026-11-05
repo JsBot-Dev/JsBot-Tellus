@@ -223,6 +223,8 @@ ctx.commands.register(
 
 `messageType` 省略时群聊和私聊都可触发；`messageType: 'group'` 只匹配群消息，私聊中的同名文本会继续进入 `onMessage`。命令组会继承该设置，子命令可以覆盖。
 
+`messageType` 还会收窄 handler 的 `event` 和 `context.event` 类型：`'group'` 推导为 `OneBotGroupMessageEvent`，`'private'` 推导为 `OneBotPrivateMessageEvent`；省略或同时包含群聊和私聊时保持 `OneBotMessageEvent`。子命令继承组的 `messageType` 时类型也会一起收窄。
+
 ### 参数
 
 `params` 用字符串声明位置参数，解析结果从 handler 的第四个参数开始按位置传入：

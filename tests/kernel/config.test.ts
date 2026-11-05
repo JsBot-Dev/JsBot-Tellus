@@ -40,6 +40,9 @@ describe('config', () => {
                 superadmin: [],
                 admin: [],
             },
+            permission: {
+                deniedMessage: '权限不足：需要 {required}，当前 {actual}',
+            },
             message: {
                 charThreshold: 50,
                 lineThreshold: 3,
@@ -99,6 +102,34 @@ describe('config', () => {
             allow: [],
             deny: [123456],
         })
+    })
+
+    it('parses a custom permission denied message', async () => {
+        const filePath = await writeConfig({
+            permission: {
+                deniedMessage: '无权操作：需要 {required}，当前 {actual}',
+            },
+        })
+
+        const config = await loadConfig(filePath)
+
+        expect(config.permission.deniedMessage).toBe(
+            '无权操作：需要 {required}，当前 {actual}'
+        )
+    })
+
+    it('rejects invalid permission messages', async () => {
+        for (const permission of [
+            { deniedMessage: '' },
+            { deniedMessage: '   ' },
+            { deniedMessage: 'x'.repeat(501) },
+            { deniedMessage: 42 },
+            { unknown: true },
+        ]) {
+            const filePath = await writeConfig({ permission })
+
+            await expect(loadConfig(filePath)).rejects.toThrow(/permission/)
+        }
     })
 
     it('keeps plugin-specific fields', async () => {
