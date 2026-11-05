@@ -12,10 +12,17 @@
             <template #header>
                 <div class="card-header">
                     <span>已加载插件</span>
-                    <el-button size="small" @click="load">刷新</el-button>
+                    <el-button
+                        size="small"
+                        :loading="loading"
+                        :disabled="actionBusy"
+                        @click="load"
+                    >
+                        刷新
+                    </el-button>
                 </div>
             </template>
-            <el-table v-loading="busy" :data="plugins" size="small">
+            <el-table v-loading="loading || busy" :data="plugins" size="small">
                 <el-table-column prop="id" label="ID" :width="scaledPx(260)" />
                 <el-table-column
                     prop="version"
@@ -74,13 +81,26 @@
                 <div class="card-header">
                     <span>已安装 npm 包</span>
                     <el-space>
-                        <el-button size="small" @click="updateAll">
+                        <el-button
+                            size="small"
+                            :loading="checkingAll"
+                            :disabled="actionBusy || !installerEnabled"
+                            @click="checkAll"
+                        >
+                            检查更新
+                        </el-button>
+                        <el-button
+                            size="small"
+                            :loading="updatingAll"
+                            :disabled="actionBusy || !installerEnabled"
+                            @click="updateAll"
+                        >
                             全部更新
                         </el-button>
                     </el-space>
                 </div>
             </template>
-            <el-table :data="installed" size="small">
+            <el-table v-loading="loading" :data="installed" size="small">
                 <el-table-column
                     prop="packageName"
                     label="包名"
@@ -91,16 +111,67 @@
                     label="版本"
                     :width="scaledPx(110)"
                 />
+                <el-table-column label="最新版本" :min-width="scaledPx(190)">
+                    <template #default="{ row }">
+                        <el-tooltip
+                            v-if="updates[row.packageName]?.error"
+                            :content="updates[row.packageName]?.error ?? ''"
+                            placement="top"
+                        >
+                            <el-tag size="small" type="danger">
+                                检查失败
+                            </el-tag>
+                        </el-tooltip>
+                        <el-tag
+                            v-else-if="
+                                updates[row.packageName]?.updateAvailable
+                            "
+                            size="small"
+                            type="warning"
+                        >
+                            可更新至
+                            {{
+                                updates[row.packageName]?.latestVersion ??
+                                '未知版本'
+                            }}
+                        </el-tag>
+                        <el-tag
+                            v-else-if="updates[row.packageName]"
+                            size="small"
+                            type="success"
+                        >
+                            已是最新
+                        </el-tag>
+                        <span v-else>—</span>
+                    </template>
+                </el-table-column>
                 <el-table-column label="插件 ID" :width="scaledPx(200)">
                     <template #default="{ row }">
                         {{ (row.pluginIds ?? []).join(', ') }}
                     </template>
                 </el-table-column>
-                <el-table-column label="卸载" :width="scaledPx(110)">
+                <el-table-column label="操作" :width="scaledPx(240)">
                     <template #default="{ row }">
                         <el-button
                             size="small"
+                            :loading="checking === row.packageName"
+                            :disabled="actionBusy || !installerEnabled"
+                            @click="checkOne(row)"
+                        >
+                            检查
+                        </el-button>
+                        <el-button
+                            size="small"
+                            :loading="updating === row.packageName"
+                            :disabled="actionBusy || !installerEnabled"
+                            @click="updateOne(row)"
+                        >
+                            更新
+                        </el-button>
+                        <el-button
+                            size="small"
                             type="danger"
+                            :disabled="actionBusy || !installerEnabled"
                             @click="removePackage(row)"
                         >
                             卸载
@@ -117,16 +188,24 @@
                     placeholder="包名，如 @scope/jsbot-plugin-xxx"
                     style="width: 20rem"
                 />
-                <el-button type="primary" :loading="busy" @click="install">
+                <el-button
+                    type="primary"
+                    :loading="busy"
+                    :disabled="actionBusy || !installerEnabled"
+                    @click="install"
+                >
                     安装
                 </el-button>
             </el-space>
         </el-card>
 
-        <el-drawer
+        <el-dialog
             v-model="configOpen"
-            size="min(94vw, 38.75rem)"
+            width="min(94vw, 38.75rem)"
             :title="'插件配置 · ' + currentId"
+            align-center
+            :append-to-body="true"
+            class="app-dialog"
         >
             <div v-if="canUseForm" class="cfg-mode">
                 <el-radio-group
@@ -209,7 +288,7 @@
                     保存
                 </el-button>
             </template>
-        </el-drawer>
+        </el-dialog>
     </div>
 </template>
 
@@ -250,6 +329,27 @@ interface InstalledRow {
     pluginIds?: string[]
 }
 
+interface PluginUpdateInfo {
+    packageName: string
+    currentVersion: string
+    latestVersion: string | null
+    updateAvailable: boolean
+    error: string | null
+}
+
+interface PluginCheckUpdatesResponse {
+    packages: PluginUpdateInfo[]
+}
+
+interface PluginUpdateResponse {
+    updated: Array<{
+        packageName: string
+        version: string
+        warnings: string[]
+    }>
+    failed: Array<{ packageName: string; message: string }>
+}
+
 interface PluginsResponse {
     plugins: PluginRow[]
     installed: InstalledRow[]
@@ -260,7 +360,15 @@ interface PluginsResponse {
 const plugins = ref<PluginRow[]>([])
 const installed = ref<InstalledRow[]>([])
 const installerEnabled = ref(true)
+const loading = ref(false)
 const busy = ref(false)
+const createUpdateMap = (): Record<string, PluginUpdateInfo> =>
+    Object.create(null) as Record<string, PluginUpdateInfo>
+const updates = ref(createUpdateMap())
+const checking = ref<string | null>(null)
+const checkingAll = ref(false)
+const updating = ref<string | null>(null)
+const updatingAll = ref(false)
 const installSpec = ref('')
 const configOpen = ref(false)
 const cfgMode = ref<'form' | 'json'>('form')
@@ -273,6 +381,15 @@ const allowText = ref('')
 const denyText = ref('')
 const formRef = ref<InstanceType<typeof PluginOptionsForm> | null>(null)
 const canUseForm = computed(() => canRenderForm(currentSchema.value))
+const actionBusy = computed(
+    () =>
+        loading.value ||
+        busy.value ||
+        checking.value !== null ||
+        checkingAll.value ||
+        updating.value !== null ||
+        updatingAll.value
+)
 
 type TagType = 'success' | 'warning' | 'info'
 
@@ -356,7 +473,9 @@ const parsedGroups = computed(() => {
 const groupsError = computed(() => parsedGroups.value.error ?? '')
 
 const load = async (): Promise<void> => {
-    busy.value = true
+    if (loading.value) return
+
+    loading.value = true
 
     try {
         const data = await apiGet<PluginsResponse>('/api/plugins')
@@ -365,10 +484,22 @@ const load = async (): Promise<void> => {
         installed.value = data.installed
         installerEnabled.value = data.installerEnabled
         currentHash.value = data.configHash
+
+        const validUpdates = createUpdateMap()
+
+        for (const [name, info] of Object.entries(updates.value)) {
+            const row = data.installed.find((item) => item.packageName === name)
+
+            if (row !== undefined && row.version === info.currentVersion) {
+                validUpdates[name] = info
+            }
+        }
+
+        updates.value = validUpdates
     } catch (error) {
         showError(error)
     } finally {
-        busy.value = false
+        loading.value = false
     }
 }
 
@@ -458,7 +589,7 @@ const saveConfig = async (): Promise<void> => {
 }
 
 const install = async (): Promise<void> => {
-    if (!installSpec.value) return
+    if (!installSpec.value || actionBusy.value) return
 
     busy.value = true
 
@@ -474,20 +605,128 @@ const install = async (): Promise<void> => {
     }
 }
 
-const updateAll = async (): Promise<void> => {
-    busy.value = true
+const mergeUpdates = (packages: PluginUpdateInfo[]): void => {
+    if (packages.length === 0) return
+
+    const next = Object.assign(createUpdateMap(), updates.value)
+
+    for (const info of packages) next[info.packageName] = info
+
+    updates.value = next
+}
+
+const applyUpdateResult = (result: PluginUpdateResponse): void => {
+    if (result.updated.length > 0) {
+        const next = Object.assign(createUpdateMap(), updates.value)
+
+        for (const item of result.updated) {
+            next[item.packageName] = {
+                packageName: item.packageName,
+                currentVersion: item.version,
+                latestVersion: item.version,
+                updateAvailable: false,
+                error: null,
+            }
+        }
+
+        updates.value = next
+        ElMessage.success(
+            `已更新 ${result.updated.length} 个包，请自行重启运行时使其生效`
+        )
+    }
+
+    for (const item of result.updated) {
+        for (const warning of item.warnings) {
+            ElMessage.warning(`${item.packageName}：${warning}`)
+        }
+    }
+
+    for (const failure of result.failed) {
+        ElMessage.error(`${failure.packageName}：${failure.message}`)
+    }
+}
+
+const checkOne = async (row: InstalledRow): Promise<void> => {
+    if (actionBusy.value) return
+
+    checking.value = row.packageName
 
     try {
-        await apiPost('/api/plugins/update', {})
+        const data = await apiPost<PluginCheckUpdatesResponse>(
+            '/api/plugins/check-updates',
+            { target: row.packageName }
+        )
+
+        mergeUpdates(data.packages)
+    } catch (error) {
+        showError(error)
+    } finally {
+        checking.value = null
+    }
+}
+
+const checkAll = async (): Promise<void> => {
+    if (actionBusy.value) return
+
+    checkingAll.value = true
+
+    try {
+        const data = await apiPost<PluginCheckUpdatesResponse>(
+            '/api/plugins/check-updates',
+            {}
+        )
+
+        mergeUpdates(data.packages)
+    } catch (error) {
+        showError(error)
+    } finally {
+        checkingAll.value = false
+    }
+}
+
+const updateOne = async (row: InstalledRow): Promise<void> => {
+    if (actionBusy.value) return
+
+    updating.value = row.packageName
+
+    try {
+        const result = await apiPost<PluginUpdateResponse>(
+            '/api/plugins/update',
+            { target: row.packageName }
+        )
+
+        applyUpdateResult(result)
         await load()
     } catch (error) {
         showError(error)
     } finally {
-        busy.value = false
+        updating.value = null
+    }
+}
+
+const updateAll = async (): Promise<void> => {
+    if (actionBusy.value) return
+
+    updatingAll.value = true
+
+    try {
+        const result = await apiPost<PluginUpdateResponse>(
+            '/api/plugins/update',
+            {}
+        )
+
+        applyUpdateResult(result)
+        await load()
+    } catch (error) {
+        showError(error)
+    } finally {
+        updatingAll.value = false
     }
 }
 
 const removePackage = async (row: InstalledRow): Promise<void> => {
+    if (actionBusy.value) return
+
     busy.value = true
 
     try {

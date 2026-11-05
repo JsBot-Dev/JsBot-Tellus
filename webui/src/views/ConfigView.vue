@@ -106,7 +106,7 @@
                         />
                     </el-form-item>
 
-                    <el-divider content-position="left">角色</el-divider>
+                    <el-divider content-position="left">角色与权限</el-divider>
                     <el-form-item label="superadmin">
                         <el-input
                             :model-value="join(form.roles.superadmin)"
@@ -128,6 +128,12 @@
                             @update:model-value="
                                 splitTo(form.roles, 'admin', $event, Number)
                             "
+                        />
+                    </el-form-item>
+                    <el-form-item label="deniedMessage">
+                        <el-input
+                            v-model="form.permission.deniedMessage"
+                            placeholder="支持 {required} 和 {actual} 占位符"
                         />
                     </el-form-item>
 
@@ -199,6 +205,9 @@ interface ConfigForm {
         superadmin: number[]
         admin: number[]
     }
+    permission: {
+        deniedMessage: string
+    }
     message: {
         charThreshold: number
         lineThreshold: number
@@ -233,6 +242,9 @@ const form = ref<ConfigForm>({
     url: '',
     accessToken: '',
     roles: { superadmin: [], admin: [] },
+    permission: {
+        deniedMessage: '权限不足：需要 {required}，当前 {actual}',
+    },
     message: { charThreshold: 50, lineThreshold: 3 },
     webui: {
         enabled: false,

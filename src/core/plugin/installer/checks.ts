@@ -102,7 +102,7 @@ export function resolveTarget(target: string, state: InstallState): string {
         throw new InstallerError('请提供包名或插件 id')
     }
 
-    if (state.packages[value] !== undefined) return value
+    if (Object.hasOwn(state.packages, value)) return value
 
     for (const [name, record] of Object.entries(state.packages)) {
         if (record.pluginIds.includes(value)) return name

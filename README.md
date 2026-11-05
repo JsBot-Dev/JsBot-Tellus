@@ -89,6 +89,7 @@ npm run dev
 | `/utter raw <CQ>` | SuperAdmin | 发送原始 CQ 消息                 |
 | `/plugin list`    | SuperAdmin | 列出已安装插件包                 |
 | `/plugin install` | SuperAdmin | 安装 npm 插件包                  |
+| `/plugin check`   | SuperAdmin | 检查插件包更新                   |
 | `/plugin remove`  | SuperAdmin | 卸载插件包                       |
 | `/plugin update`  | SuperAdmin | 更新插件包                       |
 
@@ -126,6 +127,7 @@ node dist/app.js
 ```text
 /plugin install @scope/plugin@1.0.0
 /plugin list
+/plugin check @scope/plugin
 /plugin update @scope/plugin
 /plugin remove @scope/plugin
 ```

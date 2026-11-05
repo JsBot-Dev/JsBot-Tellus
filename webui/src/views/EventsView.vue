@@ -50,9 +50,16 @@
             </el-table>
         </el-card>
 
-        <el-drawer v-model="drawer" title="事件详情" size="50%">
+        <el-dialog
+            v-model="detailOpen"
+            title="事件详情"
+            width="min(94vw, 45rem)"
+            align-center
+            :append-to-body="true"
+            class="app-dialog"
+        >
             <pre class="json">{{ detailText }}</pre>
-        </el-drawer>
+        </el-dialog>
     </div>
 </template>
 
@@ -70,7 +77,7 @@ import { scaledPx } from '@/use-ui-scale'
 const type = ref('')
 const live = ref('on')
 const items = ref<FeedEventItem[]>([])
-const drawer = ref(false)
+const detailOpen = ref(false)
 const detailText = ref('')
 
 const load = async (): Promise<void> => {
@@ -114,7 +121,7 @@ watch(type, async () => {
 
 const viewDetail = (row: FeedEventItem): void => {
     detailText.value = JSON.stringify(row.event, undefined, 2)
-    drawer.value = true
+    detailOpen.value = true
 }
 
 onMounted(async () => {

@@ -7,12 +7,14 @@ import type { SessionStore } from '../storage/session.js'
 import type { CommandParamArgs } from './command-params.js'
 import type { PluginKV } from './kv.js'
 import type {
+    CommandEventOf,
     CommandGroupOptions,
     CommandGroupRegistrar,
     CommandHandler,
     CommandOptions,
     CoreServices,
     MessageHandler,
+    MessageTypeFilter,
     PluginContext,
     PluginDefinition,
 } from './types.js'
@@ -45,10 +47,14 @@ export function createPluginContext<TConfig>(
         core: deps.core,
 
         commands: {
-            register<Declaration extends string = string>(
-                options: CommandOptions<Declaration>,
+            register<
+                Declaration extends string = string,
+                const TMessageType extends MessageTypeFilter | undefined =
+                    undefined,
+            >(
+                options: CommandOptions<Declaration, TMessageType>,
                 handler: CommandHandler<
-                    OneBotMessageEvent,
+                    CommandEventOf<TMessageType>,
                     CommandParamArgs<Declaration>
                 >
             ) {
@@ -73,12 +79,19 @@ export function createPluginContext<TConfig>(
                     ...(options.params !== undefined
                         ? { params: options.params }
                         : {}),
-                    handler,
+                    handler: handler as CommandHandler<
+                        OneBotMessageEvent,
+                        CommandParamArgs<Declaration>
+                    >,
                 })
             },
-            group<Declaration extends string = string>(
-                options: CommandGroupOptions<Declaration>,
-                setup: (group: CommandGroupRegistrar) => void
+            group<
+                Declaration extends string = string,
+                const TMessageType extends MessageTypeFilter | undefined =
+                    undefined,
+            >(
+                options: CommandGroupOptions<Declaration, TMessageType>,
+                setup: (group: CommandGroupRegistrar<TMessageType>) => void
             ) {
                 return deps.router.registerCommandGroup(
                     {
@@ -103,7 +116,12 @@ export function createPluginContext<TConfig>(
                             ? { params: options.params }
                             : {}),
                         ...(options.handler !== undefined
-                            ? { handler: options.handler }
+                            ? {
+                                  handler: options.handler as CommandHandler<
+                                      OneBotMessageEvent,
+                                      CommandParamArgs<Declaration>
+                                  >,
+                              }
                             : {}),
                     },
                     setup

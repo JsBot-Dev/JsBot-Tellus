@@ -2,19 +2,19 @@
 
 ## 保留并重建
 
-| 旧能力        | 新位置                     | 说明                                           |
-| ------------- | -------------------------- | ---------------------------------------------- |
-| 配置加载      | `core/config`              | Zod schema，错误带路径                         |
-| WebSocket     | `core/client.ts`           | 只暴露 `BotClient`                             |
-| 命令注册      | `core/plugin/types.ts`     | `definePlugin` + Router 注册表                 |
-| 权限          | `core/security`            | `User/Admin/SuperAdmin`                        |
-| 群开关        | `PluginGate`               | `enabled/private/groups`                       |
-| 消息发送      | `core/messaging/sender.ts` | reply、长消息 forward                          |
-| 插件 KV       | `core/plugin/kv.ts`        | 按插件 ID 隔离的 SQLite KV                     |
-| 管理发送      | `src/plugins/admin`        | `/utter`、`/utter raw`                         |
-| 角色查询/帮助 | `src/plugins/core`         | `/role`、`/help`、`/status`                    |
-| 内置插件      | `src/plugins/*`            | 普通源码，随内核编译                           |
-| 在线安装      | `core/plugin/installer.ts` | `/plugin install/list/remove/update`，重启生效 |
+| 旧能力        | 新位置                     | 说明                                                 |
+| ------------- | -------------------------- | ---------------------------------------------------- |
+| 配置加载      | `core/config`              | Zod schema，错误带路径                               |
+| WebSocket     | `core/client.ts`           | 只暴露 `BotClient`                                   |
+| 命令注册      | `core/plugin/types.ts`     | `definePlugin` + Router 注册表                       |
+| 权限          | `core/security`            | `User/Admin/SuperAdmin`                              |
+| 群开关        | `PluginGate`               | `enabled/private/groups`                             |
+| 消息发送      | `core/messaging/sender.ts` | reply、长消息 forward                                |
+| 插件 KV       | `core/plugin/kv.ts`        | 按插件 ID 隔离的 SQLite KV                           |
+| 管理发送      | `src/plugins/admin`        | `/utter`、`/utter raw`                               |
+| 角色查询/帮助 | `src/plugins/core`         | `/role`、`/help`、`/status`                          |
+| 内置插件      | `src/plugins/*`            | 普通源码，随内核编译                                 |
+| 在线安装      | `core/plugin/installer.ts` | `/plugin install/list/check/remove/update`，重启生效 |
 
 ## 本地插件
 

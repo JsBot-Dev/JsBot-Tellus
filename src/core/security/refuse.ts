@@ -4,12 +4,26 @@ import type {
 } from '@snowluma/sdk'
 import type { Logger } from '../logging/logger.js'
 import type { MessageSender } from '../messaging/sender.js'
-import type { Permission } from './permission.js'
+import {
+    DEFAULT_PERMISSION_DENIED_MESSAGE,
+    type Permission,
+} from './permission.js'
+
+export function formatPermissionDeniedMessage(
+    template: string,
+    required: Permission,
+    actual: Permission
+): string {
+    return template
+        .replaceAll('{required}', required)
+        .replaceAll('{actual}', actual)
+}
 
 export class PermissionRefuser {
     constructor(
         private readonly sender: MessageSender,
-        private readonly logger: Logger
+        private readonly logger: Logger,
+        private readonly template: string = DEFAULT_PERMISSION_DENIED_MESSAGE
     ) {}
 
     async send(
@@ -22,7 +36,7 @@ export class PermissionRefuser {
             await this.sender.send(
                 event,
                 context,
-                `权限不足：需要 ${required}，当前 ${actual}`,
+                formatPermissionDeniedMessage(this.template, required, actual),
                 { quote: false }
             )
         } catch (error) {

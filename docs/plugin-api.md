@@ -184,7 +184,7 @@ const installed = await ctx.core.installer.list()
 ctx.core.restart()
 ```
 
-核心服务由内核注入，适合帮助、状态类插件。`ctx.core.commands.list(event)` 会按当前会话的 `enabled`、`groups`、`private` gating 以及命令的 `messageType` 过滤命令；不传 `event` 时返回全部命令。`ctx.core.installer` 额外提供 `install` / `remove` / `update` / `list`；它不会检查调用者角色，权限判断由调用方负责（`admin` 的 `/plugin` 命令要求 SuperAdmin）。安装器默认关闭，必须在配置中显式启用。`ctx.core.restart()` 请求应用重建运行时并重新加载插件；第三方插件不应把这些方法暴露给普通用户。
+核心服务由内核注入，适合帮助、状态类插件。`ctx.core.commands.list(event)` 会按当前会话的 `enabled`、`groups`、`private` gating 以及命令的 `messageType` 过滤命令；不传 `event` 时返回全部命令。`ctx.core.installer` 额外提供 `install` / `remove` / `update` / `checkUpdates` / `list`；它不会检查调用者角色，权限判断由调用方负责（`admin` 的 `/plugin` 命令要求 SuperAdmin）。安装器默认关闭，必须在配置中显式启用。`ctx.core.restart()` 请求应用重建运行时并重新加载插件；第三方插件不应把这些方法暴露给普通用户。
 
 安装的插件与内置插件运行在同一个宿主进程中，可访问文件系统、网络和 `process.env`，属于完全可信代码，不是安全沙箱。
 
@@ -222,6 +222,8 @@ ctx.commands.register(
 `name` 和 `aliases` 的每一项只能是一个路径段；多级命令请使用 `commands.group()`。
 
 `messageType` 省略时群聊和私聊都可触发；`messageType: 'group'` 只匹配群消息，私聊中的同名文本会继续进入 `onMessage`。命令组会继承该设置，子命令可以覆盖。
+
+`messageType` 还会收窄 handler 的 `event` 和 `context.event` 类型：`'group'` 推导为 `OneBotGroupMessageEvent`，`'private'` 推导为 `OneBotPrivateMessageEvent`；省略或同时包含群聊和私聊时保持 `OneBotMessageEvent`。子命令继承组的 `messageType` 时类型也会一起收窄。
 
 ### 参数
 
@@ -595,6 +597,7 @@ node dist/app.js
 /plugin install @yourscope/plugin-demo@1.0.0
 /plugin install @yourscope/plugin-demo@latest
 /plugin list
+/plugin check @yourscope/plugin-demo
 /plugin update @yourscope/plugin-demo
 /plugin remove @yourscope/plugin-demo
 ```

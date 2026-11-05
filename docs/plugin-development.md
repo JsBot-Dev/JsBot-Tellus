@@ -375,6 +375,7 @@ npm run dev
 /plugin install @yourscope/plugin-demo@1.0.0
 /plugin install @yourscope/plugin-demo@latest
 /plugin list
+/plugin check @yourscope/plugin-demo
 /plugin update @yourscope/plugin-demo
 /plugin remove @yourscope/plugin-demo
 ```

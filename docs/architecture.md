@@ -159,7 +159,7 @@ spec.ts             解析并校验 npm 包名 / 精确版本 / dist-tag
 npm-runner.ts       execFile 调用 npm，支持超时和取消
 install-dir.ts      plugins/ 的安装状态、校验脚本和 @jsbot-tellus/core 链接
 install-validate.ts 在子进程中扫描插件 dist，确认它导出插件定义
-installer.ts        安装 / 列表 / 卸载 / 更新、串行化、目录替换与回滚
+installer.ts        安装 / 列表 / 卸载 / 更新 / 检查更新、串行化、目录替换与回滚
 ```
 
 安装流程：

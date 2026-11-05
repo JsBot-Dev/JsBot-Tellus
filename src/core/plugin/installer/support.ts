@@ -116,5 +116,6 @@ export function createDisabledInstaller(): PluginInstaller {
         install: fail,
         remove: fail,
         update: fail,
+        checkUpdates: fail,
     }
 }
