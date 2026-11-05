@@ -41,6 +41,7 @@ import {
     dependentWarnings,
     removalWarnings,
 } from './installer/warnings.js'
+import { isNewerVersion, isValidVersion } from './installer/version.js'
 import { NpmCliRunner, type NpmRunner } from './npm-runner.js'
 import type { PackageSpec } from './spec.js'
 import type {
@@ -48,6 +49,8 @@ import type {
     PluginInstallResult,
     PluginInstaller,
     PluginRemoveResult,
+    PluginUpdateCheckResult,
+    PluginUpdateInfo,
     PluginUpdateResult,
 } from './types.js'
 
@@ -262,6 +265,106 @@ export class NpmPluginInstaller implements PluginInstaller {
 
             return { updated, failed }
         })
+    }
+
+    async checkUpdates(
+        target?: string | undefined,
+        signal?: AbortSignal | undefined
+    ): Promise<PluginUpdateCheckResult> {
+        try {
+            assertInstallerEnabled(this.enabled)
+        } catch (error) {
+            return Promise.reject(asInstallerError(error))
+        }
+
+        const state = await readInstallState(this.dir)
+        const names =
+            target === undefined || target.trim().length === 0
+                ? Object.keys(state.packages).sort()
+                : [resolveTarget(target, state)]
+        const installed = new Map(
+            (await this.list()).map((item) => [item.packageName, item])
+        )
+        const packages: PluginUpdateInfo[] = []
+
+        for (const name of names) {
+            const currentVersion =
+                installed.get(name)?.version ?? state.packages[name]?.version
+
+            if (currentVersion === undefined) {
+                packages.push({
+                    packageName: name,
+                    currentVersion: '未知',
+                    latestVersion: null,
+                    updateAvailable: false,
+                    error: '未找到已安装版本',
+                })
+                continue
+            }
+
+            try {
+                parseInstallerSpec(name, this.config.allowedPackages)
+
+                const latestVersion = await this.latestVersion(name, signal)
+
+                packages.push({
+                    packageName: name,
+                    currentVersion,
+                    latestVersion,
+                    updateAvailable: isNewerVersion(
+                        latestVersion,
+                        currentVersion
+                    ),
+                    error: null,
+                })
+            } catch (error) {
+                packages.push({
+                    packageName: name,
+                    currentVersion,
+                    latestVersion: null,
+                    updateAvailable: false,
+                    error: messageOf(error),
+                })
+            }
+        }
+
+        return { packages }
+    }
+
+    private async latestVersion(
+        name: string,
+        signal: AbortSignal | undefined
+    ): Promise<string> {
+        const result = await this.runner.run(
+            [
+                'view',
+                name,
+                'dist-tags.latest',
+                '--json',
+                '--loglevel=error',
+                `--registry=${this.config.registry}`,
+            ],
+            { timeoutMs: this.config.timeoutMs, signal }
+        )
+        let parsed: unknown
+
+        try {
+            parsed = JSON.parse(result.stdout.trim())
+        } catch {
+            throw new InstallerError(
+                `无法解析 ${name} 的最新版本：${result.stdout.trim()}`
+            )
+        }
+
+        const latest = typeof parsed === 'string' ? parsed.trim() : ''
+
+        if (!isValidVersion(latest)) {
+            throw new InstallerError(
+                `无法解析 ${name} 的最新版本${latest.length > 0 ? `：${latest}` : ''}`
+            )
+        }
+
+        return latest
     }
 
     private async installSpec(

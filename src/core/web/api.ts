@@ -143,6 +143,7 @@ export async function handleApiRoute(ctx: ApiContext): Promise<boolean> {
         method === 'POST' &&
         [
             '/api/plugins/install',
+            '/api/plugins/check-updates',
             '/api/plugins/update',
             '/api/plugins/remove',
         ].includes(pathname)

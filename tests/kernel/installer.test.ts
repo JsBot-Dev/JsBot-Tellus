@@ -54,6 +54,21 @@ class FakeRunner implements NpmRunner {
                 throw new ProcessError('npm failed', '', 'npm failed')
             }
 
+            if (args[0] === 'view') {
+                const name = args[1]
+                const pkg =
+                    name === undefined ? undefined : this.packages.get(name)
+
+                if (pkg === undefined) {
+                    throw new ProcessError(`404 ${name}`, '', 'not found')
+                }
+
+                return {
+                    stdout: `${JSON.stringify(pkg.latest)}\n`,
+                    stderr: '',
+                }
+            }
+
             const prefix = args.indexOf('--prefix')
             const dir = args[prefix + 1]
 
@@ -728,6 +743,133 @@ describe('NpmPluginInstaller', () => {
         expect((await state()).packages['bad-plugin']?.version).toBe(before)
     })
 
+    it('returns an empty update check when nothing is installed', async () => {
+        await expect(createInstaller().checkUpdates()).resolves.toEqual({
+            packages: [],
+        })
+    })
+
+    it('checks all installed packages for updates', async () => {
+        registerPackage('old-plugin', { version: '1.0.0', latest: '2.0.0' })
+        registerPackage('new-plugin', { version: '1.0.0' })
+        const installer = createInstaller()
+
+        await installer.install('old-plugin@1.0.0')
+        await installer.install('new-plugin@1.0.0')
+
+        await expect(installer.checkUpdates()).resolves.toEqual({
+            packages: [
+                {
+                    packageName: 'new-plugin',
+                    currentVersion: '1.0.0',
+                    latestVersion: '1.0.0',
+                    updateAvailable: false,
+                    error: null,
+                },
+                {
+                    packageName: 'old-plugin',
+                    currentVersion: '1.0.0',
+                    latestVersion: '2.0.0',
+                    updateAvailable: true,
+                    error: null,
+                },
+            ],
+        })
+    })
+
+    it('checks a single package by plugin id', async () => {
+        registerPackage('demo-plugin', {
+            version: '1.0.0',
+            latest: '1.1.0',
+            plugins: [plugin('demo')],
+        })
+        const installer = createInstaller()
+
+        await installer.install('demo-plugin@1.0.0')
+
+        await expect(installer.checkUpdates('demo')).resolves.toEqual({
+            packages: [
+                {
+                    packageName: 'demo-plugin',
+                    currentVersion: '1.0.0',
+                    latestVersion: '1.1.0',
+                    updateAvailable: true,
+                    error: null,
+                },
+            ],
+        })
+    })
+
+    it('reports update check failures per package', async () => {
+        registerPackage('ok-plugin', { version: '1.0.0', latest: '2.0.0' })
+        registerPackage('bad-plugin', { version: '1.0.0', latest: '2.0.0' })
+        const installer = createInstaller()
+
+        await installer.install('ok-plugin@1.0.0')
+        await installer.install('bad-plugin@1.0.0')
+        runner.packages.delete('bad-plugin')
+
+        const result = await installer.checkUpdates()
+
+        expect(
+            result.packages.find((item) => item.packageName === 'ok-plugin')
+        ).toMatchObject({ updateAvailable: true, error: null })
+        expect(
+            result.packages.find((item) => item.packageName === 'bad-plugin')
+        ).toMatchObject({
+            latestVersion: null,
+            updateAvailable: false,
+            error: expect.stringContaining('404 bad-plugin'),
+        })
+    })
+
+    it('rejects registry responses that are not semver versions', async () => {
+        registerPackage('odd-plugin', { version: '1.0.0', latest: 'latest' })
+        const installer = createInstaller()
+
+        await installer.install('odd-plugin@1.0.0')
+
+        const result = await installer.checkUpdates('odd-plugin')
+
+        expect(result.packages[0]).toMatchObject({
+            currentVersion: '1.0.0',
+            latestVersion: null,
+            updateAvailable: false,
+            error: expect.stringContaining('无法解析 odd-plugin 的最新版本'),
+        })
+    })
+
+    it('does not mark an installed newer version as updateable', async () => {
+        registerPackage('demo-plugin', { version: '1.10.0', latest: '1.9.0' })
+        const installer = createInstaller()
+
+        await installer.install('demo-plugin@1.10.0')
+
+        const result = await installer.checkUpdates('demo-plugin')
+
+        expect(result.packages[0]).toMatchObject({
+            currentVersion: '1.10.0',
+            latestVersion: '1.9.0',
+            updateAvailable: false,
+        })
+    })
+
+    it('applies the allowlist to update checks', async () => {
+        registerPackage('demo-plugin', { version: '1.0.0', latest: '2.0.0' })
+
+        await createInstaller().install('demo-plugin@1.0.0')
+
+        const result = await createInstaller({
+            allowedPackages: ['other-plugin'],
+        }).checkUpdates()
+
+        expect(result.packages[0]).toMatchObject({
+            updateAvailable: false,
+            latestVersion: null,
+            error: expect.stringContaining('不在允许列表'),
+        })
+    })
+
     it('rejects operations when disabled', async () => {
         const installer = createInstaller({ enabled: false })
 
@@ -739,6 +881,9 @@ describe('NpmPluginInstaller', () => {
             '插件安装功能未启用'
         )
         await expect(installer.update()).rejects.toThrow('插件安装功能未启用')
+        await expect(installer.checkUpdates()).rejects.toThrow(
+            '插件安装功能未启用'
+        )
         expect(runner.calls).toHaveLength(0)
     })
 

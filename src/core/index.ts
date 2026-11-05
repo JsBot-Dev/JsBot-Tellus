@@ -48,6 +48,8 @@ export type {
     PluginRemoveResult,
     PluginStatus,
     PluginStatusEntry,
+    PluginUpdateCheckResult,
+    PluginUpdateInfo,
     PluginUpdateResult,
     PrivateMessageHandler,
     RequestHandler,

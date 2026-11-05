@@ -1,9 +1,10 @@
 <template>
-    <el-drawer
+    <el-dialog
         v-model="open"
         title="外观"
-        size="min(94vw, 21rem)"
-        class="appearance-drawer"
+        width="min(94vw, 22rem)"
+        class="app-dialog"
+        align-center
         :append-to-body="true"
     >
         <div class="panel">
@@ -104,7 +105,7 @@
                 恢复默认外观
             </el-button>
         </div>
-    </el-drawer>
+    </el-dialog>
 </template>
 
 <script setup lang="ts">

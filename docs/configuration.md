@@ -59,7 +59,7 @@
 
 ## 插件安装器
 
-`installer` 控制 `/plugin install`、`/plugin remove`、`/plugin update` 的行为。安装器默认关闭，需要显式设置 `enabled: true`；启用后 `/plugin` 的所有子命令（包括 `help` 和 `list`）都要求 SuperAdmin。
+`installer` 控制 `/plugin install`、`/plugin check`、`/plugin remove`、`/plugin update` 的行为。安装器默认关闭，需要显式设置 `enabled: true`；启用后 `/plugin` 的所有子命令（包括 `help` 和 `list`）都要求 SuperAdmin。
 
 npm 包会在宿主进程中执行，拥有与内核相同的文件系统、环境变量和网络权限。只安装完全信任的包；`allowedPackages` 为空表示不限制包名，建议在生产环境配置 allowlist。
 

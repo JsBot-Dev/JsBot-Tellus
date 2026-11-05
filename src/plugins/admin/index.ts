@@ -6,6 +6,7 @@ const INSTALLER_DISABLED = '插件安装功能未启用（installer.enabled=fals
 const PLUGIN_USAGE = `用法：
 /plugin install <npm包[@版本|tag]>
 /plugin list
+/plugin check [包名]
 /plugin remove <包名|插件id> [--force]
 /plugin update [包名]`
 
@@ -28,45 +29,32 @@ export const adminPlugin = definePlugin({
     },
 
     setup(ctx) {
-        ctx.commands.group(
+        ctx.commands.register(
             {
                 name: 'utter',
                 permission: 'Admin',
                 description: '向当前会话发送文本',
-                handler: async (_event, context, match) => {
-                    if (!match.rest) {
-                        await context.send('用法：/utter <文本>')
-                        return
-                    }
-
-                    await context.send(match.rest, {
-                        quote: false,
-                        autoEscape: true,
-                    })
-                },
+                params: '<message:text>',
             },
-            (utter) => {
-                utter.register(
-                    {
-                        name: 'raw',
-                        permission: 'SuperAdmin',
-                        description: '发送原始 CQ 消息',
-                    },
-                    async (_event, context, match) => {
-                        if (!match.rest) {
-                            await context.send('用法：/utter raw <CQ 消息>')
-                            return
-                        }
-
-                        await context.send(match.rest, {
-                            quote: false,
-                            autoEscape: false,
-                        })
-                    }
-                )
+            async (_event, context, match, text) => {
+                await context.send(text, {
+                    autoEscape: true,
+                })
             }
         )
-
+        ctx.commands.register(
+            {
+                name: 'utter.raw',
+                permission: 'Admin',
+                description: '向当前会话发送文本',
+                params: '<message:text>',
+            },
+            async (event, context, match, text) => {
+                await context.send(text, {
+                    autoEscape: false,
+                })
+            }
+        )
         ctx.commands.group(
             {
                 name: 'plugin',
@@ -115,6 +103,78 @@ export const adminPlugin = definePlugin({
                                 { quote: false }
                             )
                         }
+                    }
+                )
+
+                plugin.register(
+                    {
+                        name: 'check',
+                        description: '检查插件包更新',
+                    },
+                    async (_event, context, match) => {
+                        const installer = ctx.core.installer
+                        const sessionId = context.sessionId
+
+                        if (!installer.enabled) {
+                            await context.send(INSTALLER_DISABLED, {
+                                quote: false,
+                            })
+                            return
+                        }
+
+                        const argument = match.rest.trim()
+
+                        await context.send(
+                            argument.length > 0
+                                ? `正在检查 ${argument} 的更新 ...`
+                                : '正在检查全部插件包的更新 ...',
+                            { quote: false }
+                        )
+
+                        ctx.tasks.enqueue(
+                            'plugin-installer',
+                            async (signal) => {
+                                try {
+                                    const result = await installer.checkUpdates(
+                                        argument.length > 0
+                                            ? argument
+                                            : undefined,
+                                        signal
+                                    )
+                                    const lines = result.packages.map(
+                                        (item) => {
+                                            if (item.error !== null) {
+                                                return `❌ ${item.packageName}：${item.error}`
+                                            }
+
+                                            if (item.updateAvailable) {
+                                                return `⬆️ ${item.packageName}：${item.currentVersion} → ${item.latestVersion}（可更新）`
+                                            }
+
+                                            return `✅ ${item.packageName}@${item.currentVersion}：已是最新`
+                                        }
+                                    )
+
+                                    if (lines.length === 0) {
+                                        lines.push('没有已安装的插件包。')
+                                    }
+
+                                    await ctx.api.send(
+                                        sessionId,
+                                        lines.join('\n'),
+                                        {
+                                            quote: false,
+                                        }
+                                    )
+                                } catch (error) {
+                                    await ctx.api.send(
+                                        sessionId,
+                                        `❌ 检查更新失败：${errorMessage(error)}`,
+                                        { quote: false }
+                                    )
+                                }
+                            }
+                        )
                     }
                 )
 

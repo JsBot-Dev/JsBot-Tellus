@@ -46,7 +46,7 @@ http://127.0.0.1:8787
 
 - **概览**：连接状态、Bot 账号、运行时长、插件/会话数量、最近事件和日志。
 - **会话**：浏览 Session、搜索、发送 QQ 消息、追加 LLM 消息、编辑 provider/model/persona、清空和删除。
-- **插件**：查看插件状态、启用/私聊/群组 gating、编辑插件配置、安装/更新/卸载 npm 插件包。
+- **插件**：查看插件状态、启用/私聊/群组 gating、编辑插件配置、安装/检查更新/更新/卸载 npm 插件包；每个包可单独检查更新和更新。
 - **配置**：常用设置表单 + 完整 JSON 编辑器，支持校验、保存、自动重启和失败回滚。
 - **KV**：按插件查看、编辑、删除 `plugin_kv` 数据。
 - **日志**：按级别/scope/关键字过滤，SSE 实时推送。
@@ -121,17 +121,17 @@ Vite 页面地址默认是 `http://127.0.0.1:5173`。生产构建后由 `node di
 
 所有接口返回 `{ "data": ... }` 或 `{ "error": { "message": "...", "details": ... } }`。除 `/api/health` 和登录接口外都需要登录 Cookie。
 
-| 分类 | 接口                                                                                                                                                                |
-| ---- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 认证 | `POST /api/auth/login`、`POST /api/auth/logout`、`GET /api/auth/me`                                                                                                 |
-| 状态 | `GET /api/status`、`GET /api/commands`、`POST /api/runtime/restart`、`POST /api/runtime/pause`、`POST /api/runtime/resume`                                          |
-| 日志 | `GET /api/logs`、`GET /api/logs/stream`（SSE）                                                                                                                      |
-| 事件 | `GET /api/events`、`GET /api/events/stream`（SSE）                                                                                                                  |
-| 会话 | `GET /api/sessions`、`GET /api/sessions/:id`、`PUT /api/sessions/:id`、`POST /api/sessions/:id/messages`、`POST /api/sessions/:id/send`、`DELETE /api/sessions/:id` |
-| 插件 | `GET /api/plugins`、`PUT /api/plugins/:id/config`、`POST /api/plugins/install`、`POST /api/plugins/update`、`POST /api/plugins/remove`                              |
-| 配置 | `GET /api/config`、`POST /api/config/validate`、`PUT /api/config`                                                                                                   |
-| KV   | `GET /api/kv/plugins`、`GET /api/kv`、`PUT /api/kv`、`DELETE /api/kv`                                                                                               |
-| 调试 | `POST /api/actions`                                                                                                                                                 |
+| 分类 | 接口                                                                                                                                                                      |
+| ---- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 认证 | `POST /api/auth/login`、`POST /api/auth/logout`、`GET /api/auth/me`                                                                                                       |
+| 状态 | `GET /api/status`、`GET /api/commands`、`POST /api/runtime/restart`、`POST /api/runtime/pause`、`POST /api/runtime/resume`                                                |
+| 日志 | `GET /api/logs`、`GET /api/logs/stream`（SSE）                                                                                                                            |
+| 事件 | `GET /api/events`、`GET /api/events/stream`（SSE）                                                                                                                        |
+| 会话 | `GET /api/sessions`、`GET /api/sessions/:id`、`PUT /api/sessions/:id`、`POST /api/sessions/:id/messages`、`POST /api/sessions/:id/send`、`DELETE /api/sessions/:id`       |
+| 插件 | `GET /api/plugins`、`PUT /api/plugins/:id/config`、`POST /api/plugins/install`、`POST /api/plugins/check-updates`、`POST /api/plugins/update`、`POST /api/plugins/remove` |
+| 配置 | `GET /api/config`、`POST /api/config/validate`、`PUT /api/config`                                                                                                         |
+| KV   | `GET /api/kv/plugins`、`GET /api/kv`、`PUT /api/kv`、`DELETE /api/kv`                                                                                                     |
+| 调试 | `POST /api/actions`                                                                                                                                                       |
 
 ## 故障排查
 

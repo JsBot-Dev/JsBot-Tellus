@@ -29,6 +29,7 @@ function createInstaller(
             updated: [],
             failed: [],
         })),
+        checkUpdates: vi.fn(async () => ({ packages: [] })),
         ...overrides,
     }
 }
@@ -201,6 +202,81 @@ describe('admin plugin', () => {
             await app.stop()
         })
 
+        it('reports update check results', async () => {
+            const installer = createInstaller({
+                checkUpdates: vi.fn(async () => ({
+                    packages: [
+                        {
+                            packageName: 'old-plugin',
+                            currentVersion: '1.0.0',
+                            latestVersion: '2.0.0',
+                            updateAvailable: true,
+                            error: null,
+                        },
+                        {
+                            packageName: 'new-plugin',
+                            currentVersion: '1.0.0',
+                            latestVersion: '1.0.0',
+                            updateAvailable: false,
+                            error: null,
+                        },
+                        {
+                            packageName: 'bad-plugin',
+                            currentVersion: '1.0.0',
+                            latestVersion: null,
+                            updateAvailable: false,
+                            error: 'not found',
+                        },
+                    ],
+                })),
+            })
+            const onRestart = vi.fn()
+            const app = await createTestApp({
+                plugins: [adminPlugin],
+                roles: {
+                    superadmin: [10000],
+                    admin: [],
+                },
+                installer,
+                onRestart,
+            })
+
+            await app.dispatch(
+                groupMessage({
+                    raw_message: '/plugin check',
+                    user_id: 10000,
+                })
+            )
+            await app.drain()
+
+            expect(installer.checkUpdates).toHaveBeenCalledWith(
+                undefined,
+                expect.any(AbortSignal)
+            )
+
+            const message = sentMessages(app.client.sent).at(-1) ?? ''
+
+            expect(message).toContain('old-plugin：1.0.0 → 2.0.0（可更新）')
+            expect(message).toContain('new-plugin@1.0.0：已是最新')
+            expect(message).toContain('bad-plugin：not found')
+            expect(onRestart).not.toHaveBeenCalled()
+
+            await app.dispatch(
+                groupMessage({
+                    raw_message: '/plugin check old-plugin',
+                    user_id: 10000,
+                })
+            )
+            await app.drain()
+
+            expect(installer.checkUpdates).toHaveBeenLastCalledWith(
+                'old-plugin',
+                expect.any(AbortSignal)
+            )
+
+            await app.stop()
+        })
+
         it('requires superadmin for every subcommand', async () => {
             const installer = createInstaller()
             const onRestart = vi.fn()
@@ -218,6 +294,7 @@ describe('admin plugin', () => {
                 '/plugin',
                 '/plugin help',
                 '/plugin list',
+                '/plugin check',
                 '/plugin install demo-plugin',
                 '/plugin remove demo-plugin',
                 '/plugin update',
@@ -239,6 +316,7 @@ describe('admin plugin', () => {
             expect(installer.install).not.toHaveBeenCalled()
             expect(installer.remove).not.toHaveBeenCalled()
             expect(installer.update).not.toHaveBeenCalled()
+            expect(installer.checkUpdates).not.toHaveBeenCalled()
             expect(onRestart).not.toHaveBeenCalled()
 
             await app.stop()

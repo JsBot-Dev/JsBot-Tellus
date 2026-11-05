@@ -5,7 +5,7 @@
  * dark; a 12px radius scale shared by everything.
  * ------------------------------------------------------------------------- */
 :root {
-    /* Base size. The appearance drawer scales this root font-size; every
+    /* Base size. The appearance dialog scales this root font-size; every
        length in the WebUI is rem-based so the whole layout follows. */
     font-size: 16px;
 
@@ -445,12 +445,23 @@ html[data-density='compact'] body {
     padding: 1rem;
 }
 
-.el-dialog__title {
-    font-size: 1.125rem;
+/* Centered dialogs: keep the body scrollable when content is taller than the
+   viewport, while the header/footer stay in place. */
+.el-dialog.app-dialog {
+    display: flex;
+    flex-direction: column;
+    max-height: calc(100vh - 4rem);
+    max-height: calc(100dvh - 4rem);
 }
 
-.el-drawer__header {
-    font-size: 1.25rem;
+.el-dialog.app-dialog .el-dialog__body {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+}
+
+.el-dialog__title {
+    font-size: 1.125rem;
 }
 
 .el-tooltip__popper,
@@ -925,7 +936,6 @@ html.dark .el-table,
 /* ---------------------------------------------------------------------------
  * Overlays shared
  * ------------------------------------------------------------------------- */
-.el-drawer,
 .el-dialog,
 .el-message-box {
     border: 1px solid var(--app-border-strong);
@@ -933,7 +943,6 @@ html.dark .el-table,
     background: var(--el-bg-color-overlay);
 }
 
-.el-drawer__header,
 .el-dialog__header {
     font-weight: 600;
     margin-bottom: 0.75rem;

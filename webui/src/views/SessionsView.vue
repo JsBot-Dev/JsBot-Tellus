@@ -61,7 +61,14 @@
             />
         </el-card>
 
-        <el-drawer v-model="drawer" size="45%" :title="'会话 ' + detailId">
+        <el-dialog
+            v-model="detailOpen"
+            width="min(94vw, 45rem)"
+            :title="'会话 ' + detailId"
+            align-center
+            :append-to-body="true"
+            class="app-dialog"
+        >
             <div v-if="detail">
                 <el-form label-width="5.625rem" size="small">
                     <el-form-item label="provider">
@@ -130,7 +137,7 @@
                     </el-button>
                 </el-space>
             </div>
-        </el-drawer>
+        </el-dialog>
     </div>
 </template>
 
@@ -174,7 +181,7 @@ const page = ref(1)
 const pageSize = 20
 const query = ref('')
 const busy = ref(false)
-const drawer = ref(false)
+const detailOpen = ref(false)
 const detail = ref<SessionDetail | null>(null)
 const detailId = ref('')
 const form = ref({ provider: '', model: '', persona: '' })
@@ -227,7 +234,7 @@ const openDetail = async (row: SessionSummary): Promise<void> => {
             model: data.model ?? '',
             persona: data.persona ?? '',
         }
-        drawer.value = true
+        detailOpen.value = true
     } catch (error) {
         showError(error)
     }
@@ -292,7 +299,7 @@ const clear = async (): Promise<void> => {
     try {
         await apiDelete(`/api/sessions/${encodeURIComponent(detailId.value)}`)
         detail.value = null
-        drawer.value = false
+        detailOpen.value = false
         await load()
     } catch (error) {
         showError(error)

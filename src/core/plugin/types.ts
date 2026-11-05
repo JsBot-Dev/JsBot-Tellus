@@ -192,6 +192,18 @@ export interface PluginUpdateResult {
     failed: Array<{ packageName: string; message: string }>
 }
 
+export interface PluginUpdateInfo {
+    packageName: string
+    currentVersion: string
+    latestVersion: string | null
+    updateAvailable: boolean
+    error: string | null
+}
+
+export interface PluginUpdateCheckResult {
+    packages: PluginUpdateInfo[]
+}
+
 export interface PluginInstaller {
     readonly enabled: boolean
     list(): Promise<InstalledPackageInfo[]>
@@ -202,6 +214,10 @@ export interface PluginInstaller {
         options?: { force?: boolean | undefined } | undefined
     ): Promise<PluginRemoveResult>
     update(target?: string, signal?: AbortSignal): Promise<PluginUpdateResult>
+    checkUpdates(
+        target?: string,
+        signal?: AbortSignal
+    ): Promise<PluginUpdateCheckResult>
 }
 
 export interface CoreServices {

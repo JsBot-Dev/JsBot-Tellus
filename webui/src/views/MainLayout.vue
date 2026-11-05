@@ -87,7 +87,7 @@
             </el-main>
         </el-container>
 
-        <AppearanceDrawer v-model="appearanceOpen" />
+        <AppearanceDialog v-model="appearanceOpen" />
     </el-container>
 </template>
 
@@ -108,7 +108,7 @@ import {
     Sunny,
 } from '@element-plus/icons-vue'
 import { ref as vueRef } from 'vue'
-import AppearanceDrawer from './AppearanceDrawer.vue'
+import AppearanceDialog from './AppearanceDialog.vue'
 import {
     apiGet,
     apiPost,

@@ -207,6 +207,16 @@ export async function handleInstallerAction(ctx: ApiContext): Promise<void> {
         return
     }
 
+    if (ctx.pathname.endsWith('/check-updates')) {
+        sendData(
+            ctx.res,
+            200,
+            await runtime.installer.checkUpdates(target || undefined)
+        )
+
+        return
+    }
+
     if (ctx.pathname.endsWith('/update')) {
         sendData(
             ctx.res,
