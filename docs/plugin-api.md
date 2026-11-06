@@ -219,7 +219,7 @@ ctx.commands.register(
 | `description` | 无       | `/help` 中展示                               |
 | `params`      | 无       | Koishi 风格参数声明；省略时 handler 行为不变 |
 
-`name` 和 `aliases` 的每一项只能是一个路径段；多级命令请使用 `commands.group()`。
+`name` 和 `aliases` 不能包含空白字符。可以用 `.` 表示命令路径，例如 `name: 'utter.raw'` 会注册 `/utter.raw`，同时也能被 `/utter raw` 命中。`.` 和空白在匹配时都是路径分隔符；需要继承权限、前缀或自动生成用法提示时，请使用 `commands.group()`。
 
 `messageType` 省略时群聊和私聊都可触发；`messageType: 'group'` 只匹配群消息，私聊中的同名文本会继续进入 `onMessage`。命令组会继承该设置，子命令可以覆盖。
 
@@ -371,8 +371,9 @@ ctx.commands.group(
 
 指令组规则：
 
-- `group()` 的 `name` 和 `aliases` 同样是单个路径段；通过嵌套 `group()` 组成任意层级。
+- `group()` 的 `name` 和 `aliases` 不能包含空白字符；可以用 `.` 表示路径，通过嵌套 `group()` 组成任意层级。
 - 子命令自动拼接组路径，例如上面的 `plugin` + `install` 对应 `/plugin install`。
+- `.` 和空白在匹配时等价：`/plugin install` 与 `/plugin.install` 会命中同一个命令，也可以混用。
 - 子命令默认继承组的 `prefixes`、`permission`、`messageType`，也可以在子命令上覆盖。
 - 组别名和子命令别名会自动组合；组 `plugin` 别名 `p`、子命令 `install` 别名 `i` 时，`/p i` 也能命中。
 - 组根没有提供 `handler` 时，会自动注册根命令并生成用法提示，列出直接子命令、参数用法和描述。
@@ -381,24 +382,27 @@ ctx.commands.group(
 - `group()` 返回 disposer，会注销组根和所有子命令；组 setup 抛错或注册冲突时会自动回滚整组。
 - `/help` 中会显示完整路径，例如 `/plugin install`。
 
-同一前缀下按完整路径进行冲突检测。命令命中后会立即 `stopPropagation()`。
+同一前缀下按完整路径进行冲突检测，`.` 和空白视为同一种路径分隔符。命令命中后会立即 `stopPropagation()`。
 
 匹配时前缀最长优先，同一前缀下完整路径最长优先：
 
 ```text
 /plugin install demo
--> command: "plugin install"
+/plugin.install demo
+-> command: "plugin install" / "plugin.install"
 -> args: ["demo"]
 -> rest: "demo"
 ```
 
-`/plugin unknown` 在 `plugin` 组根存在时会回退到组根，`args` 为 `["unknown"]`。
+路径分隔符只作用于命令路径；命令名之后的内容保持原样。例如 `/visit example.com` 会把 `example.com` 作为参数，`args` 和 `rest` 都不会被拆成两段。
+
+`/plugin unknown` 和 `/plugin.unknown` 在 `plugin` 组根存在时会回退到组根，`args` 为 `["unknown"]`。
 
 `CommandMatch`：
 
 ```ts
 interface CommandMatch {
-    command: string // 命中的完整路径，例如 "plugin install"
+    command: string // 命中的完整路径，例如 "plugin install" 或 "plugin.install"
     prefix: string
     args: string[]
     rest: string

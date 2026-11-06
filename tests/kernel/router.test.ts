@@ -153,6 +153,37 @@ describe('router', () => {
         )
     })
 
+    it('dispatches dotted group subcommands', async () => {
+        const { router, dispatch } = harness()
+        const child = vi.fn<CommandHandler>(async () => {})
+
+        router.registerCommandGroup(
+            {
+                pluginId: 'test',
+                name: 'group',
+            },
+            (group) => {
+                group.register({ name: 'child' }, child)
+            }
+        )
+
+        const handled = await dispatch(
+            groupMessage({
+                raw_message: '/group.child demo.example',
+                user_id: 30000,
+            })
+        )
+
+        expect(child).toHaveBeenCalledTimes(1)
+        expect(child.mock.calls[0]?.[2]).toEqual({
+            command: 'group.child',
+            prefix: '/',
+            args: ['demo.example'],
+            rest: 'demo.example',
+        })
+        expect(handled.context.stopped).toBe(true)
+    })
+
     it('parses command params and ignores extra arguments', async () => {
         const { router, dispatch, records } = harness()
         const handler = vi.fn<

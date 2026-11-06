@@ -220,7 +220,7 @@ export default definePlugin({
 - `definePlugin` 只提供类型推导，不会产生全局副作用。
 - `setup()` 只注册命令、事件和中间件；定时器、连接等运行时资源放在 `start()`，并在 `stop()` 中清理。
 - 命令可以用 `params` 声明位置参数；解析结果从 handler 第四个参数开始传入，用法会自动出现在 `/help` 和指令组提示中。详见[插件 API 的参数章节](plugin-api.md#参数)。
-- 多级命令（例如 `/plugin install`）使用 `ctx.commands.group()`，不要直接注册带空格的命令名。详见[插件 API 的命令章节](plugin-api.md#命令)。
+- 多级命令（例如 `/plugin install`）使用 `ctx.commands.group()`，也可以用点号注册路径（例如 `utter.raw`）；不要直接注册带空格的命令名。详见[插件 API 的命令章节](plugin-api.md#命令)。
 - 修改命令、事件或配置后，自动重启会重新构建并刷新插件入口模块；入口相对导入的辅助模块仍可能命中 ESM 缓存，修改多文件插件时完整重启进程最可靠。
 
 ### 4. 安装依赖
@@ -398,7 +398,7 @@ npm run dev
 - `manifest.id` 唯一；发布到 npm 时符合 `[a-z0-9][a-z0-9._-]*` 格式。
 - `configSchema` 使用 `.strict()`，默认值完整。
 - TypeScript 构建通过，运行时加载的是 `dist`。
-- 命令名是单个路径段；多级命令使用 `ctx.commands.group()`。
+- 命令名不包含空白字符；多级命令使用 `ctx.commands.group()` 或点号路径。
 - 命令权限和群组 gating 符合预期。
 - 重启进程后插件仍能正常加载。
 - 发布包不包含本地绝对路径、`file:` 依赖或对 `@jsbot-tellus/core` 的运行时依赖。
