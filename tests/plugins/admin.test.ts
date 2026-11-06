@@ -113,6 +113,48 @@ describe('admin plugin', () => {
         await app.stop()
     })
 
+    it('treats /utter.raw like /utter raw', async () => {
+        const app = await createTestApp({
+            plugins: [adminPlugin],
+            roles: {
+                superadmin: [10000],
+                admin: [20000],
+            },
+        })
+
+        await app.dispatch(
+            groupMessage({
+                raw_message: '/utter.raw [CQ:face,id=1]',
+                user_id: 20000,
+            })
+        )
+
+        expect(sentMessages(app.client.sent)[0]).toContain('权限不足')
+
+        await app.dispatch(
+            groupMessage({
+                raw_message: '/utter.raw [CQ:face,id=1]',
+                user_id: 10000,
+            })
+        )
+        await app.dispatch(
+            groupMessage({
+                raw_message: '/utter raw [CQ:face,id=1]',
+                user_id: 10000,
+            })
+        )
+
+        expect(sentMessages(app.client.sent).slice(-2)).toEqual([
+            '[CQ:face,id=1]',
+            '[CQ:face,id=1]',
+        ])
+        expect(app.client.sent.at(-1)?.options).toEqual({
+            autoEscape: false,
+        })
+
+        await app.stop()
+    })
+
     it('shows usage for an empty command', async () => {
         const app = await createTestApp({
             plugins: [adminPlugin],

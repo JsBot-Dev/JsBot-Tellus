@@ -72,6 +72,21 @@ export interface RegisteredCommand {
     match: CommandMatch
 }
 
+interface CommandNode {
+    registration?: CommandRegistration | undefined
+    readonly children: Map<string, CommandNode>
+}
+
+interface CommandPlacement {
+    prefix: string
+    segments: string[]
+}
+
+interface ParsedPath {
+    path: string
+    segments: string[]
+}
+
 interface GroupChild {
     name: string
     description?: string | undefined
@@ -93,11 +108,50 @@ function normalizeSegment(label: string, value: string): string {
 
     if (/\s/.test(trimmed)) {
         throw new Error(
-            `${label} must be a single segment; use commands.group() for multi-level commands`
+            `${label} must be a single segment; use '.' for nested command paths and commands.group() for groups`
         )
     }
 
     return trimmed
+}
+
+function parsePath(value: string): ParsedPath {
+    const path = value.trim()
+    const segments = path.split(/[.\s]+/)
+
+    if (segments.some((segment) => segment.length === 0)) {
+        throw new Error(`invalid command path: ${path}`)
+    }
+
+    return { path, segments }
+}
+
+function isPathSeparator(char: string | undefined): boolean {
+    return char === '.' || (char !== undefined && /\s/.test(char))
+}
+
+function skipPathSeparators(text: string, start: number): number {
+    let position = start
+
+    while (position < text.length && isPathSeparator(text[position])) {
+        position += 1
+    }
+
+    return position
+}
+
+function restStart(text: string, end: number): number {
+    let position = end
+
+    while (position < text.length && text[position] === '.') {
+        position += 1
+    }
+
+    while (position < text.length && /\s/.test(text[position] ?? '')) {
+        position += 1
+    }
+
+    return position
 }
 
 function uniqueStrings(values: string[]): string[] {
@@ -183,9 +237,10 @@ function createGroupUsageHandler(children: GroupChild[]): AnyCommandHandler {
 }
 
 export class CommandRegistry {
-    private readonly index = new Map<string, Map<string, CommandRegistration>>()
+    private readonly trees = new Map<string, CommandNode>()
     private readonly registrations = new Set<CommandRegistration>()
     private readonly byPlugin = new Map<string, Set<CommandRegistration>>()
+    private readonly disposers = new Map<CommandRegistration, () => void>()
 
     register(registration: CommandRegistration): () => void {
         const name = normalizeSegment('command name', registration.name)
@@ -249,27 +304,7 @@ export class CommandRegistry {
         if (!registrations) return
 
         for (const registration of [...registrations]) {
-            const names = [registration.name, ...registration.aliases].map(
-                (name) => name.toLowerCase()
-            )
-
-            for (const prefix of registration.prefixes) {
-                const bucket = this.index.get(prefix)
-
-                if (!bucket) continue
-
-                for (const name of names) {
-                    if (bucket.get(name) === registration) {
-                        bucket.delete(name)
-                    }
-                }
-
-                if (bucket.size === 0) {
-                    this.index.delete(prefix)
-                }
-            }
-
-            this.registrations.delete(registration)
+            this.disposers.get(registration)?.()
         }
 
         this.byPlugin.delete(pluginId)
@@ -301,7 +336,7 @@ export class CommandRegistry {
 
         if (!raw) return null
 
-        const prefixes = [...this.index.keys()].sort(
+        const prefixes = [...this.trees.keys()].sort(
             (a, b) => b.length - a.length
         )
 
@@ -312,51 +347,76 @@ export class CommandRegistry {
 
             if (!text) continue
 
-            const tokens = [...text.matchAll(/\S+/g)]
+            const tree = this.trees.get(prefix)
 
-            if (tokens.length === 0) continue
+            if (!tree) continue
 
-            for (let count = tokens.length; count >= 1; count -= 1) {
-                const matched = tokens.slice(0, count)
-                const first = matched[0]
-                const last = matched[matched.length - 1]
+            const found = this.matchPath(tree, text, messageType)
 
-                if (!first || !last) continue
+            if (!found) continue
 
-                const key = matched
-                    .map((token) => token[0])
-                    .join(' ')
-                    .toLowerCase()
-                const registration = this.index.get(prefix)?.get(key)
+            const rest = text.slice(restStart(text, found.end)).trim()
 
-                if (!registration) continue
-
-                if (
-                    messageType !== undefined &&
-                    !registration.messageTypes.includes(messageType)
-                ) {
-                    continue
-                }
-
-                const start = first.index ?? 0
-                const end = (last.index ?? 0) + last[0].length
-
-                return {
-                    registration,
-                    match: {
-                        command: text
-                            .slice(start, end)
-                            .replace(/\s+/g, ' ')
-                            .trim(),
-                        prefix,
-                        args: tokens.slice(count).map((token) => token[0]),
-                        rest: text.slice(end).trim(),
-                    },
-                }
+            return {
+                registration: found.registration,
+                match: {
+                    command: text
+                        .slice(0, found.end)
+                        .replace(/\s+/g, ' ')
+                        .trim(),
+                    prefix,
+                    args: [...rest.matchAll(/\S+/g)].map((token) => token[0]),
+                    rest,
+                },
             }
         }
 
         return null
+    }
+
+    private matchPath(
+        root: CommandNode,
+        text: string,
+        messageType?: MessageType
+    ): { registration: CommandRegistration; end: number } | null {
+        let node = root
+        let position = 0
+        let best: { registration: CommandRegistration; end: number } | null =
+            null
+
+        while (position < text.length) {
+            const start = position
+
+            while (position < text.length && !isPathSeparator(text[position])) {
+                position += 1
+            }
+
+            if (position === start) break
+
+            const child = node.children.get(
+                text.slice(start, position).toLowerCase()
+            )
+
+            if (!child) break
+
+            node = child
+
+            if (
+                node.registration &&
+                (messageType === undefined ||
+                    node.registration.messageTypes.includes(messageType))
+            ) {
+                best = { registration: node.registration, end: position }
+            }
+
+            const next = skipPathSeparators(text, position)
+
+            if (next === position) break
+
+            position = next
+        }
+
+        return best
     }
 
     private withParams(registration: CommandRegistration): CommandRegistration {
@@ -371,32 +431,85 @@ export class CommandRegistry {
         }
     }
 
+    private findNode(
+        prefix: string,
+        segments: string[]
+    ): CommandNode | undefined {
+        let node: CommandNode | undefined = this.trees.get(prefix)
+
+        if (!node) return undefined
+
+        for (const segment of segments) {
+            const child: CommandNode | undefined = node.children.get(
+                segment.toLowerCase()
+            )
+
+            if (!child) return undefined
+
+            node = child
+        }
+
+        return node
+    }
+
     private insert(
         registration: CommandRegistration,
         paths: string[]
     ): () => void {
         const prefixes = uniqueStrings(registration.prefixes)
-        const names = uniqueStrings(paths)
+        const parsedPaths: ParsedPath[] = []
+        const seen = new Set<string>()
+
+        for (const value of paths) {
+            const parsed = parsePath(value)
+            const key = parsed.segments
+                .map((segment) => segment.toLowerCase())
+                .join('\0')
+
+            if (seen.has(key)) continue
+
+            seen.add(key)
+            parsedPaths.push(parsed)
+        }
 
         for (const prefix of prefixes) {
-            for (const name of names) {
-                const existing = this.index.get(prefix)?.get(name.toLowerCase())
-
-                if (existing) {
-                    throw new Error(`command conflict: ${prefix}${name}`)
+            for (const parsed of parsedPaths) {
+                if (this.findNode(prefix, parsed.segments)?.registration) {
+                    throw new Error(`command conflict: ${prefix}${parsed.path}`)
                 }
             }
         }
 
-        for (const prefix of prefixes) {
-            const bucket =
-                this.index.get(prefix) ?? new Map<string, CommandRegistration>()
+        const placements: CommandPlacement[] = []
 
-            for (const name of names) {
-                bucket.set(name.toLowerCase(), registration)
+        for (const prefix of prefixes) {
+            let root = this.trees.get(prefix)
+
+            if (!root) {
+                root = { children: new Map() }
+                this.trees.set(prefix, root)
             }
 
-            this.index.set(prefix, bucket)
+            for (const parsed of parsedPaths) {
+                const segments = parsed.segments.map((segment) =>
+                    segment.toLowerCase()
+                )
+                let node = root
+
+                for (const segment of segments) {
+                    let child = node.children.get(segment)
+
+                    if (!child) {
+                        child = { children: new Map() }
+                        node.children.set(segment, child)
+                    }
+
+                    node = child
+                }
+
+                node.registration = registration
+                placements.push({ prefix, segments })
+            }
         }
 
         this.registrations.add(registration)
@@ -409,25 +522,13 @@ export class CommandRegistry {
 
         let disposed = false
 
-        return () => {
+        const dispose = (): void => {
             if (disposed) return
 
             disposed = true
 
-            for (const prefix of prefixes) {
-                const bucket = this.index.get(prefix)
-
-                if (!bucket) continue
-
-                for (const name of names) {
-                    if (bucket.get(name.toLowerCase()) === registration) {
-                        bucket.delete(name.toLowerCase())
-                    }
-                }
-
-                if (bucket.size === 0) {
-                    this.index.delete(prefix)
-                }
+            for (const placement of placements) {
+                this.removePlacement(registration, placement)
             }
 
             this.registrations.delete(registration)
@@ -436,6 +537,52 @@ export class CommandRegistry {
             if (pluginSet.size === 0) {
                 this.byPlugin.delete(registration.pluginId)
             }
+
+            this.disposers.delete(registration)
+        }
+
+        this.disposers.set(registration, dispose)
+
+        return dispose
+    }
+
+    private removePlacement(
+        registration: CommandRegistration,
+        placement: CommandPlacement
+    ): void {
+        const root = this.trees.get(placement.prefix)
+
+        if (!root) return
+
+        const stack: Array<{ node: CommandNode; segment: string }> = []
+        let node = root
+
+        for (const segment of placement.segments) {
+            const child = node.children.get(segment)
+
+            if (!child) return
+
+            stack.push({ node: child, segment })
+            node = child
+        }
+
+        if (node.registration === registration) {
+            node.registration = undefined
+        }
+
+        for (let index = stack.length - 1; index >= 0; index -= 1) {
+            const entry = stack[index]
+
+            if (!entry) break
+            if (entry.node.registration || entry.node.children.size > 0) break
+
+            const parent = index === 0 ? root : stack[index - 1]?.node
+
+            parent?.children.delete(entry.segment)
+        }
+
+        if (!root.registration && root.children.size === 0) {
+            this.trees.delete(placement.prefix)
         }
     }
 
