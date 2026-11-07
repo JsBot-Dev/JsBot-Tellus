@@ -42,45 +42,57 @@ function pluginJsonSchema(
 
 export async function handlePluginsList(ctx: ApiContext): Promise<void> {
     const runtime = ctx.deps.getRuntime()
-    // The kernel can fail to start (for example when a plugin has no config
-    // yet). Keep serving the last loaded definitions so the WebUI can still
-    // edit plugin configs and recover without touching the file by hand.
+    // The kernel can fail to start (for example when a plugin setup fails).
+    // Keep serving the last loaded definitions so the WebUI can still edit
+    // plugin configs and recover without touching the file by hand.
     const definitions = runtime?.plugins ?? ctx.deps.getPlugins()
     const statuses = new Map(
         (runtime?.kernel.listPlugins() ?? []).map((entry) => [entry.id, entry])
     )
-    const document = await ctx.deps.readConfig()
-    const plugins = definitions.map((definition) => {
-        const id = definition.manifest.id
-        const status = statuses.get(id)
-        const envelope = asRecord(document.config.plugins[id]) as Record<
-            string,
-            unknown
-        >
-        // `safeStringify` treats shared references as circular; cloning keeps
-        // `config` and `options` from aliasing the same nested objects.
-        const options = structuredClone(
-            stripPluginEnvelope(envelope as never)
-        ) as Record<string, unknown>
-        const enabled =
-            status?.enabled ??
-            (typeof envelope['enabled'] === 'boolean'
-                ? envelope['enabled']
-                : (definition.manifest.defaultEnabled ?? false))
+    const plugins = await Promise.all(
+        definitions.map(async (definition) => {
+            const id = definition.manifest.id
+            const status = statuses.get(id)
+            const document = await ctx.deps.readPluginConfig(id)
+            const config = document.config as Record<string, unknown>
+            // `safeStringify` treats shared references as circular; cloning keeps
+            // `config` and `options` from aliasing the same nested objects.
+            const options = structuredClone(
+                stripPluginEnvelope(document.config)
+            ) as Record<string, unknown>
+            const schemaResult =
+                document.error === null && !document.missing
+                    ? definition.manifest.configSchema.safeParse(options)
+                    : null
+            const configError =
+                document.error ??
+                (schemaResult !== null && !schemaResult.success
+                    ? formatConfigIssues(schemaResult.error, id)
+                    : null)
+            const enabled =
+                status?.enabled ??
+                (typeof config['enabled'] === 'boolean'
+                    ? config['enabled']
+                    : (definition.manifest.defaultEnabled ?? false))
 
-        return {
-            id,
-            version: definition.manifest.version,
-            description: definition.manifest.description,
-            dependencies: definition.manifest.dependencies ?? [],
-            defaultEnabled: definition.manifest.defaultEnabled ?? false,
-            enabled,
-            loaded: status?.loaded ?? false,
-            config: envelope,
-            options,
-            configSchema: pluginJsonSchema(definition),
-        }
-    })
+            return {
+                id,
+                version: definition.manifest.version,
+                description: definition.manifest.description,
+                dependencies: definition.manifest.dependencies ?? [],
+                defaultEnabled: definition.manifest.defaultEnabled ?? false,
+                enabled,
+                loaded: status?.loaded ?? false,
+                config,
+                options,
+                configHash: document.hash,
+                configPath: document.path,
+                configMissing: document.missing,
+                configError,
+                configSchema: pluginJsonSchema(definition),
+            }
+        })
+    )
     const installer = runtime?.installer
     const installed =
         installer !== undefined && installer.enabled
@@ -91,14 +103,12 @@ export async function handlePluginsList(ctx: ApiContext): Promise<void> {
         plugins,
         installed,
         installerEnabled: installer?.enabled ?? false,
-        configHash: document.hash,
     })
 }
 
 export async function handlePluginConfigPut(ctx: ApiContext): Promise<void> {
     const body = asRecord(await readJsonBody(ctx.req))
     const id = ctx.segments[2]
-    const document = await ctx.deps.readConfig()
 
     if (id === undefined) throw new HttpError(404, 'unknown plugin')
 
@@ -106,14 +116,20 @@ export async function handlePluginConfigPut(ctx: ApiContext): Promise<void> {
     const definition = (runtime?.plugins ?? ctx.deps.getPlugins()).find(
         (plugin) => plugin.manifest.id === id
     )
-    const entry = document.config.plugins[id]
 
-    if (definition === undefined && entry === undefined) {
+    if (definition === undefined) {
         throw new HttpError(404, `unknown plugin: ${id}`)
     }
 
-    const existing = asRecord(entry) as unknown as Record<string, unknown>
-    const next = { ...existing }
+    const document = await ctx.deps.readPluginConfig(id)
+
+    if (document.error !== null && body['options'] === undefined) {
+        throw new HttpError(400, '插件配置文件无法解析，请打开配置并重新保存')
+    }
+
+    const next = {
+        ...(document.config as Record<string, unknown>),
+    }
 
     if (typeof body['enabled'] === 'boolean') {
         next['enabled'] = body['enabled']
@@ -130,55 +146,23 @@ export async function handlePluginConfigPut(ctx: ApiContext): Promise<void> {
             throw new HttpError(400, 'options must be an object')
         }
 
-        const options: Record<string, unknown> = {}
-
-        for (const [key, value] of Object.entries(body['options'])) {
-            if (!ENVELOPE_KEYS.has(key)) options[key] = value
-        }
-
         for (const key of Object.keys(next)) {
             if (!ENVELOPE_KEYS.has(key)) delete next[key]
         }
 
-        if (definition === undefined) {
-            // Without a live runtime there is no schema to enforce; the config
-            // store still owns envelope validation.
-            Object.assign(next, options)
-        } else {
-            const parsed = definition.manifest.configSchema.safeParse(options)
-
-            if (!parsed.success) {
-                throw new HttpError(
-                    400,
-                    formatConfigIssues(parsed.error, `plugins.${id}`)
-                )
-            }
-
-            if (!isRecord(parsed.data)) {
-                throw new HttpError(
-                    400,
-                    `plugins.${id}: config schema must produce an object`
-                )
-            }
-
-            Object.assign(next, parsed.data)
+        for (const [key, value] of Object.entries(body['options'])) {
+            if (!ENVELOPE_KEYS.has(key)) next[key] = value
         }
     }
 
-    const config = {
-        ...document.config,
-        plugins: {
-            ...document.config.plugins,
-            [id]: next,
-        },
-    }
     const baseHash = body['baseHash']
 
     sendData(
         ctx.res,
         200,
-        await ctx.deps.applyConfig(
-            config,
+        await ctx.deps.applyPluginConfig(
+            id,
+            next,
             typeof baseHash === 'string' ? baseHash : undefined
         )
     )

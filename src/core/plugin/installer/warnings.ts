@@ -2,24 +2,31 @@ import type { InstalledPackageRecord, InstallState } from '../install-dir.js'
 
 export function configuredWarnings(
     pluginIds: readonly string[],
-    configured: ReadonlySet<string>
+    configured: ReadonlySet<string>,
+    configPathOf?: ((id: string) => string) | undefined
 ): string[] {
     return pluginIds
         .filter((id) => configured.has(id))
-        .map(
-            (id) =>
-                `配置里的 plugins.${id} 仍然存在，重启前请删除，否则会因未知插件 ID 启动失败`
-        )
+        .map((id) => {
+            const path = configPathOf?.(id) ?? `${id}.jsonc`
+
+            return `插件 ${id} 的配置文件 ${path} 仍然存在，重启后会忽略；如需清理请删除该文件`
+        })
 }
 
 export function removalWarnings(
     packageName: string,
     record: InstalledPackageRecord | undefined,
     state: InstallState,
-    configured: ReadonlySet<string>
+    configured: ReadonlySet<string>,
+    configPathOf?: ((id: string) => string) | undefined
 ): string[] {
     return [
-        ...configuredWarnings(record?.pluginIds ?? [], configured),
+        ...configuredWarnings(
+            record?.pluginIds ?? [],
+            configured,
+            configPathOf
+        ),
         ...dependentWarnings(packageName, record, state),
     ]
 }

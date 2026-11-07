@@ -10,11 +10,7 @@ import { PerKeyTaskQueue } from '../../src/core/dispatch/task-queue.js'
 import { createMessageSender } from '../../src/core/messaging/sender.js'
 import { createPluginContext } from '../../src/core/plugin/context.js'
 import { PluginGate } from '../../src/core/plugin/gating.js'
-import {
-    PluginConfigError,
-    PluginHost,
-    sortPlugins,
-} from '../../src/core/plugin/host.js'
+import { PluginHost, sortPlugins } from '../../src/core/plugin/host.js'
 import { createDisabledInstaller } from '../../src/core/plugin/installer.js'
 import { SqlitePluginKV } from '../../src/core/plugin/kv.js'
 import type {
@@ -67,7 +63,11 @@ function makePlugin(
 
 function harness(
     definitions: AnyPluginDefinition[],
-    configs: Record<string, PluginEnvelope> = {}
+    configs: Record<string, PluginEnvelope> = {},
+    options: {
+        configErrors?: Record<string, string>
+        configPaths?: Record<string, string>
+    } = {}
 ) {
     const { logger, records } = createCapturingLogger()
     const client = new FakeClient()
@@ -110,6 +110,12 @@ function harness(
     const host = new PluginHost({
         definitions,
         configs,
+        ...(options.configErrors !== undefined
+            ? { configErrors: options.configErrors }
+            : {}),
+        ...(options.configPaths !== undefined
+            ? { configPaths: options.configPaths }
+            : {}),
         gate,
         router,
         logger,
@@ -181,32 +187,146 @@ describe('plugin host', () => {
         ).toThrow(/dependency cycle/)
     })
 
-    it('rejects unknown plugin config ids', async () => {
-        const { host, database } = harness([makePlugin('a')], {
+    it('warns and ignores config for unknown plugin ids', async () => {
+        const { host, records, database } = harness([makePlugin('a')], {
             missing: envelope({}),
         })
 
         databases.push(database)
 
-        await expect(host.setup()).rejects.toThrow(/unknown plugin id: missing/)
+        await host.setup()
+
+        expect(
+            records.some(
+                (record) =>
+                    record.level === 'warn' &&
+                    record.message.includes(
+                        'ignoring config for unknown plugin id: missing'
+                    )
+            )
+        ).toBe(true)
+        expect(host.listStatus()).toEqual([
+            { id: 'a', enabled: true, loaded: true },
+        ])
     })
 
-    it('reports plugin config paths', async () => {
-        const { host, database } = harness(
+    it('warns and skips plugins with invalid config', async () => {
+        const setup = vi.fn()
+        const { host, records, database } = harness(
             [
                 makePlugin('bad', {
                     schema: z.object({ count: z.number() }).strict(),
+                    setup,
                 }),
             ],
             {
                 bad: envelope({ count: 'nope' }),
+            },
+            {
+                configPaths: {
+                    bad: '/data/config/plugin/bad.jsonc',
+                },
             }
         )
 
         databases.push(database)
 
-        await expect(host.setup()).rejects.toBeInstanceOf(PluginConfigError)
-        await expect(host.setup()).rejects.toThrow(/plugins\.bad\.count/)
+        await host.setup()
+
+        expect(setup).not.toHaveBeenCalled()
+        expect(host.listStatus()).toEqual([
+            { id: 'bad', enabled: true, loaded: false },
+        ])
+        expect(
+            records.some(
+                (record) =>
+                    record.level === 'warn' &&
+                    record.message.includes('invalid config for plugin bad') &&
+                    record.message.includes('/data/config/plugin/bad.jsonc') &&
+                    record.message.includes('bad.count')
+            )
+        ).toBe(true)
+    })
+
+    it('warns and skips plugins with config read errors', async () => {
+        const setup = vi.fn()
+        const { host, records, database } = harness(
+            [makePlugin('bad', { setup })],
+            {},
+            {
+                configErrors: {
+                    bad: 'invalid JSONC in /data/config/plugin/bad.jsonc',
+                },
+            }
+        )
+
+        databases.push(database)
+
+        await host.setup()
+
+        expect(setup).not.toHaveBeenCalled()
+        expect(
+            records.some(
+                (record) =>
+                    record.level === 'warn' &&
+                    record.message.includes(
+                        'skipping plugin bad: invalid JSONC'
+                    )
+            )
+        ).toBe(true)
+    })
+
+    it('skips plugins whose missing config fails the schema', async () => {
+        const setup = vi.fn()
+        const { host, records, database } = harness(
+            [
+                makePlugin('needs-config', {
+                    schema: z.object({ token: z.string() }).strict(),
+                    setup,
+                }),
+            ],
+            {},
+            {
+                configPaths: {
+                    'needs-config': '/data/config/plugin/needs-config.jsonc',
+                },
+            }
+        )
+
+        databases.push(database)
+
+        await host.setup()
+
+        expect(setup).not.toHaveBeenCalled()
+        expect(
+            records.some(
+                (record) =>
+                    record.level === 'warn' &&
+                    record.message.includes('missing or empty config') &&
+                    record.message.includes(
+                        '/data/config/plugin/needs-config.jsonc'
+                    )
+            )
+        ).toBe(true)
+    })
+
+    it('loads plugins with schema defaults when config is missing', async () => {
+        const setup = vi.fn()
+        const { host, database } = harness([
+            makePlugin('defaults', {
+                schema: z.object({ count: z.number().default(3) }).strict(),
+                setup,
+            }),
+        ])
+
+        databases.push(database)
+
+        await host.setup()
+
+        expect(setup).toHaveBeenCalledTimes(1)
+        expect(host.listStatus()).toEqual([
+            { id: 'defaults', enabled: true, loaded: true },
+        ])
     })
 
     it('skips disabled plugins', async () => {

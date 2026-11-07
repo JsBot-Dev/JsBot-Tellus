@@ -27,7 +27,6 @@ const config: AppConfig = {
         sessionTtlHours: 12,
         trustProxy: false,
     },
-    plugins: {},
     installer: {
         enabled: true,
         registry: 'https://registry.npmjs.org/',

@@ -1,5 +1,6 @@
 import type { BotApi } from '../api.js'
 import type { AppConfig, WebUiConfig } from '../config/schema.js'
+import type { PluginConfigDocument } from '../config/plugin-config.js'
 import type { Kernel } from '../kernel.js'
 import type { LogBuffer } from '../logging/log-buffer.js'
 import type { Logger } from '../logging/logger.js'
@@ -76,6 +77,13 @@ export interface WebUiDeps {
     applyConfig(
         value: unknown,
         baseHash?: string | undefined
+    ): Promise<ConfigApplyResult>
+
+    readPluginConfig(id: string): Promise<PluginConfigDocument>
+    applyPluginConfig(
+        id: string,
+        value: unknown,
+        baseHash?: string | null | undefined
     ): Promise<ConfigApplyResult>
 
     restart(): Promise<boolean>

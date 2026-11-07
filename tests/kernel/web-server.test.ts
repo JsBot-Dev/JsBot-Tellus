@@ -6,6 +6,7 @@ import { z } from 'zod'
 import {
     appConfigSchema,
     type AppConfig,
+    type PluginEnvelope,
     type WebUiConfig,
 } from '../../src/core/config/schema.js'
 import { createSilentLogger } from '../../src/core/logging/logger.js'
@@ -23,6 +24,7 @@ interface TestEnv {
     server: WebUiServer
     logs: LogBuffer
     port: number
+    directory: string
     config: {
         value: WebUiConfig
     }
@@ -75,7 +77,6 @@ async function createEnv(
     const appConfig: AppConfig = appConfigSchema.parse({
         url: 'ws://127.0.0.1:39999/',
         webui: { ...webui, port: webui.port === 0 ? 8787 : webui.port },
-        plugins: {},
     })
 
     await writeFile(configPath, JSON.stringify(appConfig, null, 4))
@@ -87,6 +88,7 @@ async function createEnv(
 
     const config: { value: WebUiConfig } = { value: webui }
     const cookies: Record<string, string> = {}
+    const pluginConfigs = new Map<string, Record<string, unknown>>()
 
     const deps: WebUiDeps = {
         logger: createSilentLogger('test'),
@@ -122,6 +124,39 @@ async function createEnv(
                   }
         },
         applyConfig: async () => ({ ok: true }),
+        readPluginConfig: async (id) => {
+            const path = join(
+                directory,
+                'data',
+                'config',
+                'plugin',
+                `${id}.jsonc`
+            )
+            const config = pluginConfigs.get(id) ?? {}
+            const raw = pluginConfigs.has(id) ? JSON.stringify(config) : null
+
+            return {
+                id,
+                path,
+                raw,
+                hash:
+                    raw === null
+                        ? null
+                        : createHash('sha256').update(raw).digest('hex'),
+                config: config as PluginEnvelope,
+                error: null,
+                missing: raw === null,
+            }
+        },
+        applyPluginConfig: async (id, value) => {
+            if (!plugins.some((plugin) => plugin.manifest.id === id)) {
+                return { ok: false, error: 'unknown plugin' }
+            }
+
+            pluginConfigs.set(id, value as Record<string, unknown>)
+
+            return { ok: true }
+        },
         restart: async () => true,
         requestRestart: () => {},
         pause: () => {},
@@ -146,6 +181,7 @@ async function createEnv(
         server,
         logs,
         port,
+        directory,
         config,
         cookies,
         async fetch(path, init = {}) {
@@ -345,6 +381,10 @@ describe('WebUiServer', () => {
                         enabled: boolean
                         loaded: boolean
                         config: Record<string, unknown>
+                        configHash: string | null
+                        configPath: string
+                        configMissing: boolean
+                        configError: string | null
                         configSchema: Record<string, unknown> | null
                     }>
                     installerEnabled: boolean
@@ -359,10 +399,83 @@ describe('WebUiServer', () => {
                 enabled: true,
                 loaded: false,
                 config: {},
+                configHash: null,
+                configPath: join(
+                    env.directory,
+                    'data',
+                    'config',
+                    'plugin',
+                    'demo.jsonc'
+                ),
+                configMissing: true,
+                configError: null,
             })
             expect(payload.data.plugins[0]?.configSchema).toMatchObject({
                 type: 'object',
             })
+        } finally {
+            await env.shutdown()
+        }
+    })
+
+    it('saves plugin config through the plugin endpoint', async () => {
+        const demo = definePlugin({
+            manifest: {
+                id: 'demo',
+                version: '1.0.0',
+                defaultEnabled: true,
+                configSchema: z
+                    .object({ token: z.string().optional() })
+                    .strict(),
+            },
+            setup: () => {},
+        })
+        const env = await createEnv(webUiConfig(0), [demo])
+
+        try {
+            await env.fetch('/api/auth/login', {
+                method: 'POST',
+                body: '{"username":"admin","password":"super-secret-pass"}',
+            })
+
+            const saved = await env.fetch('/api/plugins/demo/config', {
+                method: 'PUT',
+                body: JSON.stringify({
+                    options: { token: 'secret' },
+                    private: false,
+                    groups: { allow: [123], deny: [] },
+                }),
+            })
+
+            expect(saved.status).toBe(200)
+
+            const response = await env.fetch('/api/plugins')
+            const payload = JSON.parse(response.text) as {
+                data: {
+                    plugins: Array<{
+                        config: Record<string, unknown>
+                        configHash: string | null
+                        configMissing: boolean
+                    }>
+                }
+            }
+
+            expect(payload.data.plugins[0]).toMatchObject({
+                config: {
+                    token: 'secret',
+                    private: false,
+                    groups: { allow: [123], deny: [] },
+                },
+                configMissing: false,
+            })
+            expect(payload.data.plugins[0]?.configHash).toMatch(/[0-9a-f]{64}/)
+
+            const unknown = await env.fetch('/api/plugins/nope/config', {
+                method: 'PUT',
+                body: JSON.stringify({ options: {} }),
+            })
+
+            expect(unknown.status).toBe(404)
         } finally {
             await env.shutdown()
         }

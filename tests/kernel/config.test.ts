@@ -54,7 +54,6 @@ describe('config', () => {
                 sessionTtlHours: 12,
                 trustProxy: false,
             },
-            plugins: {},
             installer: {
                 enabled: false,
                 registry: 'https://registry.npmjs.org/',
@@ -77,14 +76,6 @@ describe('config', () => {
                 charThreshold: 100,
                 lineThreshold: 5,
             },
-            plugins: {
-                poke: {
-                    enabled: true,
-                    groups: {
-                        deny: [123456],
-                    },
-                },
-            },
         })
 
         const config = await loadConfig(filePath)
@@ -96,11 +87,6 @@ describe('config', () => {
         expect(config.message).toEqual({
             charThreshold: 100,
             lineThreshold: 5,
-        })
-        expect(config.plugins.poke?.enabled).toBe(true)
-        expect(config.plugins.poke?.groups).toEqual({
-            allow: [],
-            deny: [123456],
         })
     })
 
@@ -132,22 +118,30 @@ describe('config', () => {
         }
     })
 
-    it('keeps plugin-specific fields', async () => {
+    it('rejects the legacy plugins field', async () => {
+        const filePath = await writeConfig({
+            plugins: {},
+        })
+
+        await expect(loadConfig(filePath)).rejects.toThrow(
+            /不再支持 "plugins" 字段/
+        )
+    })
+
+    it('rejects the legacy plugins field with a migration path', async () => {
         const filePath = await writeConfig({
             plugins: {
                 poke: {
                     enabled: true,
-                    cooldownMs: 3000,
                 },
             },
         })
 
-        const config = await loadConfig(filePath)
-
-        expect(config.plugins.poke).toMatchObject({
-            enabled: true,
-            cooldownMs: 3000,
-        })
+        await expect(
+            loadConfig(filePath, {
+                pluginConfigDir: '/srv/jsbot/data/config/plugin',
+            })
+        ).rejects.toThrow(/\/srv\/jsbot\/data\/config\/plugin\/<id>\.jsonc/)
     })
 
     it('merges installer defaults', async () => {
@@ -243,23 +237,6 @@ describe('config', () => {
         })
 
         await expect(loadConfig(filePath)).rejects.toThrow(/unknown/)
-    })
-
-    it('rejects allow and deny at the same time', async () => {
-        const filePath = await writeConfig({
-            plugins: {
-                poke: {
-                    groups: {
-                        allow: [111],
-                        deny: [222],
-                    },
-                },
-            },
-        })
-
-        await expect(loadConfig(filePath)).rejects.toThrow(
-            /plugins\.poke\.groups/
-        )
     })
 
     it('reports a missing file', async () => {

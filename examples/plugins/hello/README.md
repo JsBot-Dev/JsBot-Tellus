@@ -1,7 +1,7 @@
 # Hello local plugin
 
 This is a minimal local plugin. It registers `/hello` and `/hey`, and reads its
-own `reply` option from `plugins.hello`.
+own `reply` option from `data/config/plugin/hello.jsonc`.
 
 Build the project first, then copy the example into the fixed local plugin
 directory:
@@ -15,16 +15,12 @@ node dist/app.js
 
 The app automatically loads `plugins/<id>/dist`.
 
-Enable and configure it in `bot.config.json`:
+Enable and configure it in `data/config/plugin/hello.jsonc`:
 
-```json
+```jsonc
 {
-    "plugins": {
-        "hello": {
-            "enabled": true,
-            "reply": "hello from config"
-        }
-    }
+    "enabled": true,
+    "reply": "hello from config",
 }
 ```
 

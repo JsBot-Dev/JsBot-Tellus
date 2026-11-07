@@ -9,6 +9,7 @@ export {
     maskConfig,
     mergeSecrets,
 } from './config-store.js'
+export type { PluginConfigDocument } from '../config/plugin-config.js'
 export type {
     ConfigApplyResult,
     ConfigDocument,

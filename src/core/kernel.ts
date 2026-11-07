@@ -1,6 +1,6 @@
 import { isMessageEvent, type SnowLumaEvent } from '@snowluma/sdk'
 import type { BotClient } from './client.js'
-import type { AppConfig } from './config/schema.js'
+import type { AppConfig, PluginEnvelope } from './config/schema.js'
 import { createBotApi, type BotApi } from './api.js'
 import { Router } from './dispatch/router.js'
 import { PerKeyTaskQueue } from './dispatch/task-queue.js'
@@ -27,6 +27,9 @@ export interface KernelOptions {
     logger: Logger
     database: Database
     plugins?: AnyPluginDefinition[] | undefined
+    pluginConfigs?: Record<string, PluginEnvelope> | undefined
+    pluginConfigErrors?: Record<string, string> | undefined
+    pluginConfigPaths?: Record<string, string> | undefined
     installer?: PluginInstaller | undefined
     onRestart?: (() => void) | undefined
     onEvent?: ((event: SnowLumaEvent) => void) | undefined
@@ -55,8 +58,9 @@ export class Kernel {
         this.drainTimeoutMs = options.drainTimeoutMs ?? 5_000
 
         const definitions = options.plugins ?? []
+        const pluginConfigs = options.pluginConfigs ?? {}
         const roles = new RoleService(options.config.roles)
-        const gate = new PluginGate(definitions, options.config.plugins)
+        const gate = new PluginGate(definitions, pluginConfigs)
         const sessions = new SqliteSessionStore(options.database)
         const sender = createMessageSender({
             client: options.client,
@@ -114,7 +118,13 @@ export class Kernel {
 
         host = new PluginHost({
             definitions,
-            configs: options.config.plugins,
+            configs: pluginConfigs,
+            ...(options.pluginConfigErrors !== undefined
+                ? { configErrors: options.pluginConfigErrors }
+                : {}),
+            ...(options.pluginConfigPaths !== undefined
+                ? { configPaths: options.pluginConfigPaths }
+                : {}),
             gate,
             router: this.router,
             logger: options.logger,

@@ -29,6 +29,7 @@ export interface InstallerOptions {
     validate?: PackageValidator | undefined
     reservedIds?: (() => ReadonlySet<string>) | undefined
     configuredPluginIds?: (() => ReadonlySet<string>) | undefined
+    pluginConfigDir?: string | undefined
     now?: (() => Date) | undefined
 }
 

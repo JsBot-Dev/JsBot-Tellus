@@ -96,7 +96,7 @@ describe('core plugin', () => {
             },
             pluginConfigs: {
                 admin: {
-                    groups: { allow: [654321] },
+                    groups: { allow: [654321], deny: [] },
                 },
             },
         })

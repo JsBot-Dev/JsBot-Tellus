@@ -20,10 +20,37 @@ export interface PathOptions {
     cwd?: string | undefined
 }
 
+export interface LoadConfigOptions {
+    pluginConfigDir?: string | undefined
+}
+
 function pickFirst(...values: Array<string | undefined>): string | undefined {
     return values.find(
         (value) => value !== undefined && value.trim().length > 0
     )
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+    return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
+export function legacyPluginsMessage(pluginConfigDir?: string): string {
+    const directory = pluginConfigDir ?? '<data-dir>/config/plugin'
+
+    return [
+        'bot.config.json 不再支持 "plugins" 字段（3.0 起插件配置已拆分）。',
+        `请手动将每个插件配置移动到 ${directory}/<id>.jsonc，并删除 "plugins" 字段。`,
+        '本版本不会自动迁移旧配置。',
+    ].join('\n')
+}
+
+export function assertNoLegacyPlugins(
+    value: unknown,
+    pluginConfigDir?: string
+): void {
+    if (isRecord(value) && 'plugins' in value) {
+        throw new ConfigError(legacyPluginsMessage(pluginConfigDir))
+    }
 }
 
 export function resolveConfigPath(options: PathOptions = {}): string {
@@ -42,7 +69,10 @@ export function resolveDataDir(options: PathOptions = {}): string {
     return resolve(cwd, value)
 }
 
-export async function loadConfig(filePath: string): Promise<AppConfig> {
+export async function loadConfig(
+    filePath: string,
+    options: LoadConfigOptions = {}
+): Promise<AppConfig> {
     const absolutePath = resolve(filePath)
 
     let raw: string
@@ -64,6 +94,8 @@ export async function loadConfig(filePath: string): Promise<AppConfig> {
             cause: error,
         })
     }
+
+    assertNoLegacyPlugins(json, options.pluginConfigDir)
 
     const result = appConfigSchema.safeParse(json)
 

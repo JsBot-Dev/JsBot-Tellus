@@ -56,7 +56,6 @@ describe('WebUiServer CSP authorizes the built appearance bootstrap', () => {
             // The config file must satisfy the schema (port >= 1); the
             // server itself listens on port 0 so the OS assigns a free port.
             webui: { ...webui, port: webui.port === 0 ? 8787 : webui.port },
-            plugins: {},
         })
 
         await writeFile(configPath, JSON.stringify(appConfig, null, 4))
@@ -98,6 +97,22 @@ describe('WebUiServer CSP authorizes the built appearance bootstrap', () => {
                       }
             },
             applyConfig: async () => ({ ok: true }),
+            readPluginConfig: async (id) => ({
+                id,
+                path: join(
+                    directory,
+                    'data',
+                    'config',
+                    'plugin',
+                    `${id}.jsonc`
+                ),
+                raw: null,
+                hash: null,
+                config: {},
+                error: null,
+                missing: true,
+            }),
+            applyPluginConfig: async () => ({ ok: true }),
             restart: async () => true,
             requestRestart: () => {},
             pause: () => {},

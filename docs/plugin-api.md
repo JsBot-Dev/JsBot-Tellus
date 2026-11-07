@@ -495,9 +495,9 @@ await context.send('自动转义 CQ 码', { autoEscape: true })
 - `User` < `Admin` < `SuperAdmin`。
 - `roles.superadmin` 和 `roles.admin` 在配置中维护。
 - 用户权限不足时，命令不会执行，并回复一条通用提示。
-- `plugins.<id>.enabled` 控制整体启用。
-- `plugins.<id>.groups.allow` / `deny` 只作用于群事件，二者不能同时非空。
-- `plugins.<id>.private` 控制私聊，默认 `true`。
+- 插件配置文件中的 `enabled` 控制整体启用。
+- 插件配置文件中的 `groups.allow` / `deny` 只作用于群事件，二者不能同时非空。
+- 插件配置文件中的 `private` 控制私聊，默认 `true`。
 - `/help` 只列出当前会话中启用的插件命令；群 gating 或 `private: false` 会隐藏对应命令。
 
 ## 配置校验
@@ -514,20 +514,16 @@ manifest: {
 }
 ```
 
-配置位于：
+配置位于 `<data-dir>/config/plugin/demo.jsonc`（数据目录默认为 `./data`）：
 
-```json
+```jsonc
 {
-    "plugins": {
-        "demo": {
-            "enabled": true,
-            "limit": 20
-        }
-    }
+    "enabled": true,
+    "limit": 20,
 }
 ```
 
-`enabled` 等信封字段会被剥离；`limit` 会传给 `configSchema`。未知字段会报错，错误信息包含 `plugins.demo.limit` 这样的路径。
+`enabled` 等信封字段会被剥离；`limit` 会传给 `configSchema`。未知字段会导致该插件被跳过，警告信息包含 `demo.limit` 这样的路径。配置缺失或为空时，内核先尝试使用 schema 默认值；仍不满足时跳过该插件，不会阻止启动。
 
 ## 本地插件
 
@@ -559,7 +555,7 @@ TypeScript 插件必须在生产运行前编译为 JavaScript。本地插件和�
     "main": "./dist/index.js",
     "types": "./dist/index.d.ts",
     "devDependencies": {
-        "@jsbot-tellus/core": "^2.0.2"
+        "@jsbot-tellus/core": "^3.0.0"
     },
     "dependencies": {
         "zod": "^4.6.7"
@@ -610,4 +606,4 @@ node dist/app.js
 
 安装和更新会检查完整依赖图；自依赖、循环依赖和缺失依赖会被拒绝。卸载被其它包依赖的插件时默认失败，确认后可使用 `/plugin remove <目标> --force`。
 
-插件配置仍然写在 `bot.config.json` 的 `plugins.<id>` 中。安装器不会自动修改配置；卸载时如果配置里仍保留对应 ID，命令会提示先删除，否则重启会因未知插件 ID 失败。
+插件配置写在 `<data-dir>/config/plugin/<id>.jsonc` 中。安装器不会自动修改或删除配置；卸载时如果配置文件仍然存在，命令会给出警告并跳过自动重启，残留文件本身会在下次启动时被忽略。

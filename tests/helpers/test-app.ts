@@ -4,6 +4,7 @@ import type { SnowLumaEvent } from '@snowluma/sdk'
 import {
     appConfigSchema,
     type AppConfig,
+    type PluginEnvelope,
     type RolesConfig,
 } from '../../src/core/config/schema.js'
 import { Kernel } from '../../src/core/kernel.js'
@@ -18,7 +19,9 @@ import { createCapturingLogger } from './loggers.js'
 
 export interface TestAppOptions {
     plugins?: AnyPluginDefinition[] | undefined
-    pluginConfigs?: Record<string, unknown> | undefined
+    pluginConfigs?: Record<string, PluginEnvelope> | undefined
+    pluginConfigErrors?: Record<string, string> | undefined
+    pluginConfigPaths?: Record<string, string> | undefined
     roles?: RolesConfig | undefined
     config?: AppConfig | undefined
     drainTimeoutMs?: number | undefined
@@ -50,7 +53,6 @@ export async function createTestApp(
         options.config ??
         appConfigSchema.parse({
             ...(options.roles !== undefined ? { roles: options.roles } : {}),
-            plugins: options.pluginConfigs ?? {},
         })
     const client = options.client ?? new FakeClient()
     const database = options.database ?? openMemoryDatabase()
@@ -60,6 +62,15 @@ export async function createTestApp(
         database,
         logger,
         plugins: options.plugins ?? [],
+        ...(options.pluginConfigs !== undefined
+            ? { pluginConfigs: options.pluginConfigs }
+            : {}),
+        ...(options.pluginConfigErrors !== undefined
+            ? { pluginConfigErrors: options.pluginConfigErrors }
+            : {}),
+        ...(options.pluginConfigPaths !== undefined
+            ? { pluginConfigPaths: options.pluginConfigPaths }
+            : {}),
         ...(options.installer !== undefined
             ? { installer: options.installer }
             : {}),

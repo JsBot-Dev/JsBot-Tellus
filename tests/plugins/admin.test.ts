@@ -444,7 +444,7 @@ describe('admin plugin', () => {
                     version: '1.0.0',
                     pluginIds: ['demo'],
                     warnings: [
-                        '配置里的 plugins.old 仍然存在，重启前请删除，否则会因未知插件 ID 启动失败',
+                        '插件 old 的配置文件 data/config/plugin/old.jsonc 仍然存在，重启后会忽略；如需清理请删除该文件',
                     ],
                 })),
             })
@@ -470,7 +470,7 @@ describe('admin plugin', () => {
             const message = sentMessages(app.client.sent).at(-1) ?? ''
 
             expect(message).toContain('已安装 demo-plugin@1.0.0')
-            expect(message).toContain('plugins.old')
+            expect(message).toContain('data/config/plugin/old.jsonc')
             expect(message).toContain('请处理以上问题后手动重启')
             expect(onRestart).not.toHaveBeenCalled()
 
@@ -516,7 +516,7 @@ describe('admin plugin', () => {
                     packageName: 'demo-plugin',
                     pluginIds: ['demo'],
                     warnings: [
-                        '配置里的 plugins.demo 仍然存在，重启前请删除，否则会因未知插件 ID 启动失败',
+                        '插件 demo 的配置文件 data/config/plugin/demo.jsonc 仍然存在，重启后会忽略；如需清理请删除该文件',
                     ],
                 })),
             })
@@ -542,7 +542,7 @@ describe('admin plugin', () => {
             const message = sentMessages(app.client.sent).at(-1) ?? ''
 
             expect(message).toContain('已卸载 demo-plugin')
-            expect(message).toContain('plugins.demo')
+            expect(message).toContain('data/config/plugin/demo.jsonc')
             expect(message).toContain('请处理以上问题后手动重启')
             expect(onRestart).not.toHaveBeenCalled()
 
@@ -673,7 +673,7 @@ describe('admin plugin', () => {
                             version: '2.0.0',
                             pluginIds: ['demo'],
                             warnings: [
-                                '配置里的 plugins.old 仍然存在，重启前请删除，否则会因未知插件 ID 启动失败',
+                                '插件 old 的配置文件 data/config/plugin/old.jsonc 仍然存在，重启后会忽略；如需清理请删除该文件',
                             ],
                         },
                     ],
@@ -702,7 +702,7 @@ describe('admin plugin', () => {
             const message = sentMessages(app.client.sent).at(-1) ?? ''
 
             expect(message).toContain('demo-plugin@2.0.0')
-            expect(message).toContain('plugins.old')
+            expect(message).toContain('data/config/plugin/old.jsonc')
             expect(message).toContain('请处理以上问题后手动重启')
             expect(onRestart).not.toHaveBeenCalled()
 

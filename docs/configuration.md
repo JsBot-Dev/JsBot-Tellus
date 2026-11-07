@@ -33,14 +33,6 @@
         "allowedPackages": [],
         "allowScripts": false,
         "timeoutMs": 120000
-    },
-    "plugins": {
-        "core": {
-            "enabled": true
-        },
-        "admin": {
-            "enabled": true
-        }
     }
 }
 ```
@@ -55,9 +47,8 @@
 | `permission`  | object | 见[权限提示](#权限提示)                   | 权限不足时的提示          |
 | `message`     | object | `{ charThreshold: 50, lineThreshold: 3 }` | 长消息转 forward 阈值     |
 | `installer`   | object | 见下文                                    | npm 插件安装器            |
-| `plugins`     | object | `{}`                                      | 以插件 ID 为键的配置      |
 
-顶层未知字段会导致启动失败。
+顶层未知字段会导致启动失败。插件配置不在 `bot.config.json` 中，见[插件配置](#插件配置)。
 
 `message.charThreshold` 按 CQ 字符串长度计算；`message.lineThreshold` 按换行后的行数计算。任一阈值超过都会把回复转成 forward 发送。
 
@@ -109,22 +100,28 @@ npm 包会在宿主进程中执行，拥有与内核相同的文件系统、环�
 
 安装只接受 npm registry 包。以下来源会被拒绝：git/github 地址、`file:`、`http(s):`、`workspace:`、`link:`、本地路径和 semver 范围（`^`、`~`、`1.x`）。版本部分只接受精确版本或 dist-tag。
 
-安装、更新、卸载成功后会自动重建运行时并重新加载插件，不需要手动重启，进程本身不会退出。卸载时如果配置里仍有对应插件 ID，会给出警告并跳过自动重启；如果其它已安装包依赖被卸载的插件 ID，默认拒绝卸载，需要确认后使用 `/plugin remove <目标> --force`。安装和更新会检查完整依赖图，拒绝自依赖、循环依赖和缺失依赖。启动时把内置插件和 `plugins/` 中的全部目录一起加载；出现重复插件 ID 时保留先加载的插件并记录警告。
+安装、更新、卸载成功后会自动重建运行时并重新加载插件，不需要手动重启，进程本身不会退出。卸载时如果对应的插件配置文件仍然存在，会给出警告并跳过自动重启；残留文件本身只会被忽略，建议手动删除。如果其它已安装包依赖被卸载的插件 ID，默认拒绝卸载，需要确认后使用 `/plugin remove <目标> --force`。安装和更新会检查完整依赖图，拒绝自依赖、循环依赖和缺失依赖。启动时把内置插件和 `plugins/` 中的全部目录一起加载；出现重复插件 ID 时保留先加载的插件并记录警告。
 
-## 插件公共信封
+## 插件配置
 
-每个插件配置都支持：
+每个插件使用一个独立的 JSONC 文件，位置为 `<data-dir>/config/plugin/<id>.jsonc`（数据目录默认是 `./data`）。文件名是插件 ID 经过 URL 编码后的结果；普通 ID 直接使用 `<id>.jsonc`。文件内容是插件的完整配置，包括公共信封字段和插件自己的选项：
 
-```json
+```jsonc
 {
+    // 公共信封字段
     "enabled": true,
     "private": true,
     "groups": {
         "allow": [111, 222],
-        "deny": []
-    }
+        "deny": [],
+    },
+
+    // 插件自己的选项
+    "limit": 20,
 }
 ```
+
+JSONC 支持 `//`、`/* */` 注释和尾随逗号。WebUI 保存时会写成标准 JSON，手写注释会被丢弃。
 
 | 字段      | 默认值            | 说明                              |
 | --------- | ----------------- | --------------------------------- |
@@ -137,13 +134,27 @@ npm 包会在宿主进程中执行，拥有与内核相同的文件系统、环�
 
 `allow` 和 `deny` 不能同时非空。群配置优先于 `private`，不会影响私聊。
 
+### 加载与错误处理
+
+- 文件不存在或为空：先尝试用 `configSchema` 的默认值加载；如果 schema 仍要求必填项，记录警告并跳过该插件。
+- JSONC 解析失败、顶层不是对象、公共信封校验失败或插件 `configSchema` 校验失败：记录警告并跳过该插件。
+- 配置文件名对应的插件 ID 未加载（拼写错误、插件已卸载等）：记录警告并忽略该文件。
+- 插件配置问题不会阻止 Kernel 启动；`bot.config.json` 本身的读取、JSON 解析和 schema 校验错误仍会阻止启动。
+- 非 `.jsonc` 文件、以 `.` 开头的隐藏文件和 `.bak` 文件不会被扫描。
+
+`bot.config.json` 不再支持 `plugins` 字段。3.0 不会自动迁移旧配置；如果保留该字段（即使是空对象），启动会失败并提示手动把每个插件配置移动到 `config/plugin/<id>.jsonc`。迁移方法见[迁移与回滚](migration.md#30-插件配置迁移)。
+
 ## 内置插件配置
+
+内置插件同样使用独立文件。
 
 ### core
 
-```json
+`<data-dir>/config/plugin/core.jsonc`：
+
+```jsonc
 {
-    "enabled": true
+    "enabled": true,
 }
 ```
 
@@ -151,9 +162,11 @@ npm 包会在宿主进程中执行，拥有与内核相同的文件系统、环�
 
 ### admin
 
-```json
+`<data-dir>/config/plugin/admin.jsonc`：
+
+```jsonc
 {
-    "enabled": true
+    "enabled": true,
 }
 ```
 
@@ -162,7 +175,7 @@ npm 包会在宿主进程中执行，拥有与内核相同的文件系统、环�
 
 ## 插件目录配置
 
-`plugins` 中出现的插件 ID 必须对应已加载的插件，否则启动失败。本地插件和在线安装的插件都固定从 `plugins/<目录>/dist` 自动加载：
+插件配置文件按 ID 对应已加载的插件；未加载的插件 ID 只会记录警告并忽略该文件。本地插件和在线安装的插件都固定从 `plugins/<目录>/dist` 自动加载：
 
 ```bash
 npm run build
@@ -171,21 +184,17 @@ node dist/app.js
 
 带有 `build` 脚本且依赖已安装的插件，无论 `dist` 是否已经存在，每次加载都会先自动执行 `npm run build`；构建失败或缺少 `node_modules` 时会回退加载已有 `dist`，没有可用 `dist` 时记录警告并跳过。没有 `build` 脚本的插件直接加载现有 `dist`。通过 `/plugin install` 安装的包会直接出现在 `plugins/<插件id>/`，与手动放在 `plugins/` 的本地插件使用同一套重建规则；安装包通常自带 `dist`，缺少构建依赖时会回退使用自带产物。安装状态、registry 和允许列表见[插件安装器](#插件安装器)。
 
-插件自己的配置字段由 `manifest.configSchema` 校验。例如一个 `demo` 插件：
+插件自己的配置字段由 `manifest.configSchema` 校验。例如一个 `demo` 插件，配置写在 `<data-dir>/config/plugin/demo.jsonc`：
 
-```json
+```jsonc
 {
-    "plugins": {
-        "demo": {
-            "enabled": true,
-            "private": false,
-            "limit": 20
-        }
-    }
+    "enabled": true,
+    "private": false,
+    "limit": 20,
 }
 ```
 
-`enabled`、`private`、`groups` 由内核处理；`limit` 会传给 `demo` 的 `configSchema`。未知字段会报错，错误信息包含 `plugins.demo.limit` 这样的路径。
+`enabled`、`private`、`groups` 由内核处理；`limit` 会传给 `demo` 的 `configSchema`。未知字段会导致该插件被跳过，警告信息包含 `demo.limit` 这样的路径。
 
 内置插件 `core`、`admin` 是 `src/plugins/` 下的普通源码，随内核一起编译。其他插件放在 `plugins/`，整个目录被 `.gitignore` 排除。每个本地插件都是独立包，有自己的 `package.json` 和依赖：
 
@@ -201,7 +210,9 @@ npm run dev
 
 ## 错误处理
 
-- 配置读取失败、JSON 解析失败、schema 校验失败都会在启动前退出。
-- Zod 错误会带路径，例如 `plugins.demo.limit`。
-- 未知插件 ID 会导致启动失败。
-- 插件 `configSchema` 使用 `.strict()`，未知字段会报错。
+- `bot.config.json` 读取失败、JSON 解析失败、包含旧 `plugins` 字段或 schema 校验失败都会在启动前退出。
+- 插件配置文件缺失或为空时先尝试使用 schema 默认值；JSONC 解析失败、公共信封无效或插件 `configSchema` 校验失败时，记录警告并跳过该插件。两种情况都不会阻止 Kernel 启动。
+- 未加载的插件 ID 对应的配置文件只会记录警告并被忽略。
+- Zod 错误会带路径，例如 `demo.limit`。
+- 插件 `configSchema` 通常使用 `.strict()`，未知字段会被视为错误并跳过该插件。
+- WebUI 保存插件配置时仍然严格校验，非法配置返回 400，不会写入文件。

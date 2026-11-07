@@ -114,7 +114,6 @@ export const appConfigSchema = z
         permission: permissionConfigSchema,
         message: messageConfigSchema,
         webui: webuiConfigSchema,
-        plugins: z.record(z.string(), pluginEnvelopeSchema).default({}),
         installer: installerConfigSchema.default({
             enabled: false,
             registry: 'https://registry.npmjs.org/',

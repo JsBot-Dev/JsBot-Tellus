@@ -1,12 +1,17 @@
 import type { SnowLumaEvent } from '@snowluma/sdk'
 import { existsSync, readFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
-import type { AppConfig } from '../core/config/schema.js'
+import type { AppConfig, PluginEnvelope } from '../core/config/schema.js'
 import {
     loadConfig,
     resolveConfigPath,
     resolveDataDir,
 } from '../core/config/loader.js'
+import {
+    readPluginConfigs,
+    resolvePluginConfigDir,
+    type PluginConfigDocument,
+} from '../core/config/plugin-config.js'
 import { createBotClient } from '../core/client.js'
 import { Kernel } from '../core/kernel.js'
 import { LogBuffer } from '../core/logging/log-buffer.js'
@@ -46,10 +51,19 @@ export interface RuntimeSettings {
     dataDir: string
 }
 
+export interface RuntimePluginConfig {
+    dir: string
+    configs: Record<string, PluginEnvelope>
+    errors: Record<string, string>
+    paths: Record<string, string>
+    ids: ReadonlySet<string>
+}
+
 export interface RuntimeSpec {
     config: AppConfig
     dataDir: string
     pluginDir: string
+    pluginConfig: RuntimePluginConfig
     plugins: AnyPluginDefinition[]
 }
 
@@ -152,7 +166,8 @@ export async function loadRuntimeSpec(
 
     logger.info('loading config', settings.configPath)
 
-    const config = await loadConfig(settings.configPath)
+    const pluginConfigDir = resolvePluginConfigDir(settings.dataDir)
+    const config = await loadConfig(settings.configPath, { pluginConfigDir })
     const pluginDir = resolve(LOCAL_PLUGIN_DIR)
 
     logger.info('loading plugins from', pluginDir)
@@ -173,10 +188,56 @@ export async function loadRuntimeSpec(
         logger
     )
 
+    const known = new Set(plugins.map((plugin) => plugin.manifest.id))
+    let documents: PluginConfigDocument[] = []
+
+    try {
+        documents = await readPluginConfigs(pluginConfigDir)
+    } catch (error) {
+        logger.warn(
+            `failed to scan plugin configs in ${pluginConfigDir}`,
+            error
+        )
+    }
+
+    const configs: Record<string, PluginEnvelope> = {}
+    const errors: Record<string, string> = {}
+    const paths: Record<string, string> = {}
+    const ids = new Set<string>()
+
+    for (const document of documents) {
+        ids.add(document.id)
+        paths[document.id] = document.path
+
+        if (!known.has(document.id)) {
+            logger.warn(
+                `ignoring plugin config for unknown plugin ${document.id}: ${document.path}`
+            )
+            continue
+        }
+
+        if (document.error !== null) {
+            errors[document.id] = document.error
+            logger.warn(`plugin ${document.id} config error: ${document.error}`)
+            continue
+        }
+
+        if (document.missing) continue
+
+        configs[document.id] = document.config
+    }
+
     return {
         config,
         dataDir: settings.dataDir,
         pluginDir,
+        pluginConfig: {
+            dir: pluginConfigDir,
+            configs,
+            errors,
+            paths,
+            ids,
+        },
         plugins,
     }
 }
@@ -194,7 +255,8 @@ export function createRuntime(
         logger: logger.child('installer'),
         reservedIds: () =>
             new Set(spec.plugins.map((plugin) => plugin.manifest.id)),
-        configuredPluginIds: () => new Set(Object.keys(spec.config.plugins)),
+        configuredPluginIds: () => spec.pluginConfig.ids,
+        pluginConfigDir: spec.pluginConfig.dir,
     })
     const database = openDatabase({ dataDir: spec.dataDir })
 
@@ -211,6 +273,9 @@ export function createRuntime(
         logger,
         database,
         plugins: spec.plugins,
+        pluginConfigs: spec.pluginConfig.configs,
+        pluginConfigErrors: spec.pluginConfig.errors,
+        pluginConfigPaths: spec.pluginConfig.paths,
         installer,
         onRestart,
         onEvent,
@@ -484,6 +549,9 @@ export function createWebUiDeps(options: WebUiDepsOptions): WebUiDeps {
         readConfig: () => options.store.read(),
         validateConfig: (value) => options.store.validate(value),
         applyConfig: (value, baseHash) => options.store.apply(value, baseHash),
+        readPluginConfig: (id) => options.store.readPluginConfig(id),
+        applyPluginConfig: (id, value, baseHash) =>
+            options.store.applyPlugin(id, value, baseHash),
         restart: () => options.restart(),
         requestRestart: options.requestRestart,
         pause: () => options.getRuntime()?.kernel.pause(),

@@ -68,12 +68,14 @@ docker logs -f jsbot
 
 镜像内固定使用以下路径：
 
-| 容器路径          | 内容               | 说明                                              |
-| ----------------- | ------------------ | ------------------------------------------------- |
-| `/app/config`     | 配置文件目录       | 环境变量 `BOT_CONFIG=/app/config/bot.config.json` |
-| `/app/data`       | SQLite 数据库      | 环境变量 `BOT_DATA_DIR=/app/data`                 |
-| `/app/plugins`    | 本地和在线安装插件 | 固定目录，不可通过环境变量修改                    |
-| `/app/dist/webui` | WebUI 静态资源     | 随镜像构建                                        |
+| 容器路径          | 内容                    | 说明                                              |
+| ----------------- | ----------------------- | ------------------------------------------------- |
+| `/app/config`     | 主配置文件目录          | 环境变量 `BOT_CONFIG=/app/config/bot.config.json` |
+| `/app/data`       | SQLite 数据库、插件配置 | 环境变量 `BOT_DATA_DIR=/app/data`                 |
+| `/app/plugins`    | 本地和在线安装插件      | 固定目录，不可通过环境变量修改                    |
+| `/app/dist/webui` | WebUI 静态资源          | 随镜像构建                                        |
+
+插件配置位于 `/app/data/config/plugin/<id>.jsonc`，随 `data` 卷一起持久化；不要写进 `bot.config.json`。
 
 `data` 和 `plugins` 建议使用命名卷；如果改成宿主目录，需要保证容器内用户可写。
 
