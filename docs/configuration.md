@@ -2,38 +2,40 @@
 
 ## 路径和优先级
 
-| 项目     | CLI           | 环境变量        | 默认值              |
-| -------- | ------------- | --------------- | ------------------- |
-| 配置文件 | `--config`    | `BOT_CONFIG`    | `./bot.config.json` |
-| 数据目录 | `--data-dir`  | `BOT_DATA_DIR`  | `./data`            |
-| 日志级别 | `--log-level` | `BOT_LOG_LEVEL` | `info`              |
+| 项目     | CLI           | 环境变量        | 默认值               |
+| -------- | ------------- | --------------- | -------------------- |
+| 配置文件 | `--config`    | `BOT_CONFIG`    | `./bot.config.jsonc` |
+| 数据目录 | `--data-dir`  | `BOT_DATA_DIR`  | `./data`             |
+| 日志级别 | `--log-level` | `BOT_LOG_LEVEL` | `info`               |
 
 本地插件目录固定为 `./plugins`，不提供 CLI 或环境变量覆盖；每个插件从 `./plugins/<id>/dist` 加载，每次启动或重启加载时都会尝试自动重建，失败时回退已有产物，相对路径按 `process.cwd()` 解析。
 
+主配置文件使用 JSONC，支持 `//`、`/* */` 注释和尾随逗号。默认读取 `./bot.config.jsonc`；如果该文件不存在但旧版 `./bot.config.json` 存在，会回退读取旧文件并输出警告，建议重命名为 `bot.config.jsonc`。显式通过 `--config` 或 `BOT_CONFIG` 指定的路径始终优先，且同样按 JSONC 解析。
+
 ## 完整示例
 
-```json
+```jsonc
 {
     "url": "ws://127.0.0.1:3001/",
     "accessToken": "0123456789abcdef",
     "roles": {
         "superadmin": [10001],
-        "admin": [10002]
+        "admin": [10002],
     },
     "permission": {
-        "deniedMessage": "权限不足：需要 {required}，当前 {actual}"
+        "deniedMessage": "权限不足：需要 {required}，当前 {actual}",
     },
     "message": {
         "charThreshold": 50,
-        "lineThreshold": 3
+        "lineThreshold": 3,
     },
     "installer": {
         "enabled": true,
         "registry": "https://registry.npmjs.org/",
         "allowedPackages": [],
         "allowScripts": false,
-        "timeoutMs": 120000
-    }
+        "timeoutMs": 120000,
+    },
 }
 ```
 
@@ -48,7 +50,7 @@
 | `message`     | object | `{ charThreshold: 50, lineThreshold: 3 }` | 长消息转 forward 阈值     |
 | `installer`   | object | 见下文                                    | npm 插件安装器            |
 
-顶层未知字段会导致启动失败。插件配置不在 `bot.config.json` 中，见[插件配置](#插件配置)。
+顶层未知字段会导致启动失败。插件配置不在 `bot.config.jsonc` 中，见[插件配置](#插件配置)。
 
 `message.charThreshold` 按 CQ 字符串长度计算；`message.lineThreshold` 按换行后的行数计算。任一阈值超过都会把回复转成 forward 发送。
 
@@ -139,10 +141,10 @@ JSONC 支持 `//`、`/* */` 注释和尾随逗号。WebUI 保存时会写成标�
 - 文件不存在或为空：先尝试用 `configSchema` 的默认值加载；如果 schema 仍要求必填项，记录警告并跳过该插件。
 - JSONC 解析失败、顶层不是对象、公共信封校验失败或插件 `configSchema` 校验失败：记录警告并跳过该插件。
 - 配置文件名对应的插件 ID 未加载（拼写错误、插件已卸载等）：记录警告并忽略该文件。
-- 插件配置问题不会阻止 Kernel 启动；`bot.config.json` 本身的读取、JSON 解析和 schema 校验错误仍会阻止启动。
+- 插件配置问题不会阻止 Kernel 启动；`bot.config.jsonc` 本身的读取、JSONC 解析和 schema 校验错误仍会阻止启动。
 - 非 `.jsonc` 文件、以 `.` 开头的隐藏文件和 `.bak` 文件不会被扫描。
 
-`bot.config.json` 不再支持 `plugins` 字段。3.0 不会自动迁移旧配置；如果保留该字段（即使是空对象），启动会失败并提示手动把每个插件配置移动到 `config/plugin/<id>.jsonc`。迁移方法见[迁移与回滚](migration.md#30-插件配置迁移)。
+`bot.config.jsonc` 不再支持 `plugins` 字段。3.0 不会自动迁移旧配置；如果保留该字段（即使是空对象），启动会失败并提示手动把每个插件配置移动到 `config/plugin/<id>.jsonc`。迁移方法见[迁移与回滚](migration.md#30-插件配置迁移)。
 
 ## 内置插件配置
 
@@ -210,7 +212,7 @@ npm run dev
 
 ## 错误处理
 
-- `bot.config.json` 读取失败、JSON 解析失败、包含旧 `plugins` 字段或 schema 校验失败都会在启动前退出。
+- `bot.config.jsonc` 读取失败、JSONC 解析失败、包含旧 `plugins` 字段或 schema 校验失败都会在启动前退出。
 - 插件配置文件缺失或为空时先尝试使用 schema 默认值；JSONC 解析失败、公共信封无效或插件 `configSchema` 校验失败时，记录警告并跳过该插件。两种情况都不会阻止 Kernel 启动。
 - 未加载的插件 ID 对应的配置文件只会记录警告并被忽略。
 - Zod 错误会带路径，例如 `demo.limit`。

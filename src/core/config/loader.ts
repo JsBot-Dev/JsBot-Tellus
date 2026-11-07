@@ -1,3 +1,4 @@
+import { existsSync } from 'node:fs'
 import { readFile } from 'node:fs/promises'
 import { resolve } from 'node:path'
 import {
@@ -5,6 +6,10 @@ import {
     formatConfigIssues,
     type AppConfig,
 } from './schema.js'
+import { parseJsonc } from './jsonc.js'
+
+export const DEFAULT_CONFIG_FILE = 'bot.config.jsonc'
+export const LEGACY_CONFIG_FILE = 'bot.config.json'
 
 export class ConfigError extends Error {
     constructor(message: string, options?: ErrorOptions) {
@@ -38,7 +43,7 @@ export function legacyPluginsMessage(pluginConfigDir?: string): string {
     const directory = pluginConfigDir ?? '<data-dir>/config/plugin'
 
     return [
-        'bot.config.json 不再支持 "plugins" 字段（3.0 起插件配置已拆分）。',
+        '主配置文件不再支持 "plugins" 字段（3.0 起插件配置已拆分）。',
         `请手动将每个插件配置移动到 ${directory}/<id>.jsonc，并删除 "plugins" 字段。`,
         '本版本不会自动迁移旧配置。',
     ].join('\n')
@@ -56,9 +61,19 @@ export function assertNoLegacyPlugins(
 export function resolveConfigPath(options: PathOptions = {}): string {
     const cwd = options.cwd ?? process.cwd()
     const env = options.env ?? process.env
-    const value = pickFirst(options.config, env.BOT_CONFIG) ?? 'bot.config.json'
+    const value = pickFirst(options.config, env.BOT_CONFIG)
 
-    return resolve(cwd, value)
+    if (value !== undefined) return resolve(cwd, value)
+
+    const preferred = resolve(cwd, DEFAULT_CONFIG_FILE)
+
+    if (existsSync(preferred)) return preferred
+
+    const legacy = resolve(cwd, LEGACY_CONFIG_FILE)
+
+    if (existsSync(legacy)) return legacy
+
+    return preferred
 }
 
 export function resolveDataDir(options: PathOptions = {}): string {
@@ -85,15 +100,15 @@ export async function loadConfig(
         })
     }
 
-    let json: unknown
+    const jsonc = parseJsonc(raw)
 
-    try {
-        json = JSON.parse(raw)
-    } catch (error) {
-        throw new ConfigError(`invalid JSON in config file: ${absolutePath}`, {
-            cause: error,
-        })
+    if (jsonc.error !== null) {
+        throw new ConfigError(
+            `invalid JSONC in config file: ${absolutePath}: ${jsonc.error}`
+        )
     }
+
+    const json = jsonc.value
 
     assertNoLegacyPlugins(json, options.pluginConfigDir)
 

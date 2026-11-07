@@ -19,7 +19,7 @@
 
 ```bash
 npm install -g @jsbot-tellus/core
-jsbot --config ./bot.config.json
+jsbot --config ./bot.config.jsonc
 ```
 
 也可以从源码运行，见下方快速开始。
@@ -39,10 +39,10 @@ docker run --rm ghcr.io/jsbot-dev/jsbot-tellus:latest --help
 git clone https://github.com/JsBot-Dev/JsBot-Tellus
 cd JsBot-Tellus
 npm ci
-cp bot.config.example.json bot.config.json
+cp bot.config.example.jsonc bot.config.jsonc
 ```
 
-编辑 `bot.config.json`，至少填写连接地址和账号角色。然后：
+编辑 `bot.config.jsonc`，至少填写连接地址和账号角色。然后：
 
 ```bash
 # 构建并运行
@@ -58,13 +58,13 @@ npm run dev
 
 开发模式会监听核心源码和本地插件源码；插件构建产物 `plugins/*/dist/` 不参与 watch，避免构建触发无限重启。
 
-默认配置路径是 `./bot.config.json`，默认数据目录是 `./data`。从旧版升级前请先备份并移走旧配置和数据库，见[迁移与回滚](docs/migration.md)。
+默认配置路径是 `./bot.config.jsonc`，默认数据目录是 `./data`。主配置支持 JSONC 注释和尾随逗号；旧版 `bot.config.json` 仍可回退读取并会输出警告。从旧版升级前请先备份并移走旧配置和数据库，见[迁移与回滚](docs/migration.md)。
 
-插件配置不在 `bot.config.json` 中，而是按插件拆分到 `<data-dir>/config/plugin/<id>.jsonc`（默认 `data/config/plugin/`）。文件支持 JSONC 注释和尾随逗号，内容包含 `enabled`、`private`、`groups` 和插件自己的选项。3.0 起 `bot.config.json` 不再接受 `plugins` 字段，旧配置需要手动迁移；缺失或无效的插件配置只会记录警告并跳过对应插件，不会阻止启动。详见[配置文档](docs/configuration.md#插件配置)。
+插件配置不在 `bot.config.jsonc` 中，而是按插件拆分到 `<data-dir>/config/plugin/<id>.jsonc`（默认 `data/config/plugin/`）。文件支持 JSONC 注释和尾随逗号，内容包含 `enabled`、`private`、`groups` 和插件自己的选项。3.0 起 `bot.config.jsonc` 不再接受 `plugins` 字段，旧配置需要手动迁移；缺失或无效的插件配置只会记录警告并跳过对应插件，不会阻止启动。详见[配置文档](docs/configuration.md#插件配置)。
 
 ## WebUI（可选）
 
-在 `bot.config.json` 中启用管理后台：
+在 `bot.config.jsonc` 中启用管理后台：
 
 ```json
 {
@@ -148,7 +148,7 @@ node dist/app.js
 ```text
 jsbot [options]
 
---config <path>      配置文件，优先级 CLI > BOT_CONFIG > ./bot.config.json
+--config <path>      配置文件，优先级 CLI > BOT_CONFIG > ./bot.config.jsonc
 --data-dir <path>    数据目录，优先级 CLI > BOT_DATA_DIR > ./data
 --log-level <level>  debug、info、warn、error，优先级 CLI > BOT_LOG_LEVEL
 --help               显示帮助

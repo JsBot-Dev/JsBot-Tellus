@@ -71,7 +71,7 @@ async function createEnv(
 
     directories.push(directory)
 
-    const configPath = join(directory, 'bot.config.json')
+    const configPath = join(directory, 'bot.config.jsonc')
     // The config file must satisfy the schema (port >= 1); the server itself
     // listens on port 0 so the OS assigns a free port for the test.
     const appConfig: AppConfig = appConfigSchema.parse({

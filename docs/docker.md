@@ -22,11 +22,11 @@ Docker 镜像包含内核、内置插件、WebUI 静态资源和生产依赖，�
 
 ## 快速开始
 
-先准备配置目录。配置文件必须放在一个目录里挂载，不要单独挂载 `bot.config.json` 文件：WebUI 保存配置时会先写临时文件再原子重命名，单文件挂载会导致重命名失败。
+先准备配置目录。配置文件必须放在一个目录里挂载，不要单独挂载 `bot.config.jsonc` 文件：WebUI 保存配置时会先写临时文件再原子重命名，单文件挂载会导致重命名失败。
 
 ```bash
 mkdir -p config
-cp bot.config.example.json config/bot.config.json
+cp bot.config.example.jsonc config/bot.config.jsonc
 ```
 
 本地没有源码时，可以直接从镜像取出示例配置：
@@ -34,10 +34,10 @@ cp bot.config.example.json config/bot.config.json
 ```bash
 docker run --rm --entrypoint cat \
   ghcr.io/jsbot-dev/jsbot-tellus:latest \
-  /app/bot.config.example.json > config/bot.config.json
+  /app/bot.config.example.jsonc > config/bot.config.jsonc
 ```
 
-编辑 `config/bot.config.json`，至少填写 OneBot 的 `url`、`accessToken` 和 `roles`。然后使用仓库里的示例：
+编辑 `config/bot.config.jsonc`，至少填写 OneBot 的 `url`、`accessToken` 和 `roles`。主配置支持 JSONC 注释和尾随逗号。然后使用仓库里的示例：
 
 ```bash
 docker compose -f compose.example.yaml up -d
@@ -68,14 +68,14 @@ docker logs -f jsbot
 
 镜像内固定使用以下路径：
 
-| 容器路径          | 内容                    | 说明                                              |
-| ----------------- | ----------------------- | ------------------------------------------------- |
-| `/app/config`     | 主配置文件目录          | 环境变量 `BOT_CONFIG=/app/config/bot.config.json` |
-| `/app/data`       | SQLite 数据库、插件配置 | 环境变量 `BOT_DATA_DIR=/app/data`                 |
-| `/app/plugins`    | 本地和在线安装插件      | 固定目录，不可通过环境变量修改                    |
-| `/app/dist/webui` | WebUI 静态资源          | 随镜像构建                                        |
+| 容器路径          | 内容                    | 说明                                               |
+| ----------------- | ----------------------- | -------------------------------------------------- |
+| `/app/config`     | 主配置文件目录          | 环境变量 `BOT_CONFIG=/app/config/bot.config.jsonc` |
+| `/app/data`       | SQLite 数据库、插件配置 | 环境变量 `BOT_DATA_DIR=/app/data`                  |
+| `/app/plugins`    | 本地和在线安装插件      | 固定目录，不可通过环境变量修改                     |
+| `/app/dist/webui` | WebUI 静态资源          | 随镜像构建                                         |
 
-插件配置位于 `/app/data/config/plugin/<id>.jsonc`，随 `data` 卷一起持久化；不要写进 `bot.config.json`。
+插件配置位于 `/app/data/config/plugin/<id>.jsonc`，随 `data` 卷一起持久化；不要写进 `bot.config.jsonc`。
 
 `data` 和 `plugins` 建议使用命名卷；如果改成宿主目录，需要保证容器内用户可写。
 
@@ -160,7 +160,7 @@ GHCR 使用 `GITHUB_TOKEN` 和 `packages: write`，不需要额外 Secret。Dock
 
 ## 故障排查
 
-- **启动提示找不到配置**：确认 `./config/bot.config.json` 存在，并且挂载到 `/app/config`。
+- **启动提示找不到配置**：确认 `./config/bot.config.jsonc` 存在，并且挂载到 `/app/config`。
 - **`EACCES` / `permission denied`**：确认宿主机上的 `config`、`data`、`plugins` 目录属于 UID 1000，或改用命名卷。
 - **WebUI 打不开**：确认配置里 `webui.enabled=true`、`host=0.0.0.0`，并且容器端口已发布到宿主机。
 - **在线安装插件失败**：确认 `installer.enabled=true`、容器能访问 registry，并且 `/app/plugins` 可写。

@@ -24,7 +24,7 @@ describe('config', () => {
     })
 
     async function writeConfig(value: unknown): Promise<string> {
-        const filePath = join(directory, 'bot.config.json')
+        const filePath = join(directory, 'bot.config.jsonc')
         await writeFile(filePath, JSON.stringify(value), 'utf8')
 
         return filePath
@@ -247,11 +247,30 @@ describe('config', () => {
         )
     })
 
-    it('reports invalid JSON', async () => {
-        const filePath = join(directory, 'broken.json')
+    it('parses JSONC comments and trailing commas', async () => {
+        const filePath = join(directory, 'bot.config.jsonc')
+        await writeFile(
+            filePath,
+            [
+                '// JSONC 注释',
+                '{',
+                '    "url": "ws://127.0.0.1:3002/", /* 行内注释 */',
+                '    "roles": { "superadmin": [], "admin": [] },',
+                '}',
+            ].join('\n'),
+            'utf8'
+        )
+
+        const config = await loadConfig(filePath)
+
+        expect(config.url).toBe('ws://127.0.0.1:3002/')
+    })
+
+    it('reports invalid JSONC', async () => {
+        const filePath = join(directory, 'broken.jsonc')
         await writeFile(filePath, '{', 'utf8')
 
-        await expect(loadConfig(filePath)).rejects.toThrow(/invalid JSON/)
+        await expect(loadConfig(filePath)).rejects.toThrow(/invalid JSONC/)
     })
 
     it('uses ConfigError', async () => {
@@ -287,7 +306,19 @@ describe('config', () => {
                 cwd,
                 env: {},
             })
-        ).toBe(resolve(cwd, 'bot.config.json'))
+        ).toBe(resolve(cwd, 'bot.config.jsonc'))
+    })
+
+    it('falls back to the legacy config file when the JSONC file is missing', async () => {
+        const legacy = join(directory, 'bot.config.json')
+        await writeFile(legacy, '{}', 'utf8')
+
+        expect(resolveConfigPath({ cwd: directory, env: {} })).toBe(legacy)
+
+        const preferred = join(directory, 'bot.config.jsonc')
+        await writeFile(preferred, '{}', 'utf8')
+
+        expect(resolveConfigPath({ cwd: directory, env: {} })).toBe(preferred)
     })
 
     it('resolves data dir by CLI, env, then default', () => {
@@ -329,6 +360,6 @@ describe('config', () => {
                 config: '   ',
                 env: {},
             })
-        ).toBe(resolve(cwd, 'bot.config.json'))
+        ).toBe(resolve(cwd, 'bot.config.jsonc'))
     })
 })

@@ -16,6 +16,7 @@ import {
     type PluginConfigDocument,
 } from '../config/plugin-config.js'
 import { atomicWrite, restoreRaw } from '../config/atomic.js'
+import { parseJsonc } from '../config/jsonc.js'
 import { stripPluginEnvelope } from '../plugin/host.js'
 import type { AnyPluginDefinition } from '../plugin/types.js'
 import { HttpError } from './http.js'
@@ -165,16 +166,16 @@ export class ConfigStore {
             )
         }
 
-        let json: unknown
+        const jsonc = parseJsonc(raw)
 
-        try {
-            json = JSON.parse(raw) as unknown
-        } catch {
+        if (jsonc.error !== null) {
             throw new ConfigStoreError(
                 500,
-                `invalid JSON in config file: ${this.options.configPath}`
+                `invalid JSONC in config file: ${this.options.configPath}: ${jsonc.error}`
             )
         }
+
+        const json = jsonc.value
 
         try {
             assertNoLegacyPlugins(json, this.options.pluginConfigDir)

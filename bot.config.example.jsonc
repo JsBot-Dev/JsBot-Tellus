@@ -1,24 +1,25 @@
+// JsBot Tellus 主配置示例（JSONC：支持注释和尾随逗号）
 {
     "url": "ws://127.0.0.1:3001/",
     "accessToken": "0123456789abcdef",
     "roles": {
         "superadmin": [],
-        "admin": []
+        "admin": [],
     },
     "permission": {
-        "deniedMessage": "权限不足：需要 {required}，当前 {actual}"
+        "deniedMessage": "权限不足：需要 {required}，当前 {actual}",
     },
     "message": {
         "charThreshold": 50,
-        "lineThreshold": 3
+        "lineThreshold": 3,
     },
     "webui": {
-        "enabled": false
+        "enabled": false,
     },
     "installer": {
         "enabled": true,
         "registry": "https://registry.npmjs.org/",
         "allowedPackages": [],
-        "allowScripts": false
-    }
+        "allowScripts": false,
+    },
 }

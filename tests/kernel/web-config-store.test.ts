@@ -69,7 +69,7 @@ async function harness(
 
     directories.push(directory)
 
-    const configPath = join(directory, 'bot.config.json')
+    const configPath = join(directory, 'bot.config.jsonc')
     const pluginConfigDir = join(directory, 'data', 'config', 'plugin')
     const state = { restartOk: true, restartCalls: 0 }
 
@@ -131,6 +131,27 @@ describe('ConfigStore.read', () => {
         expect(document.hash).toMatch(/[0-9a-f]{64}/)
         expect(document.config.webui.enabled).toBe(true)
         expect(document.raw).toContain('"webui"')
+    })
+
+    it('reads JSONC with comments and trailing commas', async () => {
+        const env = await harness()
+
+        await writeFile(
+            env.configPath,
+            [
+                '// main config',
+                '{',
+                '    "url": "ws://127.0.0.1:3002/",',
+                '    "roles": { "superadmin": [], "admin": [] },',
+                '    "webui": { "enabled": false },',
+                '}',
+            ].join('\n'),
+            'utf8'
+        )
+
+        const document = await env.store.read()
+
+        expect(document.config.url).toBe('ws://127.0.0.1:3002/')
     })
 
     it('rejects the legacy plugins field', async () => {
