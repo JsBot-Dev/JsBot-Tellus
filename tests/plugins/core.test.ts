@@ -80,7 +80,7 @@ describe('core plugin', () => {
         const superadminText = messageText(app, superadmin)
 
         expect(superadminText).toContain('/utter')
-        expect(superadminText).toContain('/utter raw')
+        expect(superadminText).toContain('/utter.raw')
         expect(superadminText).toContain('/plugin install')
         expect(superadminText).toContain('/plugin list')
 
@@ -96,7 +96,7 @@ describe('core plugin', () => {
             },
             pluginConfigs: {
                 admin: {
-                    groups: { allow: [654321] },
+                    groups: { allow: [654321], deny: [] },
                 },
             },
         })

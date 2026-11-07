@@ -1,13 +1,24 @@
-import { createHash, randomUUID } from 'node:crypto'
-import { copyFile, readFile, rename, stat, writeFile } from 'node:fs/promises'
+import { createHash } from 'node:crypto'
+import { readFile } from 'node:fs/promises'
 import {
     appConfigSchema,
     formatConfigIssues,
+    pluginEnvelopeSchema,
     type AppConfig,
     type PluginEnvelope,
 } from '../config/schema.js'
+import { assertNoLegacyPlugins, ConfigError } from '../config/loader.js'
+import {
+    readPluginConfig as readPluginConfigFile,
+    readPluginConfigs as readPluginConfigFiles,
+    restorePluginConfig,
+    writePluginConfig,
+    type PluginConfigDocument,
+} from '../config/plugin-config.js'
+import { atomicWrite, restoreRaw } from '../config/atomic.js'
 import { stripPluginEnvelope } from '../plugin/host.js'
 import type { AnyPluginDefinition } from '../plugin/types.js'
+import { HttpError } from './http.js'
 import type {
     ConfigApplyResult,
     ConfigDocument,
@@ -15,8 +26,7 @@ import type {
     ConfigValidationResult,
 } from './types.js'
 
-export class ConfigStoreError extends Error {
-    readonly status: number
+export class ConfigStoreError extends HttpError {
     readonly issues: ConfigValidationIssue[]
 
     constructor(
@@ -24,15 +34,15 @@ export class ConfigStoreError extends Error {
         message: string,
         issues: ConfigValidationIssue[] = []
     ) {
-        super(message)
+        super(status, message, issues)
         this.name = 'ConfigStoreError'
-        this.status = status
         this.issues = issues
     }
 }
 
 export interface ConfigStoreOptions {
     configPath: string
+    pluginConfigDir: string
     getPlugins(): AnyPluginDefinition[]
     restart(): Promise<boolean>
 }
@@ -43,6 +53,14 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function asRecord(value: unknown): Record<string, unknown> {
     return isRecord(value) ? value : {}
+}
+
+function pickEnvelope(value: PluginEnvelope): PluginEnvelope {
+    return {
+        ...(value.enabled !== undefined ? { enabled: value.enabled } : {}),
+        ...(value.private !== undefined ? { private: value.private } : {}),
+        ...(value.groups !== undefined ? { groups: value.groups } : {}),
+    }
 }
 
 export function mergeSecrets(current: AppConfig, incoming: unknown): unknown {
@@ -119,82 +137,14 @@ function issuesFrom(
     })
 }
 
-function validatePlugins(
-    config: AppConfig,
-    definitions: AnyPluginDefinition[]
+function pluginIssuesFrom(
+    zodIssues: Array<{ path: PropertyKey[]; message: string }>,
+    pluginId: string
 ): ConfigValidationIssue[] {
-    const issues: ConfigValidationIssue[] = []
-    const byId = new Map(
-        definitions.map((definition) => [definition.manifest.id, definition])
-    )
-
-    for (const id of Object.keys(config.plugins)) {
-        if (!byId.has(id)) {
-            issues.push({
-                path: `plugins.${id}`,
-                message: `unknown plugin id: ${id}`,
-            })
-        }
-    }
-
-    // Validate every enabled plugin, not only the ones already present in the
-    // config file. A newly installed plugin has no envelope yet; validating it
-    // here surfaces missing required options before the runtime is restarted.
-    for (const definition of definitions) {
-        const id = definition.manifest.id
-        const envelope = config.plugins[id]
-        const enabled =
-            envelope?.enabled ?? definition.manifest.defaultEnabled ?? false
-
-        if (!enabled) continue
-
-        const result = definition.manifest.configSchema.safeParse(
-            stripPluginEnvelope(envelope ?? ({} as PluginEnvelope))
-        )
-
-        if (!result.success) {
-            issues.push(
-                ...issuesFrom(result.error.issues).map((issue) => ({
-                    path: `plugins.${id}${issue.path.length > 0 ? `.${issue.path}` : ''}`,
-                    message: issue.message,
-                }))
-            )
-        }
-    }
-
-    return issues
-}
-
-async function atomicWrite(filePath: string, raw: string): Promise<void> {
-    let mode: number | undefined
-
-    try {
-        mode = (await stat(filePath)).mode & 0o777
-    } catch {
-        mode = undefined
-    }
-
-    const temporary = `${filePath}.tmp-${randomUUID()}`
-
-    await writeFile(temporary, raw, {
-        encoding: 'utf8',
-        ...(mode !== undefined ? { mode } : {}),
-    })
-
-    try {
-        await copyFile(filePath, `${filePath}.bak`)
-    } catch {
-        // Missing source file; nothing to back up.
-    }
-
-    await rename(temporary, filePath)
-}
-
-async function restoreRaw(filePath: string, raw: string): Promise<void> {
-    const temporary = `${filePath}.tmp-${randomUUID()}`
-
-    await writeFile(temporary, raw, 'utf8')
-    await rename(temporary, filePath)
+    return issuesFrom(zodIssues).map((issue) => ({
+        ...issue,
+        path: issue.path.length > 0 ? `${pluginId}.${issue.path}` : pluginId,
+    }))
 }
 
 export class ConfigStore {
@@ -226,6 +176,15 @@ export class ConfigStore {
             )
         }
 
+        try {
+            assertNoLegacyPlugins(json, this.options.pluginConfigDir)
+        } catch (error) {
+            throw new ConfigStoreError(
+                500,
+                error instanceof ConfigError ? error.message : String(error)
+            )
+        }
+
         const parsed = appConfigSchema.safeParse(json)
 
         if (!parsed.success) {
@@ -247,6 +206,24 @@ export class ConfigStore {
     async validate(value: unknown): Promise<ConfigValidationResult> {
         const document = await this.read()
         const merged = mergeSecrets(document.config, value)
+
+        try {
+            assertNoLegacyPlugins(merged, this.options.pluginConfigDir)
+        } catch (error) {
+            return {
+                ok: false,
+                issues: [
+                    {
+                        path: 'plugins',
+                        message:
+                            error instanceof Error
+                                ? error.message
+                                : String(error),
+                    },
+                ],
+            }
+        }
+
         const parsed = appConfigSchema.safeParse(merged)
 
         if (!parsed.success) {
@@ -256,14 +233,9 @@ export class ConfigStore {
             }
         }
 
-        const pluginIssues = validatePlugins(
-            parsed.data,
-            this.options.getPlugins()
-        )
-
         return {
-            ok: pluginIssues.length === 0,
-            issues: pluginIssues,
+            ok: true,
+            issues: [],
             config: parsed.data,
         }
     }
@@ -280,6 +252,21 @@ export class ConfigStore {
             }
 
             const merged = mergeSecrets(document.config, value)
+
+            try {
+                assertNoLegacyPlugins(merged, this.options.pluginConfigDir)
+            } catch (error) {
+                throw new ConfigStoreError(400, '配置校验失败', [
+                    {
+                        path: 'plugins',
+                        message:
+                            error instanceof Error
+                                ? error.message
+                                : String(error),
+                    },
+                ])
+            }
+
             const parsed = appConfigSchema.safeParse(merged)
 
             if (!parsed.success) {
@@ -287,19 +274,6 @@ export class ConfigStore {
                     400,
                     '配置校验失败',
                     issuesFrom(parsed.error.issues)
-                )
-            }
-
-            const pluginIssues = validatePlugins(
-                parsed.data,
-                this.options.getPlugins()
-            )
-
-            if (pluginIssues.length > 0) {
-                throw new ConfigStoreError(
-                    400,
-                    '插件配置校验失败',
-                    pluginIssues
                 )
             }
 
@@ -314,6 +288,120 @@ export class ConfigStore {
             }
 
             await restoreRaw(this.options.configPath, document.raw)
+
+            const restored = await this.options.restart()
+
+            return {
+                ok: false,
+                error: restored
+                    ? '运行时重启失败，已恢复旧配置'
+                    : '运行时重启失败，已恢复旧配置，但恢复重启也未成功',
+            }
+        })
+    }
+
+    readPluginConfigs(): Promise<PluginConfigDocument[]> {
+        return readPluginConfigFiles(this.options.pluginConfigDir).catch(
+            (error) => {
+                throw new ConfigStoreError(
+                    500,
+                    `cannot read plugin config directory: ${
+                        error instanceof Error ? error.message : String(error)
+                    }`
+                )
+            }
+        )
+    }
+
+    readPluginConfig(id: string): Promise<PluginConfigDocument> {
+        return readPluginConfigFile(this.options.pluginConfigDir, id)
+    }
+
+    applyPlugin(
+        id: string,
+        value: unknown,
+        baseHash?: string | null
+    ): Promise<ConfigApplyResult> {
+        return this.serialize(async () => {
+            const definition = this.options
+                .getPlugins()
+                .find((plugin) => plugin.manifest.id === id)
+
+            if (definition === undefined) {
+                throw new ConfigStoreError(404, `unknown plugin: ${id}`)
+            }
+
+            const document = await readPluginConfigFile(
+                this.options.pluginConfigDir,
+                id
+            )
+
+            if (
+                typeof baseHash === 'string' &&
+                baseHash.length > 0 &&
+                baseHash !== document.hash
+            ) {
+                throw new ConfigStoreError(
+                    409,
+                    '插件配置文件已被外部修改，请刷新后重试'
+                )
+            }
+
+            const envelope = pluginEnvelopeSchema.safeParse(value)
+
+            if (!envelope.success) {
+                throw new ConfigStoreError(
+                    400,
+                    `插件配置校验失败: ${formatConfigIssues(
+                        envelope.error,
+                        id
+                    )}`,
+                    pluginIssuesFrom(envelope.error.issues, id)
+                )
+            }
+
+            const parsed = definition.manifest.configSchema.safeParse(
+                stripPluginEnvelope(envelope.data)
+            )
+
+            if (!parsed.success) {
+                throw new ConfigStoreError(
+                    400,
+                    `插件配置校验失败: ${formatConfigIssues(parsed.error, id)}`,
+                    pluginIssuesFrom(parsed.error.issues, id)
+                )
+            }
+
+            if (!isRecord(parsed.data)) {
+                throw new ConfigStoreError(
+                    400,
+                    `plugin ${id}: config schema must produce an object`
+                )
+            }
+
+            const next = {
+                ...parsed.data,
+                ...pickEnvelope(envelope.data),
+            }
+
+            await writePluginConfig(this.options.pluginConfigDir, id, next)
+
+            if (await this.options.restart()) {
+                const after = await readPluginConfigFile(
+                    this.options.pluginConfigDir,
+                    id
+                )
+
+                return after.hash === null
+                    ? { ok: true }
+                    : { ok: true, hash: after.hash }
+            }
+
+            await restorePluginConfig(
+                this.options.pluginConfigDir,
+                id,
+                document.raw
+            )
 
             const restored = await this.options.restart()
 

@@ -44,6 +44,21 @@
                         </el-tag>
                     </template>
                 </el-table-column>
+                <el-table-column label="配置" :width="scaledPx(150)">
+                    <template #default="{ row }">
+                        <el-tooltip
+                            :content="configTooltip(row)"
+                            placement="top"
+                        >
+                            <el-tag size="small" :type="configTag(row).type">
+                                {{ configTag(row).text }}
+                            </el-tag>
+                        </el-tooltip>
+                        <div v-if="row.configHash" class="config-hash">
+                            {{ row.configHash.slice(0, 8) }}
+                        </div>
+                    </template>
+                </el-table-column>
                 <el-table-column label="群限制" :width="scaledPx(110)">
                     <template #default="{ row }">
                         <el-tag
@@ -207,6 +222,35 @@
             :append-to-body="true"
             class="app-dialog"
         >
+            <el-alert
+                v-if="currentConfigError"
+                type="error"
+                :closable="false"
+                show-icon
+                class="cfg-note"
+                title="插件配置文件无法解析"
+            >
+                <p class="cfg-error">{{ currentConfigError }}</p>
+                <p class="cfg-hint">
+                    保存会用下方内容覆盖该文件，也可以先手动修正后刷新。
+                </p>
+            </el-alert>
+
+            <el-alert
+                v-else-if="currentConfigMissing"
+                type="info"
+                :closable="false"
+                show-icon
+                class="cfg-note"
+                :title="
+                    '尚未创建插件配置文件，保存后将写入：' + currentConfigPath
+                "
+            />
+
+            <p v-else class="cfg-path">
+                配置文件：<code>{{ currentConfigPath }}</code>
+            </p>
+
             <div v-if="canUseForm" class="cfg-mode">
                 <el-radio-group
                     :model-value="cfgMode"
@@ -320,6 +364,10 @@ interface PluginRow {
     loaded: boolean
     config: PluginEnvelope
     options: Record<string, unknown>
+    configHash: string | null
+    configPath: string
+    configMissing: boolean
+    configError: string | null
     configSchema: JsonSchema | null
 }
 
@@ -354,7 +402,6 @@ interface PluginsResponse {
     plugins: PluginRow[]
     installed: InstalledRow[]
     installerEnabled: boolean
-    configHash: string
 }
 
 const plugins = ref<PluginRow[]>([])
@@ -374,6 +421,9 @@ const configOpen = ref(false)
 const cfgMode = ref<'form' | 'json'>('form')
 const currentId = ref('')
 const currentHash = ref('')
+const currentConfigPath = ref('')
+const currentConfigMissing = ref(false)
+const currentConfigError = ref<string | null>(null)
 const currentOptions = ref<Record<string, unknown>>({})
 const currentSchema = ref<JsonSchema | null>(null)
 const currentPrivate = ref(true)
@@ -391,7 +441,33 @@ const actionBusy = computed(
         updatingAll.value
 )
 
-type TagType = 'success' | 'warning' | 'info'
+type TagType = 'success' | 'warning' | 'danger' | 'info'
+
+const configTag = (row: PluginRow): { text: string; type: TagType } => {
+    if (row.configError !== null) {
+        return { text: '配置错误', type: 'danger' }
+    }
+
+    if (row.configMissing) {
+        return { text: '未配置', type: 'warning' }
+    }
+
+    return { text: '已配置', type: 'success' }
+}
+
+const configTooltip = (row: PluginRow): string => {
+    const lines = [`配置文件：${row.configPath}`]
+
+    if (row.configError !== null) {
+        lines.push(row.configError)
+    } else if (row.configMissing) {
+        lines.push('文件不存在或为空，插件会尝试使用 Schema 默认值加载。')
+    } else if (row.configHash !== null) {
+        lines.push(`SHA-256：${row.configHash}`)
+    }
+
+    return lines.join('\n')
+}
 
 const groupSummary = (
     row: PluginRow
@@ -483,7 +559,6 @@ const load = async (): Promise<void> => {
         plugins.value = data.plugins
         installed.value = data.installed
         installerEnabled.value = data.installerEnabled
-        currentHash.value = data.configHash
 
         const validUpdates = createUpdateMap()
 
@@ -519,6 +594,10 @@ const togglePlugin = async (
 
 const openConfig = (row: PluginRow): void => {
     currentId.value = row.id
+    currentHash.value = row.configHash ?? ''
+    currentConfigPath.value = row.configPath
+    currentConfigMissing.value = row.configMissing
+    currentConfigError.value = row.configError
     currentOptions.value = row.options ?? {}
     currentSchema.value = row.configSchema ?? null
     currentPrivate.value = row.config?.private ?? true
@@ -569,14 +648,19 @@ const saveConfig = async (): Promise<void> => {
     busy.value = true
 
     try {
+        const payload: Record<string, unknown> = {
+            options: result.options ?? {},
+            private: currentPrivate.value,
+            groups: { allow: groups.allow, deny: groups.deny },
+        }
+
+        if (currentHash.value.length > 0) {
+            payload['baseHash'] = currentHash.value
+        }
+
         await apiPut(
             `/api/plugins/${encodeURIComponent(currentId.value)}/config`,
-            {
-                options: result.options ?? {},
-                private: currentPrivate.value,
-                groups: { allow: groups.allow, deny: groups.deny },
-                baseHash: currentHash.value,
-            }
+            payload
         )
         configOpen.value = false
         ElMessage.success('配置已保存')
@@ -759,6 +843,40 @@ onMounted(() => void load())
 
 .cfg-note {
     margin-bottom: 0.875rem;
+}
+
+.cfg-note p {
+    margin: 0.25rem 0 0;
+}
+
+.cfg-path {
+    margin: 0 0 0.875rem;
+    font-size: 0.75rem;
+    color: var(--app-muted);
+    overflow-wrap: anywhere;
+}
+
+.cfg-path code {
+    font-size: 0.75rem;
+}
+
+.cfg-error {
+    font-family: 'SF Mono', ui-monospace, Menlo, Consolas, monospace;
+    font-size: 0.75rem;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+}
+
+.cfg-hint {
+    font-size: 0.75rem;
+    color: var(--app-muted);
+}
+
+.config-hash {
+    margin-top: 0.25rem;
+    font-family: 'SF Mono', ui-monospace, Menlo, Consolas, monospace;
+    font-size: 0.6875rem;
+    color: var(--app-muted);
 }
 
 .envelope {

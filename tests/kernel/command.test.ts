@@ -159,6 +159,23 @@ describe('command registry', () => {
         ).toThrow(/command conflict/)
     })
 
+    it('detects conflicts across dot and whitespace paths', () => {
+        const registry = new CommandRegistry()
+
+        registry.register(registration('plugin.install'))
+
+        expect(() =>
+            registry.group(groupRegistration('plugin'), (plugin) => {
+                plugin.register({ name: 'install' }, handler)
+            })
+        ).toThrow(/command conflict/)
+
+        expect(registry.match('/plugin.install')).not.toBeNull()
+        expect(registry.match('/plugin install')?.registration.name).toBe(
+            'plugin.install'
+        )
+    })
+
     it('removes plugin registrations', () => {
         const registry = new CommandRegistry()
 
@@ -173,6 +190,25 @@ describe('command registry', () => {
         expect(registry.match('/x')).toBeNull()
         expect(registry.match('/b')).not.toBeNull()
         expect(registry.list().map((item) => item.name)).toEqual(['b'])
+    })
+
+    it('removes dotted plugin registrations and prunes their paths', () => {
+        const registry = new CommandRegistry()
+
+        registry.register(
+            registration('a.b', { pluginId: 'one', aliases: ['x.y'] })
+        )
+        registry.register(registration('a.c', { pluginId: 'one' }))
+        registry.register(registration('a', { pluginId: 'two' }))
+
+        registry.removePlugin('one')
+
+        expect(registry.match('/a.b')?.registration.name).toBe('a')
+        expect(registry.match('/a.b')?.match.rest).toBe('b')
+        expect(registry.match('/x.y')).toBeNull()
+        expect(registry.match('/a.c')?.registration.name).toBe('a')
+        expect(registry.match('/a')).not.toBeNull()
+        expect(() => registry.register(registration('a.b'))).not.toThrow()
     })
 
     it('lists registrations with metadata', () => {
@@ -236,6 +272,20 @@ describe('command registry', () => {
 
         expect(registry.match('/temp')).toBeNull()
         expect(registry.list()).toEqual([])
+        expect(() => registry.register(registration('temp'))).not.toThrow()
+    })
+
+    it('prunes empty paths when a nested command is removed', () => {
+        const registry = new CommandRegistry()
+        const dispose = registry.register(registration('plugin.install'))
+
+        dispose()
+
+        expect(registry.match('/plugin.install')).toBeNull()
+        expect(registry.match('/plugin')).toBeNull()
+        expect(() =>
+            registry.register(registration('plugin.install'))
+        ).not.toThrow()
     })
 
     it('rejects multi-level names in register', () => {
@@ -244,6 +294,91 @@ describe('command registry', () => {
         expect(() => registry.register(registration('plugin install'))).toThrow(
             /single segment/
         )
+    })
+
+    it('treats dots and whitespace as equivalent path separators', () => {
+        const registry = new CommandRegistry()
+
+        registry.register(registration('utter'))
+        registry.register(registration('utter.raw'))
+
+        expect(registry.match('/utter')?.registration.name).toBe('utter')
+        expect(registry.match('/utter.raw')?.registration.name).toBe(
+            'utter.raw'
+        )
+        expect(registry.match('/utter raw')?.registration.name).toBe(
+            'utter.raw'
+        )
+        expect(registry.match('/utter.raw hello world')?.match).toEqual({
+            command: 'utter.raw',
+            prefix: '/',
+            args: ['hello', 'world'],
+            rest: 'hello world',
+        })
+        expect(registry.match('/utter raw hello')?.match).toEqual({
+            command: 'utter raw',
+            prefix: '/',
+            args: ['hello'],
+            rest: 'hello',
+        })
+        expect(registry.match('/utter.hello')?.registration.name).toBe('utter')
+        expect(registry.match('/utter.hello')?.match.rest).toBe('hello')
+    })
+
+    it('matches dotted group subcommands', () => {
+        const registry = new CommandRegistry()
+        const install: CommandHandler = async () => {}
+
+        registry.group(groupRegistration('plugin'), (plugin) => {
+            plugin.register({ name: 'install' }, install)
+        })
+
+        const spaced = registry.match('/plugin install demo')
+        const dotted = registry.match('/plugin.install demo')
+
+        expect(spaced?.registration.handler).toBe(install)
+        expect(dotted?.registration.handler).toBe(install)
+        expect(dotted?.match).toEqual({
+            command: 'plugin.install',
+            prefix: '/',
+            args: ['demo'],
+            rest: 'demo',
+        })
+        expect(registry.match('/plugin.unknown')?.match).toEqual({
+            command: 'plugin',
+            prefix: '/',
+            args: ['unknown'],
+            rest: 'unknown',
+        })
+    })
+
+    it('keeps dotted arguments after the command path', () => {
+        const registry = new CommandRegistry()
+
+        registry.register(registration('visit'))
+
+        expect(registry.match('/visit example.com')?.match).toEqual({
+            command: 'visit',
+            prefix: '/',
+            args: ['example.com'],
+            rest: 'example.com',
+        })
+        expect(registry.match('/visit.example.com')?.match).toEqual({
+            command: 'visit',
+            prefix: '/',
+            args: ['example.com'],
+            rest: 'example.com',
+        })
+    })
+
+    it('matches dotted aliases', () => {
+        const registry = new CommandRegistry()
+
+        registry.register(registration('utter', { aliases: ['u'] }))
+        registry.register(registration('utter.raw', { aliases: ['u.r'] }))
+
+        expect(registry.match('/u.r')?.registration.name).toBe('utter.raw')
+        expect(registry.match('/u r')?.registration.name).toBe('utter.raw')
     })
 
     it('matches multi-level commands by longest path', () => {

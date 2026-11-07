@@ -157,6 +157,7 @@ async function main(): Promise<void> {
 
     const store = new ConfigStore({
         configPath,
+        pluginConfigDir: initialSpec.pluginConfig.dir,
         getPlugins: () => latestSpec.plugins,
         restart: () => restartRuntime(),
     })

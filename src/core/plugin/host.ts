@@ -26,6 +26,8 @@ interface LoadedPlugin {
 export interface PluginHostDeps {
     definitions: AnyPluginDefinition[]
     configs: Record<string, PluginEnvelope>
+    configErrors?: Record<string, string> | undefined
+    configPaths?: Record<string, string> | undefined
     gate: PluginGate
     router: Router
     logger: Logger
@@ -113,32 +115,58 @@ export class PluginHost {
         const known = new Set(
             definitions.map((definition) => definition.manifest.id)
         )
+        const configured = new Set([
+            ...Object.keys(this.deps.configs),
+            ...Object.keys(this.deps.configErrors ?? {}),
+        ])
 
-        for (const id of Object.keys(this.deps.configs)) {
+        for (const id of configured) {
             if (!known.has(id)) {
-                throw new Error(`unknown plugin id: ${id}`)
+                this.deps.logger.warn(
+                    `ignoring config for unknown plugin id: ${id}`
+                )
             }
         }
 
         try {
             for (const definition of definitions) {
                 const id = definition.manifest.id
+                const configError = this.deps.configErrors?.[id]
+
+                if (configError !== undefined) {
+                    this.deps.logger.warn(
+                        `skipping plugin ${id}: ${configError}`
+                    )
+                    continue
+                }
 
                 if (!this.deps.gate.isPluginEnabled(id)) {
                     this.deps.logger.debug(`plugin ${id} disabled`)
                     continue
                 }
 
-                const raw = this.deps.configs[id] ?? {}
-                const options = stripPluginEnvelope(raw)
+                const raw = this.deps.configs[id]
+                const options = stripPluginEnvelope(raw ?? {})
                 const result =
                     definition.manifest.configSchema.safeParse(options)
 
                 if (!result.success) {
-                    throw new PluginConfigError(
+                    const path = this.deps.configPaths?.[id]
+                    const reason =
+                        raw === undefined
+                            ? `missing or empty config${
+                                  path ? ` at ${path}` : ''
+                              }`
+                            : `invalid config${path ? ` at ${path}` : ''}`
+                    const error = new PluginConfigError(
                         id,
-                        formatConfigIssues(result.error, `plugins.${id}`)
+                        [reason, formatConfigIssues(result.error, id)].join(
+                            '\n'
+                        )
                     )
+
+                    this.deps.logger.warn(error.message)
+                    continue
                 }
 
                 const context = this.deps.createContext(definition, result.data)

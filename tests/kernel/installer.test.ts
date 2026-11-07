@@ -210,6 +210,7 @@ describe('NpmPluginInstaller', () => {
             allowScripts?: boolean
             reservedIds?: string[]
             configuredPluginIds?: string[]
+            pluginConfigDir?: string
             realValidator?: boolean
         } = {}
     ): NpmPluginInstaller {
@@ -234,6 +235,9 @@ describe('NpmPluginInstaller', () => {
             reservedIds: () => new Set(overrides.reservedIds ?? []),
             configuredPluginIds: () =>
                 new Set(overrides.configuredPluginIds ?? []),
+            ...(overrides.pluginConfigDir !== undefined
+                ? { pluginConfigDir: overrides.pluginConfigDir }
+                : {}),
             now: () => new Date('2026-01-02T03:04:05.000Z'),
         })
     }
@@ -544,8 +548,10 @@ describe('NpmPluginInstaller', () => {
         registerPackage('demo-plugin', {
             plugins: [plugin('demo')],
         })
+        const pluginConfigDir = join(directory, 'data', 'config', 'plugin')
         const installer = createInstaller({
             configuredPluginIds: ['demo'],
+            pluginConfigDir,
         })
 
         await installer.install('demo-plugin')
@@ -555,7 +561,10 @@ describe('NpmPluginInstaller', () => {
         expect(result.packageName).toBe('demo-plugin')
         expect(result.pluginIds).toEqual(['demo'])
         expect(result.warnings).toHaveLength(1)
-        expect(result.warnings[0]).toContain('plugins.demo')
+        expect(result.warnings[0]).toContain(
+            join(pluginConfigDir, 'demo.jsonc')
+        )
+        expect(result.warnings[0]).not.toContain('plugins.demo')
         expect((await state()).packages).toEqual({})
         expect(await pathExists(join(directory, 'demo'))).toBe(false)
         expect(await installer.list()).toEqual([])
@@ -689,7 +698,11 @@ describe('NpmPluginInstaller', () => {
         registerPackage('demo-plugin', {
             plugins: [plugin('old')],
         })
-        const installer = createInstaller({ configuredPluginIds: ['old'] })
+        const pluginConfigDir = join(directory, 'data', 'config', 'plugin')
+        const installer = createInstaller({
+            configuredPluginIds: ['old'],
+            pluginConfigDir,
+        })
 
         await installer.install('demo-plugin')
 
@@ -702,7 +715,7 @@ describe('NpmPluginInstaller', () => {
         const result = await installer.update('demo-plugin')
 
         expect(result.updated[0]?.warnings).toEqual([
-            expect.stringContaining('plugins.old'),
+            expect.stringContaining(join(pluginConfigDir, 'old.jsonc')),
         ])
     })
 

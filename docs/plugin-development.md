@@ -139,7 +139,7 @@ npm run build --prefix plugins/my-plugin
         "watch": "tsc -p tsconfig.json --watch"
     },
     "devDependencies": {
-        "@jsbot-tellus/core": "^2.0.3",
+        "@jsbot-tellus/core": "^3.0.0",
         "@types/node": "^24.6.4",
         "typescript": "^7.0.2"
     },
@@ -220,7 +220,7 @@ export default definePlugin({
 - `definePlugin` 只提供类型推导，不会产生全局副作用。
 - `setup()` 只注册命令、事件和中间件；定时器、连接等运行时资源放在 `start()`，并在 `stop()` 中清理。
 - 命令可以用 `params` 声明位置参数；解析结果从 handler 第四个参数开始传入，用法会自动出现在 `/help` 和指令组提示中。详见[插件 API 的参数章节](plugin-api.md#参数)。
-- 多级命令（例如 `/plugin install`）使用 `ctx.commands.group()`，不要直接注册带空格的命令名。详见[插件 API 的命令章节](plugin-api.md#命令)。
+- 多级命令（例如 `/plugin install`）使用 `ctx.commands.group()`，也可以用点号注册路径（例如 `utter.raw`）；不要直接注册带空格的命令名。详见[插件 API 的命令章节](plugin-api.md#命令)。
 - 修改命令、事件或配置后，自动重启会重新构建并刷新插件入口模块；入口相对导入的辅助模块仍可能命中 ESM 缓存，修改多文件插件时完整重启进程最可靠。
 
 ### 4. 安装依赖
@@ -270,23 +270,21 @@ npm run dev
 
 ### 6. 配置插件
 
-在 `bot.config.json` 中按插件 ID 配置：
+在数据目录下创建 `config/plugin/my-plugin.jsonc`（数据目录默认为 `./data`，完整路径是 `data/config/plugin/my-plugin.jsonc`）：
 
-```json
+```jsonc
 {
-    "plugins": {
-        "my-plugin": {
-            "enabled": true,
-            "reply": "hello from config"
-        }
-    }
+    "enabled": true,
+    "reply": "hello from config",
 }
 ```
 
 - `enabled`、`private`、`groups` 是内核处理的信封字段，不会传给 `configSchema`。
-- 其它字段由插件的 `configSchema` 校验；未知字段会报错，错误信息会带 `plugins.my-plugin.xxx` 这样的路径。
+- 其它字段由插件的 `configSchema` 校验；未知字段会导致该插件被跳过，警告信息会带 `my-plugin.xxx` 这样的路径。
 - 如果 `manifest.defaultEnabled` 为 `true`，可以省略 `enabled`。
-- 配置里出现未加载的插件 ID 会导致启动失败；删除插件后记得同步删除对应配置。
+- 文件不存在或为空时，内核会先尝试用 `configSchema` 的默认值加载；schema 仍有必填项时跳过该插件。
+- 配置文件名对应的插件 ID 未加载时，只记录警告并忽略该文件，不会阻止启动。
+- `bot.config.json` 不再接受 `plugins` 字段；旧配置需要手动拆分，见[配置文档](configuration.md#插件配置)。
 
 ## 加载规则
 
@@ -314,8 +312,9 @@ npm run dev
 | `failed to import ...`                               | TypeScript 未编译、入口有运行时错误                                | 先构建；查看日志中的具体导入错误                                                                                 |
 | `dist` 目录没有有效插件                              | 没有导出 `default` / `plugin` / `plugins`                          | 检查入口导出和 `dist` 中的构建输出                                                                               |
 | `skipping ... plugin id already loaded`              | 插件 ID 重复                                                       | 修改 `manifest.id`，或移除重复的插件目录                                                                         |
-| `unknown plugin id`                                  | 配置里写了未加载的插件 ID                                          | 启用插件、修正 ID，或删除 `plugins.<id>` 配置                                                                    |
-| 命令没有响应                                         | 插件未启用、权限不足、群组 gating、命令前缀不匹配                  | 检查 `plugins.<id>.enabled`、角色、群组配置和命令前缀                                                            |
+| `ignoring config for unknown plugin id`              | 配置文件对应的插件 ID 未加载                                       | 启用插件、修正 ID，或删除 `config/plugin/<id>.jsonc`                                                             |
+| `skipping plugin ...`                                | 插件配置缺失必填项、JSONC 无效或 schema 校验失败                   | 检查 `data/config/plugin/<id>.jsonc`、日志中的字段路径和 `configSchema`                                          |
+| 命令没有响应                                         | 插件未启用、权限不足、群组 gating、命令前缀不匹配                  | 检查插件配置文件中的 `enabled`、角色、群组配置和命令前缀                                                         |
 | 修改代码后行为没变                                   | ESM 缓存命中辅助模块，或构建失败回退了旧 `dist`                    | 检查构建日志；完整退出并重新启动进程                                                                             |
 | `Cannot find module '@jsbot-tellus/core'`            | 没有安装 devDependency，或 `file:` 依赖尚未构建                    | 在插件目录执行 `npm install`；使用 `file:` 时先构建根项目                                                        |
 | `/plugin install` 拒绝包                             | 使用了路径、`file:`、git/url、范围版本或未启用安装器               | 改用 npm 包名 + 精确版本或 dist-tag；确认 `installer.enabled` 和 allowlist                                       |
@@ -359,7 +358,7 @@ npm run dev
         "prepack": "npm run build"
     },
     "devDependencies": {
-        "@jsbot-tellus/core": "^2.0.3",
+        "@jsbot-tellus/core": "^3.0.0",
         "@types/node": "^24.6.4",
         "typescript": "^7.0.2"
     },
@@ -398,7 +397,7 @@ npm run dev
 - `manifest.id` 唯一；发布到 npm 时符合 `[a-z0-9][a-z0-9._-]*` 格式。
 - `configSchema` 使用 `.strict()`，默认值完整。
 - TypeScript 构建通过，运行时加载的是 `dist`。
-- 命令名是单个路径段；多级命令使用 `ctx.commands.group()`。
+- 命令名不包含空白字符；多级命令使用 `ctx.commands.group()` 或点号路径。
 - 命令权限和群组 gating 符合预期。
 - 重启进程后插件仍能正常加载。
 - 发布包不包含本地绝对路径、`file:` 依赖或对 `@jsbot-tellus/core` 的运行时依赖。

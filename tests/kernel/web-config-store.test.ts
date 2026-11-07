@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterAll, beforeEach, describe, expect, it } from 'vitest'
@@ -30,13 +30,30 @@ function baseConfig(): AppConfig {
             sessionTtlHours: 12,
             trustProxy: false,
         },
-        plugins: {},
+    })
+}
+
+function demoPlugin(): AnyPluginDefinition {
+    return definePlugin({
+        manifest: {
+            id: 'demo',
+            version: '1.0.0',
+            defaultEnabled: true,
+            configSchema: z
+                .object({
+                    token: z.string(),
+                    count: z.number().int().default(1),
+                })
+                .strict(),
+        },
+        setup: () => {},
     })
 }
 
 interface TestHarness {
     store: ConfigStore
     configPath: string
+    pluginConfigDir: string
     read(): Promise<AppConfig>
     write(value: AppConfig): Promise<void>
     restartCalls: number
@@ -46,17 +63,19 @@ interface TestHarness {
 let directories: string[] = []
 
 async function harness(
-    plugins: AnyPluginDefinition[] = []
+    plugins: AnyPluginDefinition[] = [demoPlugin()]
 ): Promise<TestHarness> {
     const directory = await mkdtemp(join(tmpdir(), 'jsbot-config-store-'))
 
     directories.push(directory)
 
     const configPath = join(directory, 'bot.config.json')
+    const pluginConfigDir = join(directory, 'data', 'config', 'plugin')
     const state = { restartOk: true, restartCalls: 0 }
 
     const store = new ConfigStore({
         configPath,
+        pluginConfigDir,
         getPlugins: () => plugins,
         restart: async () => {
             state.restartCalls += 1
@@ -68,6 +87,7 @@ async function harness(
     const harness: TestHarness = {
         store,
         configPath,
+        pluginConfigDir,
         restartCalls: 0,
         async read(): Promise<AppConfig> {
             return appConfigSchema.parse(
@@ -112,6 +132,19 @@ describe('ConfigStore.read', () => {
         expect(document.config.webui.enabled).toBe(true)
         expect(document.raw).toContain('"webui"')
     })
+
+    it('rejects the legacy plugins field', async () => {
+        const env = await harness()
+
+        await env.write({
+            ...baseConfig(),
+            plugins: {},
+        } as unknown as AppConfig)
+
+        await expect(env.store.read()).rejects.toThrow(
+            /不再支持 "plugins" 字段/
+        )
+    })
 })
 
 function configPathOf(env: TestHarness): string {
@@ -122,49 +155,6 @@ describe('ConfigStore.validate', () => {
     it('passes for a valid document', async () => {
         const env = await harness()
         const result = await env.store.validate({ ...baseConfig() })
-
-        expect(result.ok).toBe(true)
-        expect(result.issues).toEqual([])
-    })
-
-    it('reports missing config for an enabled plugin', async () => {
-        const demo = definePlugin({
-            manifest: {
-                id: 'demo',
-                version: '1.0.0',
-                defaultEnabled: true,
-                configSchema: z.object({ token: z.string() }).strict(),
-            },
-            setup: () => {},
-        })
-        const env = await harness([demo])
-        const result = await env.store.validate({
-            ...baseConfig(),
-            plugins: {},
-        })
-
-        expect(result.ok).toBe(false)
-        expect(result.issues).toContainEqual({
-            path: 'plugins.demo.token',
-            message: expect.any(String),
-        })
-    })
-
-    it('does not require config for a disabled plugin', async () => {
-        const demo = definePlugin({
-            manifest: {
-                id: 'demo',
-                version: '1.0.0',
-                defaultEnabled: true,
-                configSchema: z.object({ token: z.string() }).strict(),
-            },
-            setup: () => {},
-        })
-        const env = await harness([demo])
-        const result = await env.store.validate({
-            ...baseConfig(),
-            plugins: { demo: { enabled: false } },
-        })
 
         expect(result.ok).toBe(true)
         expect(result.issues).toEqual([])
@@ -181,6 +171,20 @@ describe('ConfigStore.validate', () => {
         expect(result.issues.length).toBeGreaterThan(0)
     })
 
+    it('reports the legacy plugins field', async () => {
+        const env = await harness()
+        const result = await env.store.validate({
+            ...baseConfig(),
+            plugins: {},
+        })
+
+        expect(result.ok).toBe(false)
+        expect(result.issues).toContainEqual({
+            path: 'plugins',
+            message: expect.stringContaining('不再支持 "plugins" 字段'),
+        })
+    })
+
     it('unreported secrets are inherited from the current file', async () => {
         const env = await harness()
         const current = await env.store.read()
@@ -195,7 +199,6 @@ describe('ConfigStore.validate', () => {
                 sessionTtlHours: 12,
                 trustProxy: false,
             },
-            plugins: {},
         })
 
         expect(
@@ -266,6 +269,33 @@ describe('ConfigStore.apply', () => {
         expect(await env.read()).toEqual(document.config)
     })
 
+    it('rejects the legacy plugins field with 400', async () => {
+        const env = await harness()
+        const document = await env.store.read()
+
+        let error: unknown
+
+        try {
+            await env.store.apply(
+                { ...document.config, plugins: {} },
+                document.hash
+            )
+        } catch (caught) {
+            error = caught
+        }
+
+        expect(error).toBeInstanceOf(ConfigStoreError)
+
+        const storeError = error as ConfigStoreError
+
+        expect(storeError.status).toBe(400)
+        expect(storeError.issues).toContainEqual({
+            path: 'plugins',
+            message: expect.stringContaining('不再支持 "plugins" 字段'),
+        })
+        expect(env.restartCalls).toBe(0)
+    })
+
     it('restores the previous config when restart fails', async () => {
         const env = await harness()
 
@@ -311,6 +341,187 @@ describe('ConfigStore.apply', () => {
         const storeError = error as ConfigStoreError
 
         expect(storeError.status).toBe(409)
+    })
+})
+
+describe('ConfigStore plugin configs', () => {
+    it('reads a missing plugin config as empty', async () => {
+        const env = await harness()
+        const document = await env.store.readPluginConfig('demo')
+
+        expect(document).toEqual({
+            id: 'demo',
+            path: join(env.pluginConfigDir, 'demo.jsonc'),
+            raw: null,
+            hash: null,
+            config: {},
+            error: null,
+            missing: true,
+        })
+        expect(await env.store.readPluginConfigs()).toEqual([])
+    })
+
+    it('reads JSONC with comments and trailing commas', async () => {
+        const env = await harness()
+
+        await mkdir(env.pluginConfigDir, { recursive: true })
+        await writeFile(
+            join(env.pluginConfigDir, 'demo.jsonc'),
+            [
+                '{',
+                '    // hand-written comment',
+                '    "enabled": true,',
+                '    "token": "secret",',
+                '}',
+            ].join('\n'),
+            'utf8'
+        )
+
+        const document = await env.store.readPluginConfig('demo')
+
+        expect(document.error).toBeNull()
+        expect(document.missing).toBe(false)
+        expect(document.config).toEqual({
+            enabled: true,
+            token: 'secret',
+        })
+        expect(document.hash).toMatch(/[0-9a-f]{64}/)
+    })
+
+    it('reports invalid JSONC without throwing', async () => {
+        const env = await harness()
+
+        await mkdir(env.pluginConfigDir, { recursive: true })
+        await writeFile(
+            join(env.pluginConfigDir, 'demo.jsonc'),
+            '{ "token": ',
+            'utf8'
+        )
+
+        const document = await env.store.readPluginConfig('demo')
+
+        expect(document.error).toContain('invalid JSONC')
+        expect(document.config).toEqual({})
+        expect(document.missing).toBe(false)
+        expect(await env.store.readPluginConfigs()).toHaveLength(1)
+    })
+
+    it('writes canonical JSON and restarts', async () => {
+        const env = await harness()
+        const result = await env.store.applyPlugin(
+            'demo',
+            {
+                enabled: true,
+                private: false,
+                groups: { allow: [123], deny: [] },
+                token: 'secret',
+            },
+            null
+        )
+
+        expect(result.ok).toBe(true)
+        expect(result.hash).toMatch(/[0-9a-f]{64}/)
+        expect(env.restartCalls).toBe(1)
+
+        const raw = await readFile(
+            join(env.pluginConfigDir, 'demo.jsonc'),
+            'utf8'
+        )
+        const written = JSON.parse(raw) as Record<string, unknown>
+
+        expect(written).toEqual({
+            token: 'secret',
+            count: 1,
+            enabled: true,
+            private: false,
+            groups: { allow: [123], deny: [] },
+        })
+        expect(raw).not.toContain('//')
+    })
+
+    it('rejects schema errors with 400 and writes nothing', async () => {
+        const env = await harness()
+
+        let error: unknown
+
+        try {
+            await env.store.applyPlugin('demo', { enabled: true })
+        } catch (caught) {
+            error = caught
+        }
+
+        expect(error).toBeInstanceOf(ConfigStoreError)
+
+        const storeError = error as ConfigStoreError
+
+        expect(storeError.status).toBe(400)
+        expect(storeError.issues).toContainEqual({
+            path: 'demo.token',
+            message: expect.any(String),
+        })
+        expect((await env.store.readPluginConfig('demo')).missing).toBe(true)
+        expect(env.restartCalls).toBe(0)
+    })
+
+    it('rejects conflicting group rules with 400', async () => {
+        const env = await harness()
+
+        await expect(
+            env.store.applyPlugin('demo', {
+                token: 'secret',
+                groups: { allow: [1], deny: [2] },
+            })
+        ).rejects.toMatchObject({
+            status: 400,
+            issues: [{ path: 'demo.groups' }],
+        })
+    })
+
+    it('rejects an unknown plugin with 404', async () => {
+        const env = await harness()
+
+        await expect(
+            env.store.applyPlugin('missing', { token: 'secret' })
+        ).rejects.toMatchObject({ status: 404 })
+    })
+
+    it('rejects a stale base hash with 409', async () => {
+        const env = await harness()
+
+        await env.store.applyPlugin('demo', { token: 'secret' })
+
+        await expect(
+            env.store.applyPlugin('demo', { token: 'next' }, '0'.repeat(64))
+        ).rejects.toMatchObject({ status: 409 })
+    })
+
+    it('restores the previous plugin config when restart fails', async () => {
+        const env = await harness()
+
+        await env.store.applyPlugin('demo', { token: 'original' })
+
+        const path = join(env.pluginConfigDir, 'demo.jsonc')
+        const before = await readFile(path, 'utf8')
+
+        env.setRestartOutcome(false)
+
+        const result = await env.store.applyPlugin('demo', { token: 'next' })
+
+        expect(result.ok).toBe(false)
+        expect(result.error).toContain('已恢复旧配置')
+        expect(await readFile(path, 'utf8')).toBe(before)
+        expect(env.restartCalls).toBe(3)
+    })
+
+    it('deletes a newly created file when restart fails', async () => {
+        const env = await harness()
+
+        env.setRestartOutcome(false)
+
+        const result = await env.store.applyPlugin('demo', { token: 'secret' })
+
+        expect(result.ok).toBe(false)
+        expect((await env.store.readPluginConfig('demo')).missing).toBe(true)
     })
 })
 

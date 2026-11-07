@@ -1,6 +1,6 @@
 {
     "name": "@jsbot-tellus/core",
-    "version": "2.11.0",
+    "version": "3.0.0",
     "engines": {
         "node": "^24.22.1 || >=26.12.1"
     },
@@ -71,6 +71,7 @@
     "dependencies": {
         "@snowluma/sdk": "^2.2.0",
         "fast-glob": "^3.3.3",
+        "jsonc-parser": "^3.3.1",
         "zod": "^4.6.7"
     },
     "devDependencies": {

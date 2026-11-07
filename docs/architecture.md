@@ -48,12 +48,12 @@ src/
     kernel.ts             运行时组装和生命周期
     client.ts             BotClient 接口和 SDK adapter
     api.ts                BotApi
-    config/               配置 schema 和加载
+    config/               配置 schema、主配置加载、插件 JSONC 文件
     dispatch/             router / command / handler / middleware / task-queue
     plugin/
       types.ts            插件契约和公共类型
       context.ts          PluginContext 工厂
-      host.ts             插件排序、配置校验、setup/start/stop
+      host.ts             插件排序、配置加载与跳过、setup/start/stop
       gating.ts           enabled/private/groups
       kv.ts               SQLite KV
       loader.ts           本地插件目录加载（每次加载自动重建，失败回退 dist）
@@ -92,13 +92,13 @@ plugins/                  本地插件根目录，整个目录不跟踪
 ## 启动顺序
 
 ```text
-加载配置和本地插件
+加载主配置、插件 JSONC 配置和本地插件
   -> 打开数据库
   -> 创建 Kernel
      -> 创建 Router、PluginGate、SessionStore、TaskQueue、BotApi
      -> 注册唯一 SDK middleware
   -> kernel.start()
-     -> host.setup()：校验插件配置、创建 PluginContext、注册命令/事件/中间件
+     -> host.setup()：加载插件配置、创建 PluginContext、注册命令/事件/中间件
      -> client.connect()
      -> host.start()
      -> router.accepting = true

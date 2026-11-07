@@ -1,6 +1,7 @@
 import { cp, mkdir, rename, rm, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import type { InstallerConfig } from '../config/schema.js'
+import { pluginConfigFilePath } from '../config/plugin-config.js'
 import type { Logger } from '../logging/logger.js'
 import {
     ensureCoreLink,
@@ -67,6 +68,7 @@ export class NpmPluginInstaller implements PluginInstaller {
     private readonly validate: PackageValidator
     private readonly reservedIds: () => ReadonlySet<string>
     private readonly configuredPluginIds: () => ReadonlySet<string>
+    private readonly pluginConfigDir: string | undefined
     private readonly now: () => Date
     private readonly serialize = createTaskSerializer()
 
@@ -80,7 +82,14 @@ export class NpmPluginInstaller implements PluginInstaller {
         this.reservedIds = options.reservedIds ?? (() => new Set())
         this.configuredPluginIds =
             options.configuredPluginIds ?? (() => new Set())
+        this.pluginConfigDir = options.pluginConfigDir
         this.now = options.now ?? (() => new Date())
+    }
+
+    private pluginConfigPath(id: string): string {
+        return this.pluginConfigDir === undefined
+            ? `${id}.jsonc`
+            : pluginConfigFilePath(this.pluginConfigDir, id)
     }
 
     async list(): Promise<InstalledPackageInfo[]> {
@@ -150,7 +159,8 @@ export class NpmPluginInstaller implements PluginInstaller {
                 name,
                 record,
                 state,
-                this.configuredPluginIds()
+                this.configuredPluginIds(),
+                (id) => this.pluginConfigPath(id)
             )
             const dependents = dependentWarnings(name, record, state)
 
@@ -464,7 +474,8 @@ export class NpmPluginInstaller implements PluginInstaller {
                 (previous?.pluginIds ?? []).filter(
                     (id) => !pluginIds.includes(id)
                 ),
-                this.configuredPluginIds()
+                this.configuredPluginIds(),
+                (id) => this.pluginConfigPath(id)
             )
 
             if (await pathExists(target)) {
