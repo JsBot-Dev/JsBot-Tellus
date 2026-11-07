@@ -6,8 +6,11 @@ src/data/db/*
 .env
 
 *.config.json
+*.config.jsonc
 bot.config.legacy.json
+bot.config.legacy.jsonc
 bot.config.rollback.json
+bot.config.rollback.jsonc
 
 data/
 data.legacy/

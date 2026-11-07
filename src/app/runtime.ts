@@ -1,8 +1,9 @@
 import type { SnowLumaEvent } from '@snowluma/sdk'
 import { existsSync, readFileSync } from 'node:fs'
-import { join, resolve } from 'node:path'
+import { basename, join, resolve } from 'node:path'
 import type { AppConfig, PluginEnvelope } from '../core/config/schema.js'
 import {
+    LEGACY_CONFIG_FILE,
     loadConfig,
     resolveConfigPath,
     resolveDataDir,
@@ -120,6 +121,16 @@ export function resolveRuntimeSettings(
         config: options.config,
         env: options.env,
     })
+    const hasExplicitConfig =
+        (options.config !== undefined && options.config.trim().length > 0) ||
+        (options.env.BOT_CONFIG !== undefined &&
+            options.env.BOT_CONFIG.trim().length > 0)
+
+    if (!hasExplicitConfig && basename(configPath) === LEGACY_CONFIG_FILE) {
+        logger.warn(
+            'using legacy bot.config.json; rename it to bot.config.jsonc'
+        )
+    }
 
     const dataDir = resolveDataDir({
         dataDir: options.dataDir,

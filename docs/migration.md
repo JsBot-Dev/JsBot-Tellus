@@ -27,7 +27,7 @@
 
 ## 迁移步骤
 
-新版沿用 `bot.config.json` 和 `data/` 这两个名字。升级前先把旧文件移走，避免被新版直接使用或覆盖。
+新版使用 `bot.config.jsonc` 和 `data/`。旧版的 `bot.config.json` 仍可被识别，但建议一并迁移到 `.jsonc`。升级前先把旧文件移走，避免被新版直接使用或覆盖。
 
 1. 备份旧配置和数据库：
 
@@ -39,10 +39,10 @@
 2. 从模板创建新配置：
 
     ```bash
-    cp bot.config.example.json bot.config.json
+    cp bot.config.example.jsonc bot.config.jsonc
     ```
 
-3. 按 [配置文档](configuration.md) 填写 `bot.config.json`。
+3. 按 [配置文档](configuration.md) 填写 `bot.config.jsonc`。
 
 4. 如果使用本地 `llm` 插件，按需迁移 persona。旧 KV 中的 `Personas` 不会自动读取，需要写入该插件的配置文件 `data/config/plugin/llm.jsonc`：
 
@@ -68,7 +68,7 @@
 
 ## 3.0 插件配置迁移
 
-3.0 起插件配置从 `bot.config.json` 的 `plugins` 字段拆分到独立文件，且**不会自动迁移**。保留 `plugins` 字段（即使是空对象）会导致启动失败，并提示手动迁移。
+3.0 起插件配置从主配置文件的 `plugins` 字段拆分到独立文件，且**不会自动迁移**。保留 `plugins` 字段（即使是空对象）会导致启动失败，并提示手动迁移。
 
 迁移步骤：
 
@@ -97,20 +97,36 @@
     }
     ```
 
-3. 从 `bot.config.json` 中删除整个 `plugins` 字段。
+3. 从 `bot.config.jsonc` 中删除整个 `plugins` 字段。
 4. 启动一次，检查日志中是否有插件配置警告。缺失、无效或未加载插件 ID 对应的文件只会记录警告并跳过，不会阻止启动。
 
-文件支持 JSONC 注释和尾随逗号；WebUI 保存时会写成标准 JSON，注释会丢失。`bot.config.json` 里的其它字段和 `data/` 下的数据库不需要迁移。
+文件支持 JSONC 注释和尾随逗号；WebUI 保存时会写成标准 JSON，注释会丢失。`bot.config.jsonc` 里的其它字段和 `data/` 下的数据库不需要迁移。
+
+## 3.1 主配置改用 JSONC
+
+3.1 起默认主配置文件改为 `bot.config.jsonc`，和插件配置一样支持注释与尾随逗号。如果 `bot.config.jsonc` 不存在但旧的 `bot.config.json` 存在，启动时会回退读取旧文件并输出警告；显式通过 `--config` 或 `BOT_CONFIG` 指定的路径始终优先。
+
+迁移步骤：
+
+1. 重命名文件：
+
+    ```bash
+    mv bot.config.json bot.config.jsonc
+    ```
+
+2. 按需添加注释或尾随逗号。WebUI 保存配置时会写成标准 JSON，注释会丢失。
+
+3. 启动一次，确认日志中没有 `using legacy bot.config.json` 警告。
 
 ## 目录对照
 
 | 项目            | 迁移前                                       | 迁移后                           |
 | --------------- | -------------------------------------------- | -------------------------------- |
-| 配置文件        | `bot.config.json` → `bot.config.legacy.json` | 新建 `bot.config.json`           |
+| 配置文件        | `bot.config.json` → `bot.config.legacy.json` | 新建 `bot.config.jsonc`          |
 | 数据目录        | `data/` → `data.legacy/`                     | 新建 `data/`                     |
 | 旧插件目录      | 保留原样                                     | 内置 `core`/`admin` + `plugins/` |
 | 旧 KV / Session | 保留在 `data.legacy/bot.db`                  | `data/bot.db`                    |
-| 插件配置        | `bot.config.json` 的 `plugins`               | `data/config/plugin/<id>.jsonc`  |
+| 插件配置        | 主配置文件的 `plugins`                       | `data/config/plugin/<id>.jsonc`  |
 
 新版不会读取 `bot.config.legacy.json` 或 `data.legacy/`。备份文件可以保留，方便回退。
 
@@ -120,7 +136,7 @@
 - 命令命中后先 `stopPropagation()`，权限不足也不会进入普通消息 handler。
 - 本地 `llm` 插件默认关闭，必须显式配置 provider 和启用范围。
 - 本地 `llm` 插件按 session 存储上下文，不再整份 KV 重写。
-- 插件配置拆分到 `<data-dir>/config/plugin/<id>.jsonc`，`bot.config.json` 不再接受 `plugins` 字段。
+- 插件配置拆分到 `<data-dir>/config/plugin/<id>.jsonc`，`bot.config.jsonc` 不再接受 `plugins` 字段。
 - 插件配置缺失或无效时只警告并跳过对应插件，不再阻止 Kernel 启动。
 - 旧 `auth`、`echo`、`like-me` 不重建；权限由 `core` + `roles` 负责，发送文本由 `admin` 负责。
 - 不支持热加载、插件市场界面和旧装饰器；npm 插件安装成功后会重建运行时。
@@ -131,7 +147,7 @@
 先停掉新版，恢复旧配置和数据：
 
 ```bash
-mv bot.config.json bot.config.rollback.json
+mv bot.config.jsonc bot.config.rollback.jsonc
 mv data data.rollback
 mv bot.config.legacy.json bot.config.json
 mv data.legacy data
@@ -145,6 +161,6 @@ npm ci
 npm start
 ```
 
-新版产生的 `bot.config.rollback.json` 和 `data.rollback/` 可以保留，不影响旧版。
+新版产生的 `bot.config.rollback.jsonc` 和 `data.rollback/` 可以保留，不影响旧版。
 
 如果已经部署了 `dist/`，回退前确认旧版本启动脚本没有指向 `dist/app.js` 或使用新版配置路径。

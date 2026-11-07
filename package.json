@@ -1,6 +1,6 @@
 {
     "name": "@jsbot-tellus/core",
-    "version": "3.0.0",
+    "version": "3.1.0",
     "engines": {
         "node": "^24.22.1 || >=26.12.1"
     },
@@ -26,7 +26,7 @@
         "src",
         "docs",
         "examples",
-        "bot.config.example.json"
+        "bot.config.example.jsonc"
     ],
     "main": "./dist/core/index.js",
     "types": "./dist/core/index.d.ts",

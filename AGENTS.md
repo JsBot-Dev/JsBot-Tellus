@@ -4,11 +4,11 @@
 
 - Single npm package (`@jsbot-tellus/core`), no npm workspaces. ESM + NodeNext + strict TypeScript.
 - Requires Node `^24.22.1 || >=26.12.1`. Kernel lives in `src/core/`, built-in plugins in `src/plugins/`, entrypoint is `src/app.ts`.
-- `dist/` is generated and gitignored; never edit it. Config, data, and plugins resolve from `process.cwd()`: `./bot.config.json`, `./data`, `./plugins`. Real `*.config.json`, `data/`, and `plugins/` are gitignored.
+- `dist/` is generated and gitignored; never edit it. Config, data, and plugins resolve from `process.cwd()`: `./bot.config.jsonc`, `./data`, `./plugins`. Real `*.config.json` / `*.config.jsonc`, `data/`, and `plugins/` are gitignored.
 
 ## Commands
 
-- Setup: `npm ci`, then `cp bot.config.example.json bot.config.json`.
+- Setup: `npm ci`, then `cp bot.config.example.jsonc bot.config.jsonc`.
 - Source dev: `npm run dev` (tsx watch for `src/` and `plugins/*/src`, ignores `plugins/*/dist`); one-shot: `npm run start:source`.
 - Built run: `npm run build` (cleans `dist`, builds WebUI, then `tsc`) followed by `npm start`. `npm run smoke` only checks `dist/app.js --help`.
 - Type checks: `npm run check` (kernel/tests/scripts), `npm run check:webui`, `npm run check:all` (also local plugins). There is no ESLint; formatting is Prettier (`npm run format:check`, `npm run format`).
@@ -37,7 +37,7 @@
 - The loader accepts `default`, named `plugin`, or `plugins` exports and ignores `.d.ts` and `node_modules`. On every load it runs the plugin's `build` script when `node_modules` exists, then falls back to an existing `dist` if the build fails; with no usable `dist`, the plugin is skipped.
 - Root `npm run build` does not build local plugins. Use `npm run build:plugin` / `npm run check:plugin` (auto-discovers packages with `src/`, `tsconfig.json`, and the matching script; skips missing `node_modules`), or `npm run build --prefix plugins/<id>`.
 - Scaffold with `npm run plugin:gen -- my-plugin` (installs dependencies unless `--no-install`).
-- Plugin configs live in `<data-dir>/config/plugin/<id>.jsonc` (JSONC, one file per plugin, including `enabled`, `private`, `groups`, and plugin options). `bot.config.json` must not contain a `plugins` field; keeping it fails startup and requires manual migration. Missing/invalid plugin configs only warn and skip that plugin; core config errors stay fatal.
+- Plugin configs live in `<data-dir>/config/plugin/<id>.jsonc` (JSONC, one file per plugin, including `enabled`, `private`, `groups`, and plugin options). `bot.config.jsonc` must not contain a `plugins` field; keeping it fails startup and requires manual migration. Missing/invalid plugin configs only warn and skip that plugin; core config errors stay fatal.
 - Root `format:check` ignores `plugins/`; use `npm run format:plugin:check` or `npm run format:plugin` for local plugin files.
 - Runtime restart re-imports plugin entry modules, but helper modules can remain ESM-cached; fully restart the process for reliable multi-file plugin changes.
 

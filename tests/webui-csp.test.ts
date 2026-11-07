@@ -49,7 +49,7 @@ describe('WebUiServer CSP authorizes the built appearance bootstrap', () => {
 
         directories.push(directory)
 
-        const configPath = join(directory, 'bot.config.json')
+        const configPath = join(directory, 'bot.config.jsonc')
         const webui = makeWebUi(0)
         const appConfig: AppConfig = appConfigSchema.parse({
             url: 'ws://127.0.0.1:39999/',

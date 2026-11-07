@@ -1,13 +1,13 @@
 import { createHash } from 'node:crypto'
 import { readdir, readFile, rm, mkdir } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
-import { parse, printParseErrorCode, type ParseError } from 'jsonc-parser'
 import {
     formatConfigIssues,
     pluginEnvelopeSchema,
     type PluginEnvelope,
 } from './schema.js'
 import { atomicWrite, restoreRaw } from './atomic.js'
+import { parseJsonc } from './jsonc.js'
 
 const PLUGIN_CONFIG_DIRECTORY = 'config/plugin'
 const PLUGIN_CONFIG_EXTENSION = '.jsonc'
@@ -50,14 +50,6 @@ function decodePluginId(encoded: string): string {
     } catch {
         return encoded
     }
-}
-
-function formatParseError(raw: string, error: ParseError): string {
-    const before = raw.slice(0, error.offset)
-    const line = before.split('\n').length
-    const column = error.offset - before.lastIndexOf('\n')
-
-    return `${printParseErrorCode(error.error)} at line ${line}, column ${column}`
 }
 
 export function resolvePluginConfigDir(dataDir: string): string {
@@ -107,20 +99,15 @@ async function readPluginConfigFile(
         return emptyDocument(id, filePath, raw, { missing: true })
     }
 
-    const errors: ParseError[] = []
-    const text = raw.replace(/^\uFEFF/, '')
-    const value = parse(text, errors, {
-        allowTrailingComma: true,
-        allowEmptyContent: true,
-    }) as unknown
+    const jsonc = parseJsonc(raw)
 
-    if (errors.length > 0) {
-        const first = errors[0] as ParseError
-
+    if (jsonc.error !== null) {
         return emptyDocument(id, filePath, raw, {
-            error: `invalid JSONC in ${filePath}: ${formatParseError(text, first)}`,
+            error: `invalid JSONC in ${filePath}: ${jsonc.error}`,
         })
     }
+
+    const value = jsonc.value
 
     if (value === undefined) {
         // Comment-only file: treat it like an empty config.

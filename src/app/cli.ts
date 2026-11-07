@@ -9,7 +9,7 @@ Options:
   --log-level <level>  debug, info, warn or error (env: BOT_LOG_LEVEL)
   --help               Show this help
 
-Config precedence: CLI > environment > ./bot.config.json.
+Config precedence: CLI > environment > ./bot.config.jsonc.
 Data precedence: CLI > environment > ./data.
 Local plugins: ./${LOCAL_PLUGIN_DIR}/<id>/dist (auto-built when missing).
 `
