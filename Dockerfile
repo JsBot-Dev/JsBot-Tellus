@@ -22,7 +22,7 @@ COPY package.json package-lock.json ./
 RUN --mount=type=cache,target=/root/.npm npm ci --omit=dev
 
 COPY --from=build --chown=node:node /app/dist ./dist
-COPY --chown=node:node LICENSE bot.config.example.jsonc ./
+COPY --chown=node:node LICENSE bot.config.example.jsonc tsconfig.base.json ./
 
 RUN mkdir -p /app/config /app/data /app/plugins \
     && chown -R node:node /app/config /app/data /app/plugins

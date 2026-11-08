@@ -1,6 +1,6 @@
 {
     "name": "@jsbot-tellus/core",
-    "version": "3.2.0",
+    "version": "3.2.1",
     "engines": {
         "node": "^24.22.1 || >=26.12.1"
     },
@@ -70,18 +70,18 @@
     },
     "dependencies": {
         "@snowluma/sdk": "^2.2.0",
+        "@types/node": "^24.6.4",
         "fast-glob": "^3.3.3",
         "jsonc-parser": "^3.3.1",
+        "typescript": "^7.0.2",
         "zod": "^4.6.7"
     },
     "devDependencies": {
         "@element-plus/icons-vue": "^2.3.2",
-        "@types/node": "^24.6.4",
         "@vitejs/plugin-vue": "^6.0.10",
         "element-plus": "^2.14.7",
         "prettier": "^3.9.10",
         "tsx": "^4.23.15",
-        "typescript": "^7.0.2",
         "typescript5": "npm:typescript@5.9.3",
         "vite": "^8.3.5",
         "vitest": "^5.0.4",

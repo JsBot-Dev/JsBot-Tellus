@@ -119,7 +119,7 @@ WebUI 默认关闭。容器内要让端口可达，配置需要监听 `0.0.0.0`�
 }
 ```
 
-手动放入的本地插件也从 `/app/plugins/<id>/dist` 加载，并在每次启动或重启时尝试重建。镜像已经包含 npm；插件自己的依赖安装在各自的 `node_modules` 中，不需要把宿主机的 `node_modules` 挂进来。
+手动放入的本地插件也从 `/app/plugins/<id>/dist` 加载，并在每次启动或重启时尝试重建。镜像已经包含 npm、TypeScript（`tsc`）、`@types/node` 和根目录的 `tsconfig.base.json`，插件自己的依赖安装在各自的 `node_modules` 中，不需要把宿主机的 `node_modules` 挂进来。如果插件依赖 `devDependencies` 中的类型定义，安装时使用 `npm install --include=dev`，否则生产模式会跳过这些依赖。
 
 ## 升级
 
