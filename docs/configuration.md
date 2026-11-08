@@ -8,7 +8,7 @@
 | 数据目录 | `--data-dir`  | `BOT_DATA_DIR`  | `./data`             |
 | 日志级别 | `--log-level` | `BOT_LOG_LEVEL` | `info`               |
 
-本地插件目录固定为 `./plugins`，不提供 CLI 或环境变量覆盖；每个插件从 `./plugins/<id>/dist` 加载，每次启动或重启加载时都会尝试自动重建，失败时回退已有产物，相对路径按 `process.cwd()` 解析。
+本地插件目录固定为 `./plugins`，不提供 CLI 或环境变量覆盖；每个插件从 `./plugins/<id>/dist` 加载，每次启动或重启加载时，带源码的插件会尝试自动重建，失败时回退已有产物，相对路径按 `process.cwd()` 解析。
 
 主配置文件使用 JSONC，支持 `//`、`/* */` 注释和尾随逗号。默认读取 `./bot.config.jsonc`；如果该文件不存在但旧版 `./bot.config.json` 存在，会回退读取旧文件并输出警告，建议重命名为 `bot.config.jsonc`。显式通过 `--config` 或 `BOT_CONFIG` 指定的路径始终优先，且同样按 JSONC 解析。
 
@@ -184,7 +184,7 @@ npm run build
 node dist/app.js
 ```
 
-带有 `build` 脚本且依赖已安装的插件，无论 `dist` 是否已经存在，每次加载都会先自动执行 `npm run build`；构建失败或缺少 `node_modules` 时会回退加载已有 `dist`，没有可用 `dist` 时记录警告并跳过。没有 `build` 脚本的插件直接加载现有 `dist`。通过 `/plugin install` 安装的包会直接出现在 `plugins/<插件id>/`，与手动放在 `plugins/` 的本地插件使用同一套重建规则；安装包通常自带 `dist`，缺少构建依赖时会回退使用自带产物。安装状态、registry 和允许列表见[插件安装器](#插件安装器)。
+带有 `build` 脚本、依赖已安装且包含源码（`tsconfig.json` 或 `src/`）的插件，无论 `dist` 是否已经存在，每次加载都会先自动执行 `npm run build`；只有 `dist` 的预编译包直接加载。构建失败或缺少 `node_modules` 时会回退加载已有 `dist`，没有可用 `dist` 时记录警告并跳过。没有 `build` 脚本的插件直接加载现有 `dist`。通过 `/plugin install` 安装的包通常只包含 `dist`，会直接使用自带产物，不尝试重建。安装状态、registry 和允许列表见[插件安装器](#插件安装器)。
 
 插件自己的配置字段由 `manifest.configSchema` 校验。例如一个 `demo` 插件，配置写在 `<data-dir>/config/plugin/demo.jsonc`：
 
@@ -208,7 +208,7 @@ npm run build:plugin
 npm run dev
 ```
 
-本地插件从 `plugins/<id>/dist` 自动加载；每次加载前都会尝试重建。应用会跳过与内置插件同 ID 的本地插件。
+本地插件从 `plugins/<id>/dist` 自动加载；带源码的插件每次加载前都会尝试重建。应用会跳过与内置插件同 ID 的本地插件。
 
 ## 错误处理
 

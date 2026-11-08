@@ -8,7 +8,7 @@
 - 插件只通过 `PluginContext` 使用内核能力，不直接接触 SDK client、Router 或数据库。
 - SDK 只注册一个 middleware：`client.use(router.dispatch)`。
 - 内置插件 `core`、`admin` 是普通源码，位于 `src/plugins/`，随内核一起编译。
-- `poke`、`llm` 等本地插件放在不跟踪的 `plugins/`，各自是独立包，从 `plugins/<id>/dist` 自动加载；每次加载前会尝试自动构建。
+- `poke`、`llm` 等本地插件放在不跟踪的 `plugins/`，各自是独立包，从 `plugins/<id>/dist` 自动加载；带源码（`tsconfig.json` 或 `src/`）的插件每次加载前会尝试自动构建，预编译包直接使用自带 `dist`。
 
 ## 环境要求
 
@@ -153,7 +153,7 @@ jsbot [options]
 --log-level <level>  debug、info、warn、error，优先级 CLI > BOT_LOG_LEVEL
 --help               显示帮助
 
-本地插件固定从 ./plugins/<id>/dist 自动加载；每次加载前会尝试自动重建。
+本地插件固定从 ./plugins/<id>/dist 自动加载；带源码的插件每次加载前会尝试自动重建。
 ```
 
 ## 开发与校验

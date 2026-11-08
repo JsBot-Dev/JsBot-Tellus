@@ -33,6 +33,16 @@ async function directoryExists(path: string): Promise<boolean> {
     return info?.isDirectory() ?? false
 }
 
+async function hasBuildSources(directory: string): Promise<boolean> {
+    const config = await stat(join(directory, 'tsconfig.json')).catch(
+        () => null
+    )
+
+    if (config?.isFile()) return true
+
+    return directoryExists(join(directory, 'src'))
+}
+
 async function readBuildScript(directory: string): Promise<string | undefined> {
     const manifest = await readJsonFile(join(directory, 'package.json')).catch(
         () => undefined
@@ -168,9 +178,14 @@ export async function loadLocalPlugins(
         const directory = join(absolute, entry.name)
         const dist = join(directory, 'dist')
         const hasBuildScript = (await readBuildScript(directory)) !== undefined
+        const hasSources = await hasBuildSources(directory)
         let distInfo = await stat(dist).catch(() => null)
+        const shouldBuild =
+            autoBuild &&
+            hasBuildScript &&
+            (hasSources || !distInfo?.isDirectory())
 
-        if (autoBuild && hasBuildScript) {
+        if (shouldBuild) {
             const outcome = await buildLocalPlugin(
                 directory,
                 entry.name,
@@ -205,6 +220,10 @@ export async function loadLocalPlugins(
                     : `skipping local plugin ${entry.name}: dist directory not found and package.json has no build script`
             )
             continue
+        } else if (autoBuild && hasBuildScript && !hasSources) {
+            logger?.info?.(
+                `using prebuilt dist for local plugin ${entry.name}: no tsconfig.json or src directory`
+            )
         }
 
         plugins.push(...(await loadPluginsFromDirectory(dist, logger)))

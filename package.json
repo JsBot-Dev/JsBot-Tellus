@@ -1,6 +1,6 @@
 {
     "name": "@jsbot-tellus/core",
-    "version": "3.2.1",
+    "version": "3.2.2",
     "engines": {
         "node": "^24.22.1 || >=26.12.1"
     },
