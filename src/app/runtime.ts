@@ -178,7 +178,10 @@ export async function loadRuntimeSpec(
     logger.info('loading config', settings.configPath)
 
     const pluginConfigDir = resolvePluginConfigDir(settings.dataDir)
-    const config = await loadConfig(settings.configPath, { pluginConfigDir })
+    const config = await loadConfig(settings.configPath, {
+        pluginConfigDir,
+        onWarning: (message) => logger.warn(message),
+    })
     const pluginDir = resolve(LOCAL_PLUGIN_DIR)
 
     logger.info('loading plugins from', pluginDir)

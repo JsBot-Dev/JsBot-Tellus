@@ -54,6 +54,7 @@ interface TestHarness {
     store: ConfigStore
     configPath: string
     pluginConfigDir: string
+    warnings: string[]
     read(): Promise<AppConfig>
     write(value: AppConfig): Promise<void>
     restartCalls: number
@@ -72,6 +73,7 @@ async function harness(
     const configPath = join(directory, 'bot.config.jsonc')
     const pluginConfigDir = join(directory, 'data', 'config', 'plugin')
     const state = { restartOk: true, restartCalls: 0 }
+    const warnings: string[] = []
 
     const store = new ConfigStore({
         configPath,
@@ -82,12 +84,14 @@ async function harness(
 
             return state.restartOk
         },
+        onWarning: (message) => warnings.push(message),
     })
 
     const harness: TestHarness = {
         store,
         configPath,
         pluginConfigDir,
+        warnings,
         restartCalls: 0,
         async read(): Promise<AppConfig> {
             return appConfigSchema.parse(
@@ -154,7 +158,7 @@ describe('ConfigStore.read', () => {
         expect(document.config.url).toBe('ws://127.0.0.1:3002/')
     })
 
-    it('rejects the legacy plugins field', async () => {
+    it('ignores the legacy plugins field with a warning', async () => {
         const env = await harness()
 
         await env.write({
@@ -162,9 +166,11 @@ describe('ConfigStore.read', () => {
             plugins: {},
         } as unknown as AppConfig)
 
-        await expect(env.store.read()).rejects.toThrow(
-            /不再支持 "plugins" 字段/
-        )
+        const document = await env.store.read()
+
+        expect(document.config).not.toHaveProperty('plugins')
+        expect(env.warnings).toHaveLength(1)
+        expect(env.warnings[0]).toContain('已忽略')
     })
 })
 
@@ -192,18 +198,16 @@ describe('ConfigStore.validate', () => {
         expect(result.issues.length).toBeGreaterThan(0)
     })
 
-    it('reports the legacy plugins field', async () => {
+    it('ignores the legacy plugins field', async () => {
         const env = await harness()
         const result = await env.store.validate({
             ...baseConfig(),
             plugins: {},
         })
 
-        expect(result.ok).toBe(false)
-        expect(result.issues).toContainEqual({
-            path: 'plugins',
-            message: expect.stringContaining('不再支持 "plugins" 字段'),
-        })
+        expect(result.ok).toBe(true)
+        expect(result.config).not.toHaveProperty('plugins')
+        expect(env.warnings).toHaveLength(1)
     })
 
     it('unreported secrets are inherited from the current file', async () => {
@@ -290,31 +294,24 @@ describe('ConfigStore.apply', () => {
         expect(await env.read()).toEqual(document.config)
     })
 
-    it('rejects the legacy plugins field with 400', async () => {
+    it('drops the legacy plugins field when saving', async () => {
         const env = await harness()
         const document = await env.store.read()
 
-        let error: unknown
+        const result = await env.store.apply(
+            { ...document.config, plugins: {} },
+            document.hash
+        )
 
-        try {
-            await env.store.apply(
-                { ...document.config, plugins: {} },
-                document.hash
-            )
-        } catch (caught) {
-            error = caught
-        }
+        expect(result.ok).toBe(true)
+        expect(env.restartCalls).toBe(1)
+        expect(env.warnings).toHaveLength(1)
 
-        expect(error).toBeInstanceOf(ConfigStoreError)
+        const written = JSON.parse(
+            await readFile(env.configPath, 'utf8')
+        ) as Record<string, unknown>
 
-        const storeError = error as ConfigStoreError
-
-        expect(storeError.status).toBe(400)
-        expect(storeError.issues).toContainEqual({
-            path: 'plugins',
-            message: expect.stringContaining('不再支持 "plugins" 字段'),
-        })
-        expect(env.restartCalls).toBe(0)
+        expect(written).not.toHaveProperty('plugins')
     })
 
     it('restores the previous config when restart fails', async () => {

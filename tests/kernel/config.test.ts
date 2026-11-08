@@ -118,17 +118,25 @@ describe('config', () => {
         }
     })
 
-    it('rejects the legacy plugins field', async () => {
+    it('ignores the legacy plugins field with a warning', async () => {
+        const warnings: string[] = []
         const filePath = await writeConfig({
             plugins: {},
         })
 
-        await expect(loadConfig(filePath)).rejects.toThrow(
-            /不再支持 "plugins" 字段/
-        )
+        const config = await loadConfig(filePath, {
+            onWarning: (message) => warnings.push(message),
+        })
+
+        expect(config.url).toBe('ws://127.0.0.1:3001/')
+        expect(config).not.toHaveProperty('plugins')
+        expect(warnings).toHaveLength(1)
+        expect(warnings[0]).toContain('已忽略')
+        expect(warnings[0]).toContain('WebUI 保存配置时会自动移除')
     })
 
-    it('rejects the legacy plugins field with a migration path', async () => {
+    it('warns with a migration path for the legacy plugins field', async () => {
+        const warnings: string[] = []
         const filePath = await writeConfig({
             plugins: {
                 poke: {
@@ -137,11 +145,14 @@ describe('config', () => {
             },
         })
 
-        await expect(
-            loadConfig(filePath, {
-                pluginConfigDir: '/srv/jsbot/data/config/plugin',
-            })
-        ).rejects.toThrow(/\/srv\/jsbot\/data\/config\/plugin\/<id>\.jsonc/)
+        await loadConfig(filePath, {
+            pluginConfigDir: '/srv/jsbot/data/config/plugin',
+            onWarning: (message) => warnings.push(message),
+        })
+
+        expect(warnings[0]).toMatch(
+            /\/srv\/jsbot\/data\/config\/plugin\/<id>\.jsonc/
+        )
     })
 
     it('merges installer defaults', async () => {

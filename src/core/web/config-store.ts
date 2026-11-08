@@ -7,7 +7,7 @@ import {
     type AppConfig,
     type PluginEnvelope,
 } from '../config/schema.js'
-import { assertNoLegacyPlugins, ConfigError } from '../config/loader.js'
+import { legacyPluginsMessage, stripLegacyPlugins } from '../config/loader.js'
 import {
     readPluginConfig as readPluginConfigFile,
     readPluginConfigs as readPluginConfigFiles,
@@ -46,6 +46,7 @@ export interface ConfigStoreOptions {
     pluginConfigDir: string
     getPlugins(): AnyPluginDefinition[]
     restart(): Promise<boolean>
+    onWarning?: ((message: string) => void) | undefined
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -150,8 +151,18 @@ function pluginIssuesFrom(
 
 export class ConfigStore {
     private tail: Promise<unknown> = Promise.resolve()
+    private warnedLegacyPlugins = false
 
     constructor(private readonly options: ConfigStoreOptions) {}
+
+    private warnLegacyPlugins(): void {
+        if (this.warnedLegacyPlugins) return
+
+        this.warnedLegacyPlugins = true
+        this.options.onWarning?.(
+            legacyPluginsMessage(this.options.pluginConfigDir)
+        )
+    }
 
     async read(): Promise<ConfigDocument> {
         let raw: string
@@ -175,18 +186,11 @@ export class ConfigStore {
             )
         }
 
-        const json = jsonc.value
+        const stripped = stripLegacyPlugins(jsonc.value)
 
-        try {
-            assertNoLegacyPlugins(json, this.options.pluginConfigDir)
-        } catch (error) {
-            throw new ConfigStoreError(
-                500,
-                error instanceof ConfigError ? error.message : String(error)
-            )
-        }
+        if (stripped.ignored) this.warnLegacyPlugins()
 
-        const parsed = appConfigSchema.safeParse(json)
+        const parsed = appConfigSchema.safeParse(stripped.value)
 
         if (!parsed.success) {
             throw new ConfigStoreError(
@@ -206,26 +210,13 @@ export class ConfigStore {
 
     async validate(value: unknown): Promise<ConfigValidationResult> {
         const document = await this.read()
-        const merged = mergeSecrets(document.config, value)
+        const stripped = stripLegacyPlugins(
+            mergeSecrets(document.config, value)
+        )
 
-        try {
-            assertNoLegacyPlugins(merged, this.options.pluginConfigDir)
-        } catch (error) {
-            return {
-                ok: false,
-                issues: [
-                    {
-                        path: 'plugins',
-                        message:
-                            error instanceof Error
-                                ? error.message
-                                : String(error),
-                    },
-                ],
-            }
-        }
+        if (stripped.ignored) this.warnLegacyPlugins()
 
-        const parsed = appConfigSchema.safeParse(merged)
+        const parsed = appConfigSchema.safeParse(stripped.value)
 
         if (!parsed.success) {
             return {
@@ -252,23 +243,13 @@ export class ConfigStore {
                 )
             }
 
-            const merged = mergeSecrets(document.config, value)
+            const stripped = stripLegacyPlugins(
+                mergeSecrets(document.config, value)
+            )
 
-            try {
-                assertNoLegacyPlugins(merged, this.options.pluginConfigDir)
-            } catch (error) {
-                throw new ConfigStoreError(400, '配置校验失败', [
-                    {
-                        path: 'plugins',
-                        message:
-                            error instanceof Error
-                                ? error.message
-                                : String(error),
-                    },
-                ])
-            }
+            if (stripped.ignored) this.warnLegacyPlugins()
 
-            const parsed = appConfigSchema.safeParse(merged)
+            const parsed = appConfigSchema.safeParse(stripped.value)
 
             if (!parsed.success) {
                 throw new ConfigStoreError(

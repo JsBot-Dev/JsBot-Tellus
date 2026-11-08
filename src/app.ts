@@ -160,6 +160,7 @@ async function main(): Promise<void> {
         pluginConfigDir: initialSpec.pluginConfig.dir,
         getPlugins: () => latestSpec.plugins,
         restart: () => restartRuntime(),
+        onWarning: (message) => logger.warn(message),
     })
 
     const runExclusive = createExclusiveRunner()

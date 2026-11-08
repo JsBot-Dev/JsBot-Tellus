@@ -37,7 +37,7 @@
 - The loader accepts `default`, named `plugin`, or `plugins` exports and ignores `.d.ts` and `node_modules`. On every load it runs the plugin's `build` script when `node_modules` exists, then falls back to an existing `dist` if the build fails; with no usable `dist`, the plugin is skipped.
 - Root `npm run build` does not build local plugins. Use `npm run build:plugin` / `npm run check:plugin` (auto-discovers packages with `src/`, `tsconfig.json`, and the matching script; skips missing `node_modules`), or `npm run build --prefix plugins/<id>`.
 - Scaffold with `npm run plugin:gen -- my-plugin` (installs dependencies unless `--no-install`).
-- Plugin configs live in `<data-dir>/config/plugin/<id>.jsonc` (JSONC, one file per plugin, including `enabled`, `private`, `groups`, and plugin options). `bot.config.jsonc` must not contain a `plugins` field; keeping it fails startup and requires manual migration. Missing/invalid plugin configs only warn and skip that plugin; core config errors stay fatal.
+- Plugin configs live in `<data-dir>/config/plugin/<id>.jsonc` (JSONC, one file per plugin, including `enabled`, `private`, `groups`, and plugin options). A legacy `plugins` field in `bot.config.jsonc` is ignored with a warning and removed on the next WebUI save; it is not auto-migrated. Missing/invalid plugin configs only warn and skip that plugin; core config errors stay fatal.
 - Root `format:check` ignores `plugins/`; use `npm run format:plugin:check` or `npm run format:plugin` for local plugin files.
 - Runtime restart re-imports plugin entry modules, but helper modules can remain ESM-cached; fully restart the process for reliable multi-file plugin changes.
 
