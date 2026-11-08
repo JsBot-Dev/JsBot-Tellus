@@ -60,6 +60,7 @@ interface LocalPluginFixtureOptions {
     build?: string | undefined
     manifest?: unknown | undefined
     nodeModules?: boolean | undefined
+    sources?: boolean | undefined
 }
 
 async function createPluginFixture(
@@ -73,6 +74,10 @@ async function createPluginFixture(
 
     if (options.nodeModules !== false) {
         await mkdir(join(directory, 'node_modules'), { recursive: true })
+    }
+
+    if (options.sources !== false) {
+        await writeFile(join(directory, 'tsconfig.json'), '{}\n', 'utf8')
     }
 
     const manifest =
@@ -282,6 +287,37 @@ describe('local plugin loader', () => {
         const plugins = await loadLocalPlugins(root)
 
         expect(plugins.map((plugin) => plugin.manifest.id)).toEqual(['demo'])
+    })
+
+    it('uses prebuilt dist without rebuilding packages that only ship dist', async () => {
+        const root = await temporaryDirectory()
+        const directory = await createPluginFixture(root, 'demo', {
+            build: 'tsc -p tsconfig.json',
+            sources: false,
+        })
+        const { runner, calls } = createBuildRunner(async () => {
+            throw new Error('should not build a prebuilt package')
+        })
+        const { logger, warnings, errors, infos } = createLoaderLogger()
+
+        await mkdir(join(directory, 'dist'), { recursive: true })
+        await writeFile(
+            join(directory, 'dist', 'index.mjs'),
+            pluginSource('prebuilt'),
+            'utf8'
+        )
+
+        const plugins = await loadLocalPlugins(root, logger, { runner })
+
+        expect(calls).toEqual([])
+        expect(warnings).toEqual([])
+        expect(errors).toEqual([])
+        expect(infos).toContain(
+            'using prebuilt dist for local plugin demo: no tsconfig.json or src directory'
+        )
+        expect(plugins.map((plugin) => plugin.manifest.id)).toEqual([
+            'prebuilt',
+        ])
     })
 
     it('builds a local plugin without dist', async () => {

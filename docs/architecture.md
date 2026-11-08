@@ -16,7 +16,7 @@ src/core/*     -X-> src/plugins/*
 - 插件只能通过 `PluginContext`、`EventContext` 和 `BotApi` 使用能力。
 - `core` 不 import 任何插件；`core`、`admin` 在 `src/plugins/index.ts` 显式注册。
 - 内置插件是普通源码，随内核一起编译；没有独立依赖，不单独建包。
-- 本地插件由 `src/app/runtime.ts` 在启动和运行时重启前扫描 `plugins/<id>/dist` 并追加到内置插件之后；带 `build` 脚本的插件每次都会先重新构建，失败时回退已有 `dist`。
+- 本地插件由 `src/app/runtime.ts` 在启动和运行时重启前扫描 `plugins/<id>/dist` 并追加到内置插件之后；带 `build` 脚本和源码的插件每次都会先重新构建，失败时回退已有 `dist`；只有 `dist` 的预编译包直接使用自带产物。
 - 本地插件放在不跟踪的 `plugins/`，每个插件是独立包，构建后自动加载。
 
 ## 运行时主链路
@@ -56,7 +56,7 @@ src/
       host.ts             插件排序、配置加载与跳过、setup/start/stop
       gating.ts           enabled/private/groups
       kv.ts               SQLite KV
-      loader.ts           本地插件目录加载（每次加载自动重建，失败回退 dist）
+      loader.ts           本地插件目录加载（带源码时每次加载自动重建，失败回退 dist）
       command-params.ts   命令参数解析入口（barrel）
       params/             声明、默认值/at/time、输入解析、类型级解析
       install-dir.ts      安装状态/路径入口（barrel）
@@ -148,7 +148,7 @@ npm run build:plugin
 node dist/app.js
 ```
 
-应用会固定扫描 `plugins/<id>/dist`，并跳过与内置插件同 ID 的本地插件，避免重复注册。每次加载时，带 `build` 脚本且依赖已安装的插件都会先自动构建，无论 `dist` 是否已经存在；构建失败或缺少 `node_modules` 时会回退加载已有 `dist`，没有可用 `dist` 时记录警告并跳过。没有 `build` 脚本的插件直接加载现有 `dist`。`npm run build:plugin` / `npm run check:plugin` 会自动发现 `plugins/*` 下的本地源码插件，新增插件不需要改根 `package.json`。
+应用会固定扫描 `plugins/<id>/dist`，并跳过与内置插件同 ID 的本地插件，避免重复注册。每次加载时，带 `build` 脚本、依赖已安装且包含源码（`tsconfig.json` 或 `src/`）的插件都会先自动构建，无论 `dist` 是否已经存在；只有 `dist` 的预编译包直接加载。构建失败或缺少 `node_modules` 时会回退加载已有 `dist`，没有可用 `dist` 时记录警告并跳过。没有 `build` 脚本的插件直接加载现有 `dist`。`npm run build:plugin` / `npm run check:plugin` 会自动发现 `plugins/*` 下的本地源码插件，新增插件不需要改根 `package.json`。
 
 ## 在线安装插件
 

@@ -39,7 +39,7 @@ plugins/my-plugin/
 
 - `src/index.ts` 是开发入口。
 - `dist/index.js` 是运行时入口。
-- 构建产物固定放在 `plugins/<id>/dist`，每次加载时自动扫描；只要 `package.json` 中存在 `build` 脚本且依赖已安装，就会先自动重建，不要指向或加载 `src/`。
+- 构建产物固定放在 `plugins/<id>/dist`，每次加载时自动扫描；只要 `package.json` 中存在 `build` 脚本、依赖已安装且目录包含源码（`tsconfig.json` 或 `src/`），就会先自动重建；只有 `dist` 的预编译包直接加载，不要指向或加载 `src/`。
 - 每个本地插件都是独立包，有自己的 `package.json`、lockfile 和 `node_modules`。
 
 ### 内置插件
@@ -230,7 +230,7 @@ npm install --prefix plugins/my-plugin
 npm run build
 ```
 
-根目录的 `npm run build` 构建内核。插件自身在每次加载时都会自动构建；需要提前校验时也可以手动运行 `npm run build --prefix plugins/my-plugin`。
+根目录的 `npm run build` 构建内核。带源码的插件在每次加载时都会自动构建；需要提前校验时也可以手动运行 `npm run build --prefix plugins/my-plugin`。
 
 根目录的 `npm run build:plugin` / `npm run check:plugin` 会自动发现 `plugins/*` 中包含 `src/`、`tsconfig.json` 且声明了对应 npm script 的目录；没有安装 `node_modules` 的目录会跳过。新增插件不需要修改根 `package.json`，也可以单独运行 `npm run build --prefix plugins/<id>` 和 `npm run check --prefix plugins/<id>`。
 
@@ -266,7 +266,7 @@ npm run dev
 
 `npm run dev` 会监听内核 `src/` 和本地插件 `plugins/*/src/`，并忽略插件构建产物 `plugins/*/dist/`。修改插件源码会自动重启并重建插件；修改 `dist` 不会触发重启，避免“构建 → 重启 → 再构建”的循环。
 
-不需要额外参数；多个本地插件按 `plugins/<id>/dist` 并存。只要带有 `build` 脚本且 `node_modules` 存在，每次加载都会先执行 `npm run build` 再加载；构建失败或缺少依赖时会回退加载已有 `dist`，没有可用 `dist` 时记录警告并跳过。没有 `build` 脚本的插件直接加载现有 `dist`。
+不需要额外参数；多个本地插件按 `plugins/<id>/dist` 并存。只要带有 `build` 脚本、`node_modules` 和源码（`tsconfig.json` 或 `src/`），每次加载都会先执行 `npm run build` 再加载；只有 `dist` 的预编译包直接加载。构建失败或缺少依赖时会回退加载已有 `dist`，没有可用 `dist` 时记录警告并跳过。没有 `build` 脚本的插件直接加载现有 `dist`。
 
 ### 6. 配置插件
 
@@ -295,8 +295,8 @@ npm run dev
     - `export const plugins = [...]`
 - 没有导出插件定义的 helper 模块会被跳过。
 - 生产环境应加载编译后的 JavaScript；TypeScript 源码必须先构建，或者在使用 `tsx` 的开发环境中运行。生产镜像包含 `tsc`、`@types/node` 和根目录的 `tsconfig.base.json`，可以重建扩展根 `tsconfig` 的本地插件。
-- 每次加载时，如果插件目录中有 `package.json`、声明了 `scripts.build`，并且 `node_modules` 存在，加载器都会执行 `npm run build` 后再加载；构建失败或缺少依赖时，已有 `dist` 会回退加载，没有可用 `dist` 时只跳过该插件。
-- 通过 `/plugin install` 安装的包和手动放在 `plugins/` 的本地插件使用同一套重建规则；安装包通常自带 `dist`，缺少构建依赖时会回退使用自带产物。
+- 每次加载时，如果插件目录中有 `package.json`、声明了 `scripts.build`、包含源码（`tsconfig.json` 或 `src/`）且 `node_modules` 存在，加载器会执行 `npm run build` 后再加载；只有 `dist` 的预编译包直接使用自带产物。构建失败或缺少依赖时，已有 `dist` 会回退加载，没有可用 `dist` 时只跳过该插件。
+- 通过 `/plugin install` 安装的包通常只包含 `dist`，会直接加载自带产物；手动放在 `plugins/` 且包含源码的插件会在每次加载时重建。
 - 空目录不会报错；如果目录中存在无法导入或无法识别的文件，并且最终没有加载到任何有效插件，启动失败。只要至少有一个有效插件，其他无法识别的文件会记录警告并跳过。
 - 本地插件和在线安装的插件都从 `plugins/<目录>/dist` 自动加载，没有单独的安装目录。
 - 同一个 ID 同时来自内置插件和 `plugins/` 中的多个目录时，只有最先加载的那个生效。
@@ -309,6 +309,7 @@ npm run dev
 | `failed to build local plugin ...`                   | `build` 脚本执行失败或超时                                         | 查看 npm 输出和插件源码，修复后重启                                                                              |
 | `using existing dist ... rebuild failed`             | 重建失败，但旧 `dist` 仍可用                                       | 检查构建错误；确认插件运行的是预期产物                                                                           |
 | `build finished but dist directory not found`        | `build` 脚本没有把产物输出到插件的 `dist` 目录                     | 检查 `tsconfig.json` 的 `outDir` 和 `scripts.build`                                                              |
+| `error TS5058: ... tsconfig.json`                    | 插件声明了 `tsc` 构建脚本，但包内没有 `tsconfig.json`              | 只发布带 `dist` 的预编译包，或补充 `tsconfig.json` 和源码                                                        |
 | `failed to import ...`                               | TypeScript 未编译、入口有运行时错误                                | 先构建；查看日志中的具体导入错误                                                                                 |
 | `dist` 目录没有有效插件                              | 没有导出 `default` / `plugin` / `plugins`                          | 检查入口导出和 `dist` 中的构建输出                                                                               |
 | `skipping ... plugin id already loaded`              | 插件 ID 重复                                                       | 修改 `manifest.id`，或移除重复的插件目录                                                                         |

@@ -188,7 +188,7 @@ ctx.core.restart()
 
 安装的插件与内置插件运行在同一个宿主进程中，可访问文件系统、网络和 `process.env`，属于完全可信代码，不是安全沙箱。
 
-自动重启会在同一个 Node.js 进程内重建 Kernel，不会清空 Node 的 ESM 模块缓存。每次加载都会重新构建带 `build` 脚本的插件，并给入口文件附加基于修改时间的查询参数来绕过缓存；但入口相对导入的辅助模块仍可能复用旧代码。更新多文件插件包后，请完整退出并重新启动进程。
+自动重启会在同一个 Node.js 进程内重建 Kernel，不会清空 Node 的 ESM 模块缓存。每次加载都会重新构建带 `build` 脚本和源码的插件，并给入口文件附加基于修改时间的查询参数来绕过缓存；但入口相对导入的辅助模块仍可能复用旧代码。更新多文件插件包后，请完整退出并重新启动进程。
 
 ## 命令
 
@@ -575,7 +575,7 @@ npm run build:plugin
 node dist/app.js
 ```
 
-应用每次加载都会扫描 `plugins/<id>/dist`；带有 `build` 脚本且依赖已安装的插件会先自动构建再加载，构建失败时回退已有 `dist`，没有可用产物才记录警告并跳过。示例见 [`examples/plugins/hello`](../examples/plugins/hello)。
+应用每次加载都会扫描 `plugins/<id>/dist`；带有 `build` 脚本、依赖已安装且包含源码（`tsconfig.json` 或 `src/`）的插件会先自动构建再加载，预编译包直接使用自带 `dist`；构建失败时回退已有 `dist`，没有可用产物才记录警告并跳过。示例见 [`examples/plugins/hello`](../examples/plugins/hello)。
 
 ## 通过 npm 发布与安装
 

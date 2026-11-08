@@ -34,7 +34,7 @@
 ## Local plugins
 
 - `plugins/` is gitignored and may contain user-only work; do not delete or commit it. Local/npm plugins are independent packages loaded from `plugins/<id>/dist` after built-ins; duplicate IDs keep the built-in/first plugin.
-- The loader accepts `default`, named `plugin`, or `plugins` exports and ignores `.d.ts` and `node_modules`. On every load it runs the plugin's `build` script when `node_modules` exists, then falls back to an existing `dist` if the build fails; with no usable `dist`, the plugin is skipped.
+- The loader accepts `default`, named `plugin`, or `plugins` exports and ignores `.d.ts` and `node_modules`. On every load it rebuilds plugins that declare a `build` script, have `node_modules`, and contain build sources (`tsconfig.json` or `src/`); prebuilt packages that only ship `dist` are loaded as-is. A failed rebuild falls back to an existing `dist`; with no usable `dist`, the plugin is skipped.
 - Root `npm run build` does not build local plugins. Use `npm run build:plugin` / `npm run check:plugin` (auto-discovers packages with `src/`, `tsconfig.json`, and the matching script; skips missing `node_modules`), or `npm run build --prefix plugins/<id>`.
 - Scaffold with `npm run plugin:gen -- my-plugin` (installs dependencies unless `--no-install`).
 - Plugin configs live in `<data-dir>/config/plugin/<id>.jsonc` (JSONC, one file per plugin, including `enabled`, `private`, `groups`, and plugin options). A legacy `plugins` field in `bot.config.jsonc` is ignored with a warning and removed on the next WebUI save; it is not auto-migrated. Missing/invalid plugin configs only warn and skip that plugin; core config errors stay fatal.
