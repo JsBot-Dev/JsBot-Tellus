@@ -27,6 +27,7 @@ export interface PathOptions {
 
 export interface LoadConfigOptions {
     pluginConfigDir?: string | undefined
+    onWarning?: ((message: string) => void) | undefined
 }
 
 function pickFirst(...values: Array<string | undefined>): string | undefined {
@@ -43,19 +44,26 @@ export function legacyPluginsMessage(pluginConfigDir?: string): string {
     const directory = pluginConfigDir ?? '<data-dir>/config/plugin'
 
     return [
-        '主配置文件不再支持 "plugins" 字段（3.0 起插件配置已拆分）。',
-        `请手动将每个插件配置移动到 ${directory}/<id>.jsonc，并删除 "plugins" 字段。`,
-        '本版本不会自动迁移旧配置。',
+        '已忽略主配置文件中的旧 "plugins" 字段（3.0 起插件配置已拆分）。',
+        `请手动将每个插件配置移动到 ${directory}/<id>.jsonc；本版本不会自动迁移旧配置。`,
+        'WebUI 保存配置时会自动移除该字段。',
     ].join('\n')
 }
 
-export function assertNoLegacyPlugins(
-    value: unknown,
-    pluginConfigDir?: string
-): void {
-    if (isRecord(value) && 'plugins' in value) {
-        throw new ConfigError(legacyPluginsMessage(pluginConfigDir))
+export interface StripLegacyPluginsResult {
+    value: unknown
+    ignored: boolean
+}
+
+export function stripLegacyPlugins(value: unknown): StripLegacyPluginsResult {
+    if (!isRecord(value) || !('plugins' in value)) {
+        return { value, ignored: false }
     }
+
+    const rest = { ...value }
+    delete rest['plugins']
+
+    return { value: rest, ignored: true }
 }
 
 export function resolveConfigPath(options: PathOptions = {}): string {
@@ -108,9 +116,13 @@ export async function loadConfig(
         )
     }
 
-    const json = jsonc.value
+    const stripped = stripLegacyPlugins(jsonc.value)
 
-    assertNoLegacyPlugins(json, options.pluginConfigDir)
+    if (stripped.ignored) {
+        options.onWarning?.(legacyPluginsMessage(options.pluginConfigDir))
+    }
+
+    const json = stripped.value
 
     const result = appConfigSchema.safeParse(json)
 

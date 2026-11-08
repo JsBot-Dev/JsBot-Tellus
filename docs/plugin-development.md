@@ -284,7 +284,7 @@ npm run dev
 - 如果 `manifest.defaultEnabled` 为 `true`，可以省略 `enabled`。
 - 文件不存在或为空时，内核会先尝试用 `configSchema` 的默认值加载；schema 仍有必填项时跳过该插件。
 - 配置文件名对应的插件 ID 未加载时，只记录警告并忽略该文件，不会阻止启动。
-- `bot.config.jsonc` 不再接受 `plugins` 字段；旧配置需要手动拆分，见[配置文档](configuration.md#插件配置)。
+- `bot.config.jsonc` 中的旧 `plugins` 字段会被忽略并记录警告；建议手动拆分到独立配置文件，见[配置文档](configuration.md#插件配置)。
 
 ## 加载规则
 

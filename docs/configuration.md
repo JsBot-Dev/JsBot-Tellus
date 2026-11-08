@@ -144,7 +144,7 @@ JSONC 支持 `//`、`/* */` 注释和尾随逗号。WebUI 保存时会写成标�
 - 插件配置问题不会阻止 Kernel 启动；`bot.config.jsonc` 本身的读取、JSONC 解析和 schema 校验错误仍会阻止启动。
 - 非 `.jsonc` 文件、以 `.` 开头的隐藏文件和 `.bak` 文件不会被扫描。
 
-`bot.config.jsonc` 不再支持 `plugins` 字段。3.0 不会自动迁移旧配置；如果保留该字段（即使是空对象），启动会失败并提示手动把每个插件配置移动到 `config/plugin/<id>.jsonc`。迁移方法见[迁移与回滚](migration.md#30-插件配置迁移)。
+`bot.config.jsonc` 中的旧 `plugins` 字段会被忽略并记录警告，不再阻止启动；WebUI 保存配置时会自动移除该字段。本版本不会自动迁移旧配置，建议手动把每个插件配置移动到 `config/plugin/<id>.jsonc`。迁移方法见[迁移与回滚](migration.md#30-插件配置迁移)。
 
 ## 内置插件配置
 
@@ -212,7 +212,7 @@ npm run dev
 
 ## 错误处理
 
-- `bot.config.jsonc` 读取失败、JSONC 解析失败、包含旧 `plugins` 字段或 schema 校验失败都会在启动前退出。
+- `bot.config.jsonc` 读取失败、JSONC 解析失败或 schema 校验失败都会在启动前退出；旧 `plugins` 字段只记录警告并忽略。
 - 插件配置文件缺失或为空时先尝试使用 schema 默认值；JSONC 解析失败、公共信封无效或插件 `configSchema` 校验失败时，记录警告并跳过该插件。两种情况都不会阻止 Kernel 启动。
 - 未加载的插件 ID 对应的配置文件只会记录警告并被忽略。
 - Zod 错误会带路径，例如 `demo.limit`。

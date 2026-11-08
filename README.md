@@ -60,7 +60,7 @@ npm run dev
 
 默认配置路径是 `./bot.config.jsonc`，默认数据目录是 `./data`。主配置支持 JSONC 注释和尾随逗号；旧版 `bot.config.json` 仍可回退读取并会输出警告。从旧版升级前请先备份并移走旧配置和数据库，见[迁移与回滚](docs/migration.md)。
 
-插件配置不在 `bot.config.jsonc` 中，而是按插件拆分到 `<data-dir>/config/plugin/<id>.jsonc`（默认 `data/config/plugin/`）。文件支持 JSONC 注释和尾随逗号，内容包含 `enabled`、`private`、`groups` 和插件自己的选项。3.0 起 `bot.config.jsonc` 不再接受 `plugins` 字段，旧配置需要手动迁移；缺失或无效的插件配置只会记录警告并跳过对应插件，不会阻止启动。详见[配置文档](docs/configuration.md#插件配置)。
+插件配置不在 `bot.config.jsonc` 中，而是按插件拆分到 `<data-dir>/config/plugin/<id>.jsonc`（默认 `data/config/plugin/`）。文件支持 JSONC 注释和尾随逗号，内容包含 `enabled`、`private`、`groups` 和插件自己的选项。3.0 起插件配置从主配置拆分；旧 `plugins` 字段会被忽略并记录警告，WebUI 保存配置时会自动移除。缺失或无效的插件配置只会记录警告并跳过对应插件，不会阻止启动。详见[配置文档](docs/configuration.md#插件配置)。
 
 ## WebUI（可选）
 
