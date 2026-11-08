@@ -294,7 +294,7 @@ npm run dev
     - `export const plugin = ...`
     - `export const plugins = [...]`
 - 没有导出插件定义的 helper 模块会被跳过。
-- 生产环境应加载编译后的 JavaScript；TypeScript 源码必须先构建，或者在使用 `tsx` 的开发环境中运行。
+- 生产环境应加载编译后的 JavaScript；TypeScript 源码必须先构建，或者在使用 `tsx` 的开发环境中运行。生产镜像包含 `tsc`、`@types/node` 和根目录的 `tsconfig.base.json`，可以重建扩展根 `tsconfig` 的本地插件。
 - 每次加载时，如果插件目录中有 `package.json`、声明了 `scripts.build`，并且 `node_modules` 存在，加载器都会执行 `npm run build` 后再加载；构建失败或缺少依赖时，已有 `dist` 会回退加载，没有可用 `dist` 时只跳过该插件。
 - 通过 `/plugin install` 安装的包和手动放在 `plugins/` 的本地插件使用同一套重建规则；安装包通常自带 `dist`，缺少构建依赖时会回退使用自带产物。
 - 空目录不会报错；如果目录中存在无法导入或无法识别的文件，并且最终没有加载到任何有效插件，启动失败。只要至少有一个有效插件，其他无法识别的文件会记录警告并跳过。
