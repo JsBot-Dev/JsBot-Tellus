@@ -745,6 +745,25 @@ describe('router', () => {
         expect(context.stopped).toBe(false)
     })
 
+    it('disables commands with an empty message type filter', async () => {
+        const { router, dispatch } = harness()
+        const command = vi.fn(async () => {})
+        const handler = vi.fn(async () => {})
+
+        router.registerCommand({
+            pluginId: 'test',
+            name: 'hidden',
+            messageType: [],
+            handler: command,
+        })
+        router.registerMessage('test', handler)
+
+        await dispatch(groupMessage({ raw_message: '/hidden' }))
+
+        expect(command).not.toHaveBeenCalled()
+        expect(handler).toHaveBeenCalledTimes(1)
+    })
+
     it('filters notices by type and subtype', async () => {
         const { router, dispatch } = harness()
         const handler = vi.fn(async () => {})

@@ -456,4 +456,74 @@ describe('command params', () => {
             /变长参数不支持长度限制/
         )
     })
+
+    it('uses the quoted message for only the first reply argument', () => {
+        const event = groupMessage({
+            message: [{ type: 'reply', data: { id: 42 } }],
+        })
+
+        const required = compileCommandParams('<first:reply> <second:reply>')
+
+        expect(() => required.parse('', event)).toThrowError(
+            new CommandParamsError(
+                '参数 second 需要引用一条消息',
+                '<first> <second>'
+            )
+        )
+
+        const optional = compileCommandParams('[first:reply] [second:reply]')
+
+        expect(optional.parse('', event)).toEqual({
+            args: [42],
+            ignored: [],
+        })
+    })
+
+    it('unquotes multi-token text arguments', () => {
+        const params = compileCommandParams('<name:string> <message:text>')
+
+        expect(params.parse('x a "b c" d')).toEqual({
+            args: ['x', 'a b c d'],
+            ignored: [],
+        })
+        expect(params.parse('x "a b" c')).toEqual({
+            args: ['x', 'a b c'],
+            ignored: [],
+        })
+
+        const limited = compileCommandParams(
+            '<name:string> <message:text(2..5)>'
+        )
+
+        expect(limited.parse('x "a b" c')).toEqual({
+            args: ['x', 'a b c'],
+            ignored: [],
+        })
+    })
+
+    it('treats malformed CQ codes as plain text', () => {
+        const reply = compileCommandParams('[message:reply]')
+
+        expect(
+            reply.parse('', groupMessage({ raw_message: '[CQ:face,large=x]' }))
+        ).toEqual({ args: [], ignored: [] })
+
+        const union = compileCommandParams('<user:at|string>')
+
+        expect(union.parse('[CQ:face,large=x]')).toEqual({
+            args: ['[CQ:face,large=x]'],
+            ignored: [],
+        })
+    })
+
+    it('rejects integers outside the safe range', () => {
+        const params = compileCommandParams('<value:integer>')
+
+        expect(() => params.parse('9007199254740993')).toThrowError(
+            new CommandParamsError('参数 value 需要是整数', '<value>')
+        )
+        expect(() =>
+            compileCommandParams('[value:integer=9007199254740993]')
+        ).toThrow(/默认值不是整数/)
+    })
 })

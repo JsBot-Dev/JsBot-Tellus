@@ -60,6 +60,8 @@ export interface ParamSpec {
 export interface InputToken {
     value: string
     start: number
+    /** Exclusive end offset of the raw token in the original input. */
+    end: number
 }
 
 export function declarationError(message: string): Error {

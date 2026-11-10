@@ -57,7 +57,14 @@ export function parseBoolean(value: string): boolean | null {
 
 export function parseAt(value: string, name: string, usage: string): number {
     const raw = value.trim()
-    const segments = parseSegments(raw)
+    let segments: ReturnType<typeof parseSegments> = []
+
+    try {
+        segments = parseSegments(raw)
+    } catch {
+        // Fall through to the plain QQ number check below.
+    }
+
     const segment = segments[0]
 
     if (segments.length === 1 && segment?.type === 'at') {
