@@ -31,11 +31,22 @@ export function compileCommandParams(
     validateSpecs(specs)
 
     const usage = usageOf(specs)
+    const needsQuote = specs.some(
+        (spec) =>
+            spec.candidates.length === 1 &&
+            spec.candidates[0]?.kind === 'type' &&
+            spec.candidates[0].type === 'reply'
+    )
 
     return {
         usage,
         parse(input: string, event?: OneBotMessageEvent): ParsedCommandParams {
-            return parseInput(specs, input, usage, quoteIdOf(event))
+            return parseInput(
+                specs,
+                input,
+                usage,
+                needsQuote ? quoteIdOf(event) : undefined
+            )
         },
     }
 }

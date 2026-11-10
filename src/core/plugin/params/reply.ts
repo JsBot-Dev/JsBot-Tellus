@@ -34,6 +34,15 @@ function replyIdIn(segments: readonly unknown[]): number | undefined {
     return undefined
 }
 
+function parseRawSegments(value: string): readonly unknown[] {
+    try {
+        return parseSegments(value)
+    } catch {
+        // Malformed CQ codes must not make parameter parsing fail.
+        return []
+    }
+}
+
 export function quoteIdOf(
     event: OneBotMessageEvent | undefined
 ): number | undefined {
@@ -42,7 +51,7 @@ export function quoteIdOf(
     const message = event.message
 
     if (typeof message === 'string') {
-        const id = replyIdIn(parseSegments(message))
+        const id = replyIdIn(parseRawSegments(message))
 
         if (id !== undefined) return id
     } else if (Array.isArray(message)) {
@@ -55,5 +64,5 @@ export function quoteIdOf(
         if (id !== undefined) return id
     }
 
-    return replyIdIn(parseSegments(event.raw_message))
+    return replyIdIn(parseRawSegments(event.raw_message))
 }

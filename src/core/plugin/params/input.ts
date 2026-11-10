@@ -99,7 +99,7 @@ export function tokenizeInput(input: string, usage: string): InputToken[] {
             throw new CommandParamsError('参数引号未闭合', usage)
         }
 
-        tokens.push({ value, start })
+        tokens.push({ value, start, end: index })
     }
 
     return tokens
@@ -170,7 +170,7 @@ function parseCandidate(
         case 'integer': {
             const value = raw.trim() === '' ? Number.NaN : Number(raw)
 
-            if (!Number.isInteger(value)) {
+            if (!Number.isSafeInteger(value)) {
                 throw new CommandParamsError(
                     `参数 ${spec.name} 需要是整数`,
                     usage
@@ -237,13 +237,18 @@ export function parseInput(
     const tokens = tokenizeInput(input, usage)
     const args: unknown[] = []
     let index = 0
+    // A single quoted message can only satisfy the first reply parameter.
+    let quoteConsumed = false
 
     for (const spec of specs) {
         const sole =
             spec.candidates.length === 1 ? spec.candidates[0] : undefined
 
         if (sole?.kind === 'type' && sole.type === 'reply') {
-            if (quoteId !== undefined) {
+            const first = !quoteConsumed
+            quoteConsumed = true
+
+            if (first && quoteId !== undefined) {
                 args.push(quoteId)
             } else if (spec.required) {
                 throw new CommandParamsError(
@@ -292,9 +297,24 @@ export function parseInput(
                 continue
             }
 
-            const remaining = tokens.length - index
-            const value =
-                remaining === 1 ? token.value : input.slice(token.start).trim()
+            // Rebuild the text from the unquoted token values while keeping
+            // the original separators between them. Slicing the raw input
+            // would keep quotes and backslash escapes in the value.
+            let value = ''
+            let cursor = token.start
+
+            for (
+                let tokenIndex = index;
+                tokenIndex < tokens.length;
+                tokenIndex++
+            ) {
+                const part = tokens[tokenIndex]
+
+                if (!part) continue
+
+                value += input.slice(cursor, part.start) + part.value
+                cursor = part.end
+            }
 
             args.push(enforceLength(spec.name, sole.length, value, usage))
             index = tokens.length

@@ -246,6 +246,10 @@ export class Kernel {
             }
 
             this.tasks.cancelAll()
+
+            // Give aborted tasks a chance to observe the signal before plugin
+            // state and the database are torn down.
+            await this.tasks.drain(1_000)
             await this.host.stop()
         } finally {
             this.startedAt = null

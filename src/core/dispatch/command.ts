@@ -38,7 +38,7 @@ export function normalizeMessageTypes(
         }
     }
 
-    return result.length > 0 ? result : [...DEFAULT_MESSAGE_TYPES]
+    return result
 }
 
 export interface CommandRegistration {
@@ -170,6 +170,14 @@ function uniqueStrings(values: string[]): string[] {
     return result
 }
 
+/**
+ * Prefixes are matched case-sensitively, so they must be deduplicated the
+ * same way. Using `uniqueStrings` here would drop `a` when `A` is registered.
+ */
+function uniquePrefixes(values: string[]): string[] {
+    return [...new Set(values)]
+}
+
 const LEADING_REPLY = /^(?:\[CQ:reply(?:,[^\]]*)?\]\s*)+/
 
 function stripLeadingReply(raw: string): string {
@@ -262,7 +270,7 @@ export class CommandRegistry {
         registration: CommandGroupRegistration,
         setup: (group: CommandGroupRegistrar) => void
     ): () => void {
-        const prefixes = uniqueStrings(registration.prefixes)
+        const prefixes = uniquePrefixes(registration.prefixes)
         const bases = groupBases(registration.name, registration.aliases)
         const children: GroupChild[] = []
         const scope = this.createGroupScope(
@@ -456,7 +464,7 @@ export class CommandRegistry {
         registration: CommandRegistration,
         paths: string[]
     ): () => void {
-        const prefixes = uniqueStrings(registration.prefixes)
+        const prefixes = uniquePrefixes(registration.prefixes)
         const parsedPaths: ParsedPath[] = []
         const seen = new Set<string>()
 

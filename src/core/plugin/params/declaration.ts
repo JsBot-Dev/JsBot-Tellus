@@ -575,7 +575,7 @@ function parseDefaultCandidate(
         case 'integer': {
             const number = value.trim() === '' ? Number.NaN : Number(value)
 
-            if (!Number.isInteger(number)) {
+            if (!Number.isSafeInteger(number)) {
                 throw declarationError(`参数 ${name} 的默认值不是整数`)
             }
 

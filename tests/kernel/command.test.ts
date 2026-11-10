@@ -146,6 +146,15 @@ describe('command registry', () => {
         expect(registry.match('pong')).toBeNull()
     })
 
+    it('keeps case-sensitive prefixes distinct', () => {
+        const registry = new CommandRegistry()
+
+        registry.register(registration('help', { prefixes: ['A', 'a'] }))
+
+        expect(registry.match('Ahelp')?.match.prefix).toBe('A')
+        expect(registry.match('ahelp')?.match.prefix).toBe('a')
+    })
+
     it('rejects command conflicts', () => {
         const registry = new CommandRegistry()
 
